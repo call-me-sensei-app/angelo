@@ -126,6 +126,9 @@ class BuildTests(ToolCase):
         self.assertEqual(document["services"], {"crash_reports": "https://console.angelo.studio/api/v1/crash-reports"})
         self.assertNotIn("services", json.loads(self.payload()), "no endpoint unless one is announced")
 
+    def test_the_release_names_the_blender_it_is_built_on_from_its_changelog_entry(self):
+        self.assertEqual(json.loads(self.payload())["latest"]["blender"], "5.2.2")
+
     def test_refusals(self):
         refusals = {
             "Unreleased": lambda: tool.build_payload("1.0.1", 2, (), now=NOW, source=self._unreleased()),

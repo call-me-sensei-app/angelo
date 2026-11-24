@@ -21,6 +21,7 @@ import time
 import traceback
 
 import bpy
+import qa_hit
 
 assert "--factory-startup" in sys.argv and not bpy.app.background
 assert "--debug-memory" in sys.argv, "Require allocator-checked shutdown"
@@ -263,8 +264,8 @@ def tick():
             if wait(pointer(target) in state.get("header_drawn", set())):
                 return .1
             header = next(r for r in target.regions if r.type == "HEADER")
-            x = int(header.x + 25 * bpy.context.preferences.system.ui_scale)
-            y = int(header.y + header.height / 2)
+            x, y = (int(v) for v in qa_hit.xy(qa_hit.RAW, header, 25 * bpy.context.preferences.system.ui_scale,
+                                              header.height / 2))
             state["other"].event_simulate(type="MOUSEMOVE", value="NOTHING", x=x, y=y)
             state["other"].event_simulate(type="LEFTMOUSE", value="PRESS", x=x, y=y)
             state["other"].event_simulate(type="LEFTMOUSE", value="RELEASE", x=x, y=y)

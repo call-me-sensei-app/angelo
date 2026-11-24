@@ -1,0 +1,10 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
+# SPDX-License-Identifier: GPL-2.0-or-later
+#
+# Angelo's Linux launcher: starts the app in this folder with the arguments given.
+# It resolves its own location through symbolic links (a link in ~/.local/bin works) and runs upstream's
+# blender-launcher beside it, which preloads the newer of the bundled and the system TBB library.
+# doc/angelo/releasing.rst, "Linux package".
+ANGELO_DIR=$(dirname "$(readlink -f "$0")")
+exec "$ANGELO_DIR/blender-launcher" "$@"

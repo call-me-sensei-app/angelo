@@ -14,7 +14,13 @@ from .ui_text import iface_, n_, rpt_
 STAND_IN = (n_("Your browser shows this look in Live Web Preview."),
             n_("Angelo shows the material's nodes as the stand-in."))
 PROBLEMS = {"missing": n_("The shader file isn't there"), "tsl": n_("TSL web shaders arrive in 1.1; use a GLSL file"), "language": n_("Use a GLSL file (.glsl or .frag)"),
-            "too_large": n_("The shader file is larger than 256 KB"), "unreadable": n_("The shader file can't be read")}
+            "too_large": n_("The shader file is larger than 256 KB"), "unreadable": n_("The shader file can't be read"),
+            # Its #include lines (web_shader_spec.expand_includes); the details go to the agent and the log.
+            "include_missing": n_("A file the shader includes isn't there"),
+            "include_outside": n_("The shader includes a file outside the project folder"),
+            "include_language": n_("The shader includes a file that isn't GLSL"),
+            "include_cycle": n_("The shader's includes include each other in a loop"),
+            "include_depth": n_("The shader's includes nest too deep")}
 READ = n_("Read {count} uniforms from the shader file")
 # The built-ins' uniforms by name (a file's uniforms are its own names, shown as they are).
 LABELS = {"base_color": n_("Base color"), "shadow_color": n_("Shadow color"), "bands": n_("Bands"),

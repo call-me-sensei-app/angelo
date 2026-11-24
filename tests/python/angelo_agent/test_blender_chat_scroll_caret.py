@@ -35,6 +35,7 @@ import numpy as np
 
 assert '--enable-event-simulate' in sys.argv and not bpy.app.background
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')  # The default startup with its chat.
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-chat-scroll-caret-qa"))

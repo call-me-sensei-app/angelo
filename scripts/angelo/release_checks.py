@@ -9,7 +9,7 @@ check in PowerShell and ``build_release_windows.ps1`` the agent-runtime check. S
 The agent runtime (``agent_runtime_problems``) is the patched Codex build the app bundles, pinned by
 ``scripts/addons_core/angelo_agent/agent_runtime.json``. From the command line, before a release build::
 
-    python3 scripts/angelo/release_checks.py agent-runtime <folder> [--platform macos|windows] [--no-run]
+    python3 scripts/angelo/release_checks.py agent-runtime <folder> [--platform macos|windows|linux] [--no-run]
 
 checks a folder meant for ``ANGELO_AGENT_RUNTIME_DIR``; it prints the problems and exits 1 when there are any.
 ``trust-store <bundle> [--offline]`` refuses a bundle whose trust stores (certifi, pip's copy, the Codex
@@ -251,6 +251,8 @@ def _code_problem(path, platform):
         if not os.access(path, os.X_OK):
             return "%s is not marked executable" % path.name
         return ""
+    if platform == "linux":
+        return _linux_code_problem(path)
     try:
         info = pe_info(path)
     except OSError as error:
@@ -258,6 +260,28 @@ def _code_problem(path, platform):
     if info is None or info[0] != PE_MACHINE_AMD64 or info[1]:
         return "%s is not an x64 Windows executable" % path.name
     return ""
+
+
+def _linux_code_problem(path):
+    """Why ``path`` is not x86-64 Linux code that starts on the pin's glibc (``glibc_ceiling``) ("" when it is)."""
+    import elf_info
+    try:
+        info = elf_info.read(path)
+    except ValueError as error:
+        return "%s is a malformed ELF file: %s" % (path.name, error)
+    except OSError as error:
+        return "%s cannot be read: %s" % (path.name, error)
+    if info is None or info.machine != "x86_64" or info.file_type not in ("executable", "shared"):
+        return "%s is not x86-64 Linux ELF code" % path.name
+    if not os.access(path, os.X_OK):
+        return "%s is not marked executable" % path.name
+    linux = agent_runtime_pin()["platforms"]["linux"]
+    problems = elf_info.floor_problems(info, linux["interpreter"], linux["version_ceilings"], path.name)
+    foreign = [name for name in info.needed if name not in linux["system_libraries"]]
+    if foreign:
+        problems.append("%s needs %s, which distributions ship differently or not at all: link it statically (the pin's "
+                        "system_libraries are the only ones every supported system has)" % (path.name, ", ".join(foreign)))
+    return "; ".join(problems)
 
 
 def _upstream_signature_problems(folder, files):
@@ -322,7 +346,34 @@ def _run_problems(folder, files, pin, runner):
         text = "".join(path.read_text(encoding="utf-8", errors="replace") for path in sorted(out.rglob("*.json")))
         problems += ["%s's app-server schema has no %s notification: this is not the patched build"
                      % (codex.name, method) for method in pin.get("notifications", ()) if '"%s"' % method not in text]
+        problems += _app_server_flag_problems(codex, pin, runner, env)
         return problems + wire_problems(codex, pin, runner, env) + capability_problems(codex, pin, runner, env)
+
+
+# Flags every shipped pin must list in ``app_server_flags``: the agent runtime starts only with them
+# (agent_runtime.IGNORE_USER_CONFIG), so a pin without one ships an agent that refuses every chat (re-review of
+# ffa4cb56717, MUST-1: a fail-closed launch needs a fail-closed gate).
+REQUIRED_APP_SERVER_FLAGS = ("--ignore-user-config",)
+
+
+def pin_problems(pin):
+    """Why ``pin`` cannot ship (empty: it can): a required app-server flag it does not list."""
+    listed = pin.get("app_server_flags", ())
+    return ["agent_runtime.json does not list %s in app_server_flags: Angelo would refuse to start that runtime. Pin a "
+            "build that has it" % flag for flag in REQUIRED_APP_SERVER_FLAGS if flag not in listed]
+
+
+def _app_server_flag_problems(codex, pin, runner, env):
+    """Each pinned ``app_server_flags`` flag is one ``codex app-server --help`` lists (the agent runtime starts only
+    with ``--ignore-user-config``: agent_runtime.check_start). Asked of the subcommand itself: the flag's text is
+    in the binary anyway (``codex exec`` has it)."""
+    flags = [flag for flag in pin.get("app_server_flags", ()) if flag]
+    if not flags:
+        return []
+    shown = runner([str(codex), "app-server", "--help"], check=False, timeout=120, env=env)
+    text = (shown.stdout or "") + (shown.stderr or "")
+    return ["%s app-server has no %s: this is not the build the pin names" % (codex.name, flag)
+            for flag in flags if shown.returncode != 0 or flag not in text.split()]
 
 
 
@@ -344,8 +395,8 @@ def agent_runtime_problems(folder, platform, runner=None, exclusive=False):
 
     ``folder`` holds the runtime: an ``ANGELO_AGENT_RUNTIME_DIR``, or an installed app's
     (``agent_runtime_folder``); ``exclusive``: nothing but the pinned files may be in it (an installed app).
-    Every required file must be an executable for the platform (arm64 Mach-O, or an x64 Windows PE
-    executable), and on Windows the pin's ``upstream_signed`` files must carry OpenAI's own signature.
+    Every required file must be an executable for the platform (arm64 Mach-O, an x64 Windows PE
+    executable, or x86-64 Linux ELF that needs no glibc newer than the pin's ``glibc_ceiling``), and on Windows the pin's ``upstream_signed`` files must carry OpenAI's own signature.
     ``runner(argv, check=False, timeout=..., env=...)`` runs the binaries when this host can: then
     ``codex --version`` must name the pinned version and the app-server schema must offer each pinned
     feature on thread/start, thread/resume and thread/fork; each pinned wire must list models
@@ -400,8 +451,9 @@ def main(argv=None):
     commands = parser.add_subparsers(dest="command", required=True)
     runtime = commands.add_parser("agent-runtime", help="check a folder meant for ANGELO_AGENT_RUNTIME_DIR")
     runtime.add_argument("folder")
-    runtime.add_argument("--platform", choices=("macos", "windows"),
-                         default="windows" if sys.platform == "win32" else "macos")
+    runtime.add_argument("--platform", choices=("macos", "windows", "linux"),
+                         default="windows" if sys.platform == "win32" else "linux" if sys.platform.startswith("linux")
+                         else "macos")
     runtime.add_argument("--no-run", action="store_true", help="do not run the binaries (another host's build)")
     pointers = commands.add_parser("lfs-pointers", help="refuse an installed bundle that ships Git LFS pointers")
     pointers.add_argument("install")
@@ -520,7 +572,8 @@ def main(argv=None):
         if not found:
             print("lfs pointers: none in %s" % arguments.install)
         return 1 if found else 0
-    problems = agent_runtime_problems(arguments.folder, arguments.platform, None if arguments.no_run else _run)
+    problems = pin_problems(agent_runtime_pin()) + agent_runtime_problems(
+        arguments.folder, arguments.platform, None if arguments.no_run else _run)
     for problem in problems:
         print("agent runtime: %s" % problem, file=sys.stderr)
     if not problems:

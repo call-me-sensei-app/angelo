@@ -1089,7 +1089,7 @@ static void rna_def_render_result(BlenderRNA *brna)
   RNA_def_function_ui_description(func,
                                   "Copies the pixels of this render result from an image file");
   RNA_def_function_flag(func, FUNC_USE_REPORTS);
-  parm = RNA_def_string_file_name(
+  parm = RNA_def_string_file_path(
       func,
       "filepath",
       nullptr,
@@ -1199,7 +1199,7 @@ static void rna_def_render_layer(BlenderRNA *brna)
   RNA_def_function_ui_description(func,
                                   "Copies the pixels of this renderlayer from an image file");
   RNA_def_function_flag(func, FUNC_USE_REPORTS);
-  parm = RNA_def_string(
+  parm = RNA_def_string_file_path(
       func,
       "filepath",
       nullptr,

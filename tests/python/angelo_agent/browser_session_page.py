@@ -61,7 +61,8 @@ def state(messages, turn, goal=None, scene_version=1, started=0.0):
         messages, conversation="c1", version=1, turn=turn, goal=goal,
         usage={"tokens": "8.2k tokens", "money": "≈ $0.06", "plan": None, "window": None, "cached": None},
         now=time.monotonic(), started=started, turn_started=started if turn != "idle" else None, app="Codex",
-        roots=(("/home/person", "<home>"),), scene_version=scene_version, strings=dict(session_page.PAGE_TEXT))
+        roots=(("/home/person", "<home>"),), scene_version=scene_version, strings={key: text[0] if isinstance(text, tuple) else text
+                                                for key, text in session_page.PAGE_TEXT.items()})
 
 
 COUNT_BUFFERS = """

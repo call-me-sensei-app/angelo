@@ -16,6 +16,7 @@ from first_launch_frames_probe import (BLEND, EXPECTED_FAILURE, Sample, Until, a
                                        card_actions, card_point, card_ready, check, click_card, control_rect,
                                        finish_welcome, frame, key, light, mod, no_form, own_frames, report, sequence,
                                        window)
+import qa_hit
 
 
 def first_launch_checks(prefix=""):

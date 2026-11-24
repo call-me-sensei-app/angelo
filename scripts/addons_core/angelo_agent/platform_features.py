@@ -14,6 +14,9 @@ import sys
 # Feature -> the ``sys.platform`` values it is built for.
 FEATURES = {
     "voice": frozenset({"darwin"}),   # Microphone and speaker through macOS AVFoundation (voice.py).
+    # Fab's sign-in browser: a private Chrome profile and process owned per system (fab_browser_platform.py). Linux
+    # (beta) has no owner yet, so Fab shows "not available on this platform" before any click (fab_host.snapshot).
+    "fab_browser": frozenset({"darwin", "win32"}),
 }
 # Add-on preference property -> the feature it turns on.
 PREFERENCES = {"experimental_voice": "voice"}

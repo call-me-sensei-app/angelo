@@ -27,6 +27,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(HERE))
 import test_native_composer_input as composer_tests  # noqa: E402  (its stand-ins; its tests are not collected here)
+import qa_hit  # noqa: E402
 
 SIZE = composer_tests.SIZE
 MAC = sys.platform == "darwin"
@@ -56,6 +57,11 @@ class InputMethod:
 
 
 class ComposerIme(composer_tests.ComposerCase):
+    def window_point(self, region, x, y):
+        """Composer text point (x, y) in window pixels at this case's scale: scaled, never mirrored (qa_hit)."""
+        with mock.patch.object(qa_hit, "ui_scale", return_value=self.SCALE):
+            return qa_hit.xy(qa_hit.COMPOSER_TEXT, region, x, y)
+
     def setUp(self):
         super().setUp()
         from angelo_agent import composer_ime
@@ -229,7 +235,7 @@ class CandidateWindowAtTheCaret(ComposerIme):
         self.draw()
         (x, y), = self.carets()
         region = self.area.regions[0]
-        self.assertEqual(self.ime.attached[-1][:2], (int(region.x + x * self.SCALE), int(region.y + y * self.SCALE)))
+        self.assertEqual(self.ime.attached[-1][:2], tuple(int(v) for v in self.window_point(region, x, y)))
         self.assertEqual(self.ime.owner, "SCRIPT")
 
     def test_the_session_follows_the_caret_while_composing(self):
@@ -238,8 +244,8 @@ class CandidateWindowAtTheCaret(ComposerIme):
         self.draw()
         self.compose("IME_COMPOSITE_EVENT", "かな", 2)
         self.draw()
-        self.assertEqual(self.ime.attached[-1][0], int(self.area.regions[0].x
-                                                      + chat_composer.column_x("かな", 2, SIZE) * self.SCALE))
+        self.assertEqual(self.ime.attached[-1][0], int(self.window_point(
+            self.area.regions[0], chat_composer.column_x("かな", 2, SIZE), 0)[0]))
 
     def test_a_composer_without_the_keyboard_leaves_the_input_method(self):
         self.state["focused"] = False

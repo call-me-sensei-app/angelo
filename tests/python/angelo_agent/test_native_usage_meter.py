@@ -55,6 +55,19 @@ class EstimateTests(unittest.TestCase):
                                   {"input_tokens": 180000, "output_tokens": 0, "requests": 1})
         self.assertLess(small["usd"], large["usd"])
 
+    def test_a_sum_of_requests_without_their_split_is_a_flagged_lower_bound(self):
+        # Three requests of 500K, 100K and 100K uncached input, one token-count update missed: the sum carries no
+        # per-request split. Its list price is 500K above OpenAI's 272K step plus 200K below it; pricing the sum at
+        # its mean prompt would miss the step. The meter prices it at the base rates, a figure the list price can
+        # only exceed, and flags the request as not fully reported.
+        usage = {"input_tokens": 700000, "output_tokens": 0, "requests": 3}
+        value = usage_meter.entry({"requested_model": "gpt-6.2-astra"}, usage)
+        base = model_profiles.rates("gpt-6.2-astra", "5m")
+        above = model_profiles.rates("gpt-6.2-astra", "5m", prompt_tokens=500000)
+        self.assertAlmostEqual(value["usd"], 700000 * base["input"] / 1e6)
+        self.assertLess(value["usd"], (500000 * above["input"] + 200000 * base["input"]) / 1e6)
+        self.assertEqual((value["partial"], value["unpriced"]), (1, 0))
+
     def test_a_mixed_model_turn_uses_the_runtimes_own_figure_and_an_unknown_model_is_not_priced(self):
         mixed = usage_meter.entry({"served_models": ["claude-opus-5-5", "claude-sonnet-5-5"]},
                                   {"input_tokens": 10, "output_tokens": 1, "cost_usd": 0.5})

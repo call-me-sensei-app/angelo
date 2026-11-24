@@ -23,7 +23,8 @@ API:
 import re
 
 from . import call_ended
-from .chat_titles import NATIVE, NOT_RUN_STATES, OTHER, delegate_title, not_run, studio_title, title_form
+from .chat_titles import (NATIVE, NOT_RUN_STATES, OTHER, delegate_title, happened, in_progress, not_run, studio_title,
+                          title_form)
 from .legacy_names import current_tool_name
 from .ui_text import iface_, join, n_, plural_
 
@@ -43,7 +44,8 @@ _KIND = {
     "angelo_apply_batch": "edit", "angelo_set_transform": "edit", "angelo_accept_preview": "edit",
     "angelo_set_workspace_mode": "edit", "angelo_discard_preview": "delete", "angelo_delete_file": "delete",
     "angelo_execute_python": "script", "angelo_script": "script", "angelo_read_reference": "file", "angelo_list_files": "file",
-    "angelo_read_file": "file", "angelo_write_file": "file", "angelo_job_start": "job", "angelo_web_check": "check",
+    "angelo_read_file": "file", "angelo_write_file": "file", "angelo_context_folder_write": "file",
+    "angelo_context_folder": "file", "angelo_job_start": "job", "angelo_web_check": "check",
     "angelo_game_ready_check": "check",
     "angelo_web_export": "file", "angelo_web_preview": "look", "angelo_app_feature": "edit",
     "angelo_engine_link_status": "check", "angelo_engine_link": "edit", "angelo_download": "edit",
@@ -189,7 +191,12 @@ def step_title(message):
     result = message.get("result") if isinstance(message.get("result"), dict) else {}
     if name == "angelo_delegate":
         return delegate_title(message)
-    if name.startswith("angelo_studio_"):
+    if name == "angelo_context_folder_write":   # The file's own name, never a path (context_folder_write).
+        from . import context_folder_write as written
+        forms = written.TITLES
+        title = iface_(forms[0 if happened(message) else 1 if in_progress(message) else 2],
+                       name=written.file_name(message.get("arguments")))
+    elif name.startswith("angelo_studio_"):
         title = studio_title(name, message)
         if status == "running" and isinstance(result.get("progress"), (int, float)):
             title = iface_("{action} · {percent}%", action=title, percent=result["progress"])
@@ -203,12 +210,12 @@ def step_title(message):
 def step_status(message):
     result = message.get("result") if isinstance(message.get("result"), dict) else {}
     status = message.get("status")
+    if call_ended.status(message):   # The host ended it (call_ended): never "failed", nor a live state it left.
+        return call_ended.status(message)
     if status == "approval":
         return "needs_you"
     if status in {"queued", "running"}:
         return status
-    if call_ended.status(message):   # The host ended it before anything ran (call_ended): never "failed".
-        return call_ended.status(message)
     ended = not_run(message)   # A billed step whose provider may still finish: "stopped_watching" (chat_titles).
     if ended:
         return ended
@@ -253,10 +260,11 @@ def group_status(messages, live):
 
 
 def group_title(messages, live):
-    """``Working on the scene · 6 steps`` while it runs; ``Made 2 changes · checked 3 things`` when done."""
+    """``Working · 6 steps`` while it runs (what its steps change is not known yet: a search, a download or a web
+    export changes no scene; each step row names its own work); ``Made 2 changes · checked 3 things`` when done."""
     count = len(messages)
     if live or group_status(messages, False) in {"running", "queued", "needs_you"}:
-        return plural_(count, "Working on the scene · {count} step", "Working on the scene · {count} steps")
+        return plural_(count, "Working · {count} step", "Working · {count} steps")
     statuses = [step_status(message) for message in messages]
     ran = [(step_kind(message), status) for message, status in zip(messages, statuses)
            if status not in _NOT_RUN and status != "expired"]

@@ -12,6 +12,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import headless_page  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 
 
 class FindTests(unittest.TestCase):
@@ -41,6 +42,29 @@ class CommandTests(unittest.TestCase):
         self.assertEqual("http://127.0.0.1:1/token/", line[-1])
         self.assertEqual(1, sum(1 for argument in line if argument.startswith("http")))
         self.assertFalse([argument for argument in line if argument.startswith("--remote-debugging")])
+
+    @unittest.skipIf(sys.platform == "win32", environment_skip("the POSIX DevTools pipe"))
+    def test_the_devtools_channel_is_a_private_pipe_never_a_port(self):
+        """A scenario presses the page's controls through DevTools (``click``); the channel is two pipes the browser
+        inherits as descriptors 3 and 4, so no other process on the machine can reach it."""
+        import os
+        from unittest import mock
+        spawned = {}
+
+        def spawn(path, argv, env, setpgroup=None, file_actions=()):
+            spawned.update(path=path, argv=argv, setpgroup=setpgroup, targets=[a[2] for a in file_actions])
+            return 999999
+        with tempfile.TemporaryDirectory() as folder, mock.patch.object(os, "posix_spawn", spawn):
+            page = headless_page.Page(Path(folder, "browser.log"), executable="/bin/chrome-stand-in")
+            self.assertTrue(page.open("http://127.0.0.1:1/token/"))
+            page.process = None   # Nothing really started: close only the pipes.
+            page.close()
+        self.assertEqual(spawned["argv"][-1], "http://127.0.0.1:1/token/")
+        self.assertIn("--remote-debugging-pipe", spawned["argv"])
+        self.assertFalse([a for a in spawned["argv"] if a.startswith("--remote-debugging-port")
+                          or a.startswith("--remote-debugging-address")])
+        self.assertEqual(spawned["targets"], [0, 1, 2, 3, 4])
+        self.assertEqual(spawned["setpgroup"], 0)
 
     def test_no_browser_opens_nothing(self):
         with tempfile.TemporaryDirectory() as folder:

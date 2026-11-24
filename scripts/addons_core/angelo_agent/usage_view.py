@@ -77,7 +77,7 @@ def clock(epoch, now=None):
 
 
 def model_label(model):
-    """``claude-opus-5-5`` → ``Claude Opus 5.5``; ``gpt-6.1-sol`` → ``GPT-6.1 Sol``; others as given."""
+    """``claude-opus-5-5`` → ``Claude Opus 5.5``; ``gpt-6.2-sol`` → ``GPT-6.2 Sol``; others as given."""
     match = re.fullmatch(r"claude-([a-z]+)-(\d+)-(\d+)", model or "")
     if match:
         return "Claude {} {}.{}".format(match.group(1).title(), match.group(2), match.group(3))

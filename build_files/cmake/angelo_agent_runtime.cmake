@@ -9,13 +9,13 @@
 # the add-on reads the same file to find and verify the runtime.
 #
 # - `ANGELO_AGENT_RUNTIME_DIR`: a folder holding this platform's runtime files,
-#   built for the target (macOS arm64: `codex` and `codex-code-mode-host`).
+#   built for the target (macOS arm64 and Linux x86-64: `codex` and `codex-code-mode-host`).
 #   They are installed under their upstream names, because Codex finds its
 #   code-mode host next to its own executable. Empty: none is bundled and Codex
 #   connections use the person's own Codex (development builds).
 # - `ANGELO_REQUIRE_AGENT_RUNTIME`: ON for a release; configuring without the
 #   folder, or with a required file missing, is then an error.
-#   `build_release_macos.sh` and `build_release_windows.ps1` set it. The
+#   `build_release_macos.sh` and `build_release_windows.ps1` set it, and so must the Linux release build. The
 #   install then also writes the pin's `release_marker`, which makes the app
 #   accept only `off` in `ANGELO_AGENT_RUNTIME` (`agent_runtime.release_build`).
 #
@@ -53,10 +53,10 @@ function(_angelo_agent_runtime_get variable)
   endif()
 endfunction()
 
-# `angelo_install_agent_runtime(<macos|windows> <root> [COMPONENT <component>])`:
+# `angelo_install_agent_runtime(<macos|windows|linux> <root> [COMPONENT <component>])`:
 # install the platform's required files from `ANGELO_AGENT_RUNTIME_DIR`, and its
 # optional files that are present, as programs into the pin's folder under
-# `<root>` (the app bundle on macOS, the install folder on Windows).
+# `<root>` (the app bundle on macOS, the install folder on Windows, the extracted folder on Linux).
 function(angelo_install_agent_runtime platform root)
   cmake_parse_arguments(ARG "" "COMPONENT" "" ${ARGN})
   _angelo_agent_runtime_get(_version version)

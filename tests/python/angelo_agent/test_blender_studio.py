@@ -35,6 +35,7 @@ import qa_input  # noqa: E402
 from angelo_agent.editor_registry import EDITOR_GROUPS, GENERATIVE_AI
 from angelo_agent.api_connections import CheckResult
 from angelo_agent.provider_registry import SPECS, model_kind
+import qa_hit
 
 ui._authentication.start = lambda *args, **kwargs: None
 ui.refresh_connected_models = lambda *args, **kwargs: None
@@ -127,7 +128,8 @@ def capture(name):
 
 def event(kind, x=30, y=30, unicode="", ctrl=False, shift=False):
     r = region()
-    value = SimpleNamespace(type=kind, value='PRESS', mouse_x=r.x+x, mouse_y=r.y+y, mouse_prev_y=r.y+y,
+    x, y = qa_hit.xy(qa_hit.mirrored_about(studio.view(area()).get("mirror")), r, x, y)   # Studio layout, as drawn.
+    value = SimpleNamespace(type=kind, value='PRESS', mouse_x=x, mouse_y=y, mouse_prev_y=y,
         unicode=unicode, ctrl=ctrl, oskey=False, alt=False, shift=shift, is_repeat=False)
     with bpy.context.temp_override(window=window(), area=area(), region=r):
         return studio.ANGELO_OT_studio_input.modal(handler, bpy.context, value)

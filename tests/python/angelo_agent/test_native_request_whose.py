@@ -129,7 +129,10 @@ class RestoreTests(unittest.TestCase):
         return [{"role": "user", "request_kind": request_rows.EVENT, "parts": ["1 Sofa"], "checkpoint": "cp-7",
                  "text": "From Angelo"},
                 {"role": "user", "request_kind": request_rows.GOAL, "parts": [], "goal": {"round": 2},
-                 "checkpoint": "cp-8", "text": "Next round"}]
+                 "checkpoint": "cp-8", "text": "Next round"},
+                # Continue after Angelo closed (2.1.0, crash_resume): done, may have applied, didn't run.
+                {"role": "user", "request_kind": request_rows.CONTINUE, "parts": [1, 1, 0], "checkpoint": "cp-9",
+                 "text": "Continue"}]
 
     def test_each_notice_request_restores_its_snapshot(self):
         from angelo_agent import activity_text, chat_rows

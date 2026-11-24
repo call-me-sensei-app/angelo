@@ -205,6 +205,14 @@ class RepositoryChangelogTests(unittest.TestCase):
         expected = "%d.%d.%s" % (number // 100, number % 100, patch) + (" LTS" if suffix and suffix.group(1) == "LTS" else "")
         self.assertEqual(changelog.load()[0]["blender"], expected)
 
+    def test_the_version_being_built_is_the_newest_release(self):
+        """The product version (angelo_identity.json, which names every package and the app) is the newest CHANGELOG
+        entry: a release line that opened its section but kept the previous label built Angelo-2.0.1-linux-x64 from
+        release/v2.1.0 (2026-11-20)."""
+        import json
+        label = json.loads((ROOT / "scripts/modules/angelo_identity.json").read_text(encoding="utf-8"))["version"]["label"]
+        self.assertEqual(changelog.load()[0]["version"], label)
+
     def test_the_changelog_names_its_contract_and_the_contract_exists(self):
         text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
         target = re.search(r"\]\((doc/angelo/[a-z_]+\.rst)\)", text).group(1)

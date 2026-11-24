@@ -9,7 +9,8 @@ catalogue is therefore stored *pre-shaped and in visual order* (joined
 presentation forms, characters reversed), and so is Angelo's.
 
 * ``to_visual(logical)`` turns typed or authored text into that visual form.
-* ``to_logical(visual)`` is its exact inverse. The canvas needs it because a
+* ``to_logical(visual)`` is its inverse (``to_logical`` says exactly when it is
+  exact). The canvas needs it because a
   paragraph must be *wrapped in reading order* and only then put in visual
   order, row by row; wrapping a visual string would put the end of the
   sentence on the first row.
@@ -21,10 +22,30 @@ right-to-left paragraph made of right-to-left runs and left-to-right runs
 (Latin names, numbers, ``{placeholders}``, shortcuts), with neutral characters
 between two runs of the same direction joining them and every other neutral
 taking the paragraph direction. No ``bpy`` and no third-party packages.
+
+A filled-in value (a path, a share, a file or model name) is laid out as one
+unit, as Unicode's isolates are: ``isolate(value)`` wraps it in FIRST STRONG
+ISOLATE ... POP DIRECTIONAL ISOLATE (U+2068 ... U+2069), and ``to_visual``
+gives its neutral characters the value's own first strong direction, so
+"\\\\server\\share" or "/srv/a/b.blend" keeps its leading and trailing marks
+in place inside an Arabic sentence. To the sentence around it the unit is one
+character of that direction; a value with no strong character is not isolated
+(it is laid out as before). Explicit LEFT-TO-RIGHT and RIGHT-TO-LEFT ISOLATE
+(U+2066, U+2067) are honoured too. No isolate mark ever reaches the drawn text.
+Visual text cannot say where a unit was, so ``to_visual`` remembers, for the
+lines it laid out with units, their reading order with explicit isolates:
+``to_logical(visual)`` gives back the exact sentence (no marks), and
+``to_logical(visual, isolates=True)`` the marked one, which wrapping
+(``rows_to_visual``) and re-laying out use so a unit cut over two rows stays
+one unit on each. The isolate marks and the remembered lines are
+``rtl_isolate``'s; its public helpers are this module's too (``rtl_text.isolate``).
 """
 
 import re
 import unicodedata
+
+from .rtl_isolate import (_LRI, _MARKS, _PDI, _RLI, _explicit, _recall, _remember, carry_isolates,  # noqa: F401
+                          isolate, isolated_tail, marked_index, open_isolates, probing, strip_isolates)
 
 _PLACEHOLDER = re.compile(r"\{[A-Za-z_0-9.:!<>^=+\- ]*\}|%(?:\([A-Za-z_]+\))?[-+ #0]*\d*(?:\.\d+)?[sdifxXeEgGc]|%%")
 _MIRRORED = {"(": ")", ")": "(", "[": "]", "]": "[", "{": "}", "}": "{", "<": ">", ">": "<", "«": "»", "»": "«"}
@@ -35,6 +56,8 @@ _JOINS_NEXT = set()  # dual-joining letters: connect to the following letter
 _JOINS_PREV = set()  # dual- and right-joining letters: connect to the preceding letter
 _LAM_ALEF = {}
 _TRANSPARENT = set(range(0x064B, 0x0660)) | {0x0670} | set(range(0x06D6, 0x06DD)) | set(range(0x06DF, 0x06E5))
+_UNIT = "￼"  # Stands for one laid-out isolate while the text around it is classified (its class is fixed).
+_PRESENTATION = re.compile("[\ufb50-\ufdff\ufe70-\ufefc]")   # Arabic Presentation Forms-A and -B, nothing else.
 
 
 def _build_tables():
@@ -69,8 +92,12 @@ _build_tables()
 
 
 def is_visual(text):
-    """True when ``text`` holds pre-shaped Arabic presentation forms."""
-    return any("ﭐ" <= ch <= "﻿" and ch != "﻿" for ch in text)
+    """True when ``text`` holds pre-shaped Arabic presentation forms (U+FB50-U+FDFF, U+FE70-U+FEFC).
+
+    Only those blocks: variation selectors ("❤️"), vertical, half-mark, compatibility and small forms and the byte
+    order mark (U+FE00-U+FE6F, U+FEFF) sit between them and are not Arabic.
+    """
+    return _PRESENTATION.search(text) is not None
 
 
 def has_rtl(text):
@@ -137,13 +164,21 @@ def unshape(text):
     return "".join(out)
 
 
-def _classify(text):
-    """Per-character direction class: ``R`` right-to-left, ``L`` left-to-right, ``N`` neutral."""
+def _classify(text, paragraph="R", fixed=None):
+    """Per-character direction class: ``R`` right-to-left, ``L`` left-to-right, ``D`` a number.
+
+    ``paragraph`` is the direction neutrals take at the ends and between runs of different directions; ``fixed``
+    maps positions to a class decided beforehand (a laid-out isolate, ``_UNIT``).
+    """
     classes, protected = [None] * len(text), set()
+    for position, direction in (fixed or {}).items():
+        classes[position] = direction
+        protected.add(position)
     for match in _PLACEHOLDER.finditer(text):
         for position in range(match.start(), match.end()):
-            classes[position] = "L"
-            protected.add(position)
+            if position not in protected:
+                classes[position] = "L"
+                protected.add(position)
     for position, ch in enumerate(text):
         if classes[position] is not None:
             continue
@@ -178,9 +213,9 @@ def _classify(text):
         while end < count and resolved[end] == "N":
             end += 1
         # A number counts as right to left for the neutrals around it (as in the Unicode algorithm, N1).
-        before = ("R" if resolved[position - 1] == "D" else resolved[position - 1]) if position else "R"
-        after = ("R" if resolved[end] == "D" else resolved[end]) if end < count else "R"
-        direction = before if before == after else "R"
+        before = ("R" if resolved[position - 1] == "D" else resolved[position - 1]) if position else paragraph
+        after = ("R" if resolved[end] == "D" else resolved[end]) if end < count else paragraph
+        direction = before if before == after else paragraph
         for index in range(position, end):
             resolved[index] = direction
         position = end
@@ -248,25 +283,110 @@ def _reverse(run):
 
 
 def to_visual(logical):
-    """Reading-order text to Blender's visual form: shaped, runs reversed. One call per line."""
+    """Reading-order text to Blender's visual form: shaped, runs reversed, isolates as units. One call per line."""
+    return _to_visual(logical, True)
+
+
+def _to_visual(logical, remember):
+    """``to_visual``; ``remember=False`` for a form only measured, never drawn or read back (a wrapping probe)."""
     if not has_rtl(logical) and not any(ch in logical for ch in "٠١"):
-        return logical
+        return strip_isolates(logical)
     lines = []
     for line in logical.split("\n"):
         if not has_rtl(line):
-            lines.append(line)
+            lines.append(strip_isolates(line))
             continue
-        shaped = shape(line)
-        runs = _runs(shaped, _classify(shaped))
-        lines.append("".join((_mirror(_reverse(run)) if direction == "R" else run)
-                             for direction, run in reversed(runs)))
+        explicit = _explicit(line)   # Unchanged without isolate marks; an isolate with no strong letter is unwrapped.
+        if not any(mark in explicit for mark in _MARKS):
+            shaped = shape(explicit)
+            runs = _runs(shaped, _classify(shaped))
+            lines.append("".join((_mirror(_reverse(run)) if direction == "R" else run)
+                                 for direction, run in reversed(runs)))
+            continue
+        visual = _layout(shape(explicit), "R")
+        if remember:
+            _remember(visual, explicit)
+        lines.append(visual)
     return "\n".join(lines)
 
 
-def to_logical(visual):
-    """Exact inverse of ``to_visual``."""
+def _layout(text, direction):
+    """Visual form of a shaped reading-order line with explicit, balanced isolates in a ``direction`` paragraph.
+
+    Each isolate is laid out on its own, in its own direction, and is one character of that direction to the
+    text around it (``_UNIT``, its class fixed). A right-to-left paragraph reverses the order of its runs; a
+    left-to-right one keeps it and reverses each stretch of right-to-left runs and the numbers among them.
+    """
+    flat, units, position = [], {}, 0
+    while position < len(text):
+        ch = text[position]
+        if ch == _PDI:   # Balanced by ``_explicit``; a stray one never reaches here, but is never drawn either.
+            position += 1
+            continue
+        if ch not in (_LRI, _RLI):
+            flat.append(ch)
+            position += 1
+            continue
+        depth, end = 1, position + 1
+        while end < len(text) and depth:
+            depth += text[end] in (_LRI, _RLI)
+            depth -= text[end] == _PDI
+            end += 1
+        inner = "L" if ch == _LRI else "R"
+        units[len(flat)] = (inner, _layout(text[position + 1:end - 1 if not depth else end], inner))
+        flat.append(_UNIT)
+        position = end
+    flat = "".join(flat)
+    classes = _classify(flat, direction, {index: unit[0] for index, unit in units.items()})
+    tokens = [units[index][1] if index in units else ch for index, ch in enumerate(flat)]
+    runs, start = [], 0
+    for index in range(1, len(tokens) + 1):
+        if index == len(tokens) or classes[index] != classes[start]:
+            runs.append((classes[start], tokens[start:index]))
+            start = index
+    if direction == "R":
+        return "".join(_reverse_tokens(run) if kind == "R" else "".join(run) for kind, run in reversed(runs))
+    out, stretch = [], []
+    for kind, run in runs + [("L", None)]:
+        if kind != "L":
+            stretch.append((kind, run))
+            continue
+        out.extend(_reverse_tokens(part) if part_kind == "R" else "".join(part)
+                   for part_kind, part in reversed(stretch))
+        stretch = []
+        if run is not None:
+            out.append("".join(run))
+    return "".join(out)
+
+
+def _reverse_tokens(tokens):
+    """``_mirror(_reverse(run))`` for a run whose laid-out isolates are single tokens (never mirrored inside)."""
+    clusters = []
+    for token in tokens:
+        if clusters and len(token) == 1 and _transparent(token):
+            clusters[-1] += token
+        else:
+            clusters.append(_MIRRORED.get(token, token) if len(token) == 1 else token)
+    return "".join(reversed(clusters))
+
+
+def to_logical(visual, isolates=False):
+    """The reading-order text of ``visual`` (``to_visual``'s form), without isolate marks.
+
+    ``to_logical(to_visual(line)) == line`` for a line in base letters (not pre-shaped) without isolate marks, except
+    where a "+", "-" or "%" is bound to a number on one side only (``_classify``'s sign rules, as in "1+(ش") or a
+    printf directive sits among neutrals. A line ``to_visual`` laid out with isolated units comes back exactly as it
+    was given while it is remembered (the 2048 most recently laid out or read back lines; visual text cannot say
+    where a unit was): once forgotten it reads as plain visual text, and a line without units whose visual form is
+    the same as a remembered line's reads as that line. ``isolates=True`` keeps their explicit marks,
+    for text that is laid out again (wrapped, cut, joined) and must keep each unit whole.
+    """
     lines = []
     for line in visual.split("\n"):
+        marked = _recall(line)
+        if marked is not None:
+            lines.append(marked if isolates else strip_isolates(marked))
+            continue
         if not has_rtl(line):
             lines.append(line)
             continue
@@ -285,28 +405,35 @@ def rows_to_visual(value, measure, width):
 
 
 def iter_rows_to_visual(value, measure, width):
-    """Yield the same visual rows, allowing the native review timer to pause."""
+    """Yield the same visual rows, allowing the native review timer to pause.
+
+    An isolated unit (``isolate``) cut between two rows is closed at the end of the first and opened again, in the
+    same direction, at the start of the next (``open_isolates``).
+    """
     for paragraph in value.split("\n"):
-        logical = to_logical(paragraph) if is_visual(paragraph) else paragraph
-        if not logical:
+        logical = to_logical(paragraph, isolates=True) if is_visual(paragraph) else _explicit(paragraph)
+        if not strip_isolates(logical):
             yield ""
             continue
         remaining = logical
         while remaining:
-            low, high = 1, min(64, len(remaining))
+            lead = len(remaining) - len(remaining.lstrip(_MARKS))   # Isolates opened here are not a row's first letter.
+            low, high = lead + 1, min(lead + 64, len(remaining))
             # Probe visible-row prefixes, not half of a long exact control.
-            while high < len(remaining) and measure(to_visual(remaining[:high])) <= width:
+            while high < len(remaining) and measure(_to_visual(remaining[:high], False)) <= width:
                 low, high = high, min(len(remaining), high * 2)
             while low < high:
                 middle = (low + high + 1) // 2
-                if measure(to_visual(remaining[:middle])) <= width:
+                if measure(_to_visual(remaining[:middle], False)) <= width:
                     low = middle
                 else:
                     high = middle - 1
             cut = low
             if cut < len(remaining):
                 space = remaining.rfind(" ", 0, cut + 1)
-                if space > 0:
+                if space > lead:
                     cut = space + 1
-            yield to_visual(remaining[:cut].rstrip())
-            remaining = remaining[cut:]
+            row, rest = remaining[:cut], remaining[cut:]
+            yield to_visual(row.rstrip())
+            carried = open_isolates(row)
+            remaining = carried + rest if strip_isolates(rest) else ""

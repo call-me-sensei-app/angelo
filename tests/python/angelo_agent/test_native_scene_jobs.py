@@ -29,7 +29,9 @@ from angelo_agent import parallel_sessions, program_context, scene_jobs  # noqa:
 LEAVE_THE_SCENE = {"ANY", "LOAD_PREVIEW", "FILESEL_READDIR", "ASSET_LIBRARY_LOAD", "ASSET_LIBRARY_GLOBAL_LISTING_LOAD",
                    "CLIP_BUILD_PROXY", "CLIP_PREFETCH", "SEQ_BUILD_PROXY", "SEQ_BUILD_PREVIEW", "SHADER_COMPILATION",
                    "STUDIOLIGHT", "FSMENU_BOOKMARK_VALIDATE", "SEQ_DRAW_THUMBNAIL", "SEQ_DRAG_DROP_PREVIEW",
-                   "GENERATE_TEXTURE_CACHE", "COMPOSITE"}
+                   "GENERATE_TEXTURE_CACHE", "COMPOSITE",
+                   # Remeshes a copy of the mesh made on the main thread; the result is written there at its end.
+                   "RETOPOLOGY"}
 
 
 def switch():

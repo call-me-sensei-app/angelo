@@ -675,7 +675,43 @@ TEST_F(AdmitTest, AStandingConsentAloneAdmitsNothing)
   a.set(TRUSTED_CHATS, "chat1", Value(true), true);
   a.set(ALWAYS_ALLOW, "on", Value(true), true);
   a.set(CHAT_CLIENTS, "chat1", Value(std::string("cursor")), true);
+  a.set(REVIEWED_SCRIPTS, "project/aa", Value(true), true);
   EXPECT_FALSE(a.admits("chat1/call1", "aa"));
+}
+
+TEST_F(AdmitTest, AContextFolderIsAttachedOnlyInAScope)
+{
+  /* Folder as context (2.1.0): chat id -> the digest of the folder's real path, narrowing to none. */
+  EXPECT_FALSE(a.define(CONTEXT_FOLDERS, Value(std::string("aa")))) << "defined once, by C";
+  EXPECT_EQ(a.set(CONTEXT_FOLDERS, "chat1", Value(std::string("aa")), false), SetResult::Refused);
+  EXPECT_EQ(a.set(CONTEXT_FOLDERS, "chat1", Value(std::string("aa")), true), SetResult::Set);
+  EXPECT_FALSE(a.admits("chat1/call1", "aa"));
+  EXPECT_TRUE(a.remove(CONTEXT_FOLDERS, "chat1")) << "narrowing";
+}
+
+TEST_F(AdmitTest, AReviewedScriptIsRememberedOnlyInAScope)
+{
+  /* Always run this exact script in this project (2.1.0): a standard namespace, so it narrows to
+   * false from start-up, before any add-on or script could define it otherwise. */
+  EXPECT_FALSE(a.define(REVIEWED_SCRIPTS, Value(true))) << "defined once, by C";
+  EXPECT_EQ(a.set(REVIEWED_SCRIPTS, "project/aa", Value(true), false), SetResult::Refused);
+  EXPECT_EQ(a.set(REVIEWED_SCRIPTS, "project/aa", Value(true), true), SetResult::Set);
+  EXPECT_EQ(a.set(REVIEWED_SCRIPTS, "project/aa", Value(false), false), SetResult::Set) << "narrowing";
+}
+
+TEST_F(AdmitTest, TheRulesAreDecidedOnlyInAScope)
+{
+  /* Standing rules (2.1.0): a text's digest -> Use (true) or Don't use (false), and the All projects
+   * text's digest; Use and a text are set only in a scope, while Don't use and clearing narrow. */
+  EXPECT_FALSE(a.define(RULE_DECISIONS, Value(true))) << "defined once, by C";
+  EXPECT_FALSE(a.define(GLOBAL_RULES, Value(std::string("aa")))) << "defined once, by C";
+  EXPECT_EQ(a.set(RULE_DECISIONS, "aa", Value(true), false), SetResult::Refused);
+  EXPECT_EQ(a.set(RULE_DECISIONS, "aa", Value(true), true), SetResult::Set);
+  EXPECT_EQ(a.set(RULE_DECISIONS, "aa", Value(false), false), SetResult::Set) << "narrowing";
+  EXPECT_EQ(a.set(GLOBAL_RULES, "text", Value(std::string("aa")), false), SetResult::Refused);
+  EXPECT_EQ(a.set(GLOBAL_RULES, "text", Value(std::string("aa")), true), SetResult::Set);
+  EXPECT_FALSE(a.admits("chat1/call1", "aa"));
+  EXPECT_TRUE(a.remove(GLOBAL_RULES, "text")) << "narrowing";
 }
 
 TEST_F(AdmitTest, NoneOfItIsWrittenWithoutAScope)

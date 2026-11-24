@@ -52,6 +52,7 @@ def restore_unsent(controller, *, active, spaces, saved, read, write):
     message stays in the transcript and the notice asks them to send it again.
     """
     text, controller.unsent_draft = controller.unsent_draft, None
+    text = _persons_draft(controller, text)   # An unsent Go: only the person's notes go back (plan_mode.rst, N2).
     if not text:
         return False
     draft = (text, len(text))  # The caret after the text (a character index, as ConsoleLine.current_character).
@@ -71,7 +72,7 @@ def restore_unsent(controller, *, active, spaces, saved, read, write):
 
 def failed_request(controller, message=None):
     """``(text, references)`` of the person's own request whose turn failed, while that failure is the chat's latest
-    row (``message``, when given, must be that row) and it was not put back yet; else None. A turn the person stopped,
+    row (``turn_tail``: past what the turn's end added; ``message``, when given, must be that row) and it was not put back yet; else None. A turn the person stopped,
     a message that never left (``restore_unsent`` puts that back by itself), an error after the turn ended (a refused
     send keeps its draft) or Angelo's own request has nothing to put back; nor has one sent again (``chat_resend``)."""
     rows = controller.state.get("messages") or []
@@ -81,12 +82,15 @@ def failed_request(controller, message=None):
         if found is not None:
             return found
     outcome = getattr(controller, "turn_outcome", None)
-    if (not rows or rows[-1].get("role") != "error" or (message is not None and rows[-1] is not message)
-            or any(rows[-1] is vars(controller).get(name) for name in ("_put_back_row", "_resent_row"))
+    from .turn_tail import last   # Its error, past what the turn's end added after it (review of 04c159c S5).
+    index = last(rows)
+    error = rows[index] if index is not None else None
+    if (error is None or error.get("role") != "error" or (message is not None and error is not message)
+            or any(error is vars(controller).get(name) for name in ("_put_back_row", "_resent_row"))
             or not outcome or outcome[0] != "failed"
             or outcome[1] or outcome[2] or outcome[3] != len(rows)):
         return None
-    return request_before_error(rows, len(rows) - 1)
+    return request_before_error(rows, index)
 
 
 def request_before_error(rows, index):
@@ -104,6 +108,16 @@ def request_before_error(rows, index):
     return ("" if text == IMAGE_ONLY_TEXT else text), [dict(r) for r in request.get("references") or () if isinstance(r, dict)]
 
 
+def _persons_draft(controller, text):
+    """``text`` as it goes back where the person types: a Go's text is the model's plan, so its notes instead, with
+    Edit's mark when they began with Edit (``planning_state.draft_for``; break-it review N2)."""
+    from .planning_state import draft_for
+    text, mark = draft_for(controller.state.get("messages"), text)
+    if mark is not None and hasattr(controller, "set_options"):
+        controller.set_options(plan_draft=mark)
+    return text
+
+
 def _appended(current, text):
     """``text`` after a draft the person has typed, on its own line; never in place of it."""
     body = (current.rstrip("\n") + "\n" + text) if current and text else (current or text)
@@ -118,7 +132,9 @@ def put_back(controller, *, active, spaces, saved, read, write):
     if found is None:
         return False
     text, references = found
-    controller._put_back_row = controller.state["messages"][-1]   # Its pill goes: once is what was asked.
+    text = _persons_draft(controller, text)   # A failed Go: only the person's notes go back (plan_mode.rst, N2).
+    from .turn_tail import last_row
+    controller._put_back_row = last_row(controller.state["messages"])   # Its pill goes: once is what was asked.
     from .references import MAX_IMAGES
     held = {reference.get("id") for reference in controller.attachments}
     for reference in references:

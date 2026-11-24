@@ -9,7 +9,7 @@ opened. Real default startup and real input (``Window.event_simulate``). Two kin
 * Drawn, at the window each run is started with (the manifest's variants: 1440 x 875 and 1280 x 775, a 1440 x 900
   and a 1280 x 800 screen less the menu bar; the run fails if the window is not that size), in English, German,
   Japanese and Swedish (Swedish has the least room to spare): a click on + opens the menu at its top level, and every
-  feature in ``chat_destinations.TOP_LEVEL`` has a hit wholly inside the menu with nothing scrolled
+  feature the top level shows (``chat_destinations.shown()``) has a hit wholly inside the menu with nothing scrolled
   (``qa_plus_menu.fold``), each captured.
 * Every group's page (Base meshes, Generation Flows, …) at the top, middle and end of its list: no text crosses from
   the list into the page's header, its pinned toggles, the strip or the footer (qa_plus_menu.crossings: the text's
@@ -49,6 +49,7 @@ import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 import qa_input  # noqa: E402  (synthetic clicks)
 import qa_plus_menu  # noqa: E402  (the + menu's fold, read from the chat's canvas state)
 from i18n import languages  # noqa: E402
+import qa_hit
 
 product_env.clear("DISABLE_DEFAULT_CHAT")
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-plus-menu-fold"))
@@ -164,9 +165,9 @@ def laid_out(locale):
                 cut.append(item["feature"])
         popup = geometry["rect"]
         found[name] = {"chat": [width, height], "popup": [round(v, 1) for v in popup], "max_scroll": geometry["max_scroll"],
-                       "missing": [f for f in chat_destinations.TOP_LEVEL if not placed.get(f)], "cut": cut,
+                       "missing": [f for f in chat_destinations.shown() if not placed.get(f)], "cut": cut,
                        "ok": geometry["max_scroll"] == 0 and geometry["fits"] and popup[1] + popup[3] <= height
-                       and all(placed.get(f) for f in chat_destinations.TOP_LEVEL) and not cut}
+                       and all(placed.get(f) for f in chat_destinations.shown()) and not cut}
     state["laid_out"][locale] = found
     return all(entry["ok"] for entry in found.values())
 
@@ -274,8 +275,8 @@ def tick():
                 key('TAB')
                 return .15
             from angelo_agent import chat_destinations
-            checks["the_keyboard_reaches_every_feature"] = set(chat_destinations.TOP_LEVEL) <= set(state["visited"])
-            state["missed_by_keyboard"] = sorted(set(chat_destinations.TOP_LEVEL) - set(state["visited"]))
+            checks["the_keyboard_reaches_every_feature"] = set(chat_destinations.shown()) <= set(state["visited"])
+            state["missed_by_keyboard"] = sorted(set(chat_destinations.shown()) - set(state["visited"]))
             return go("to_flows", .1)
         if phase == "to_flows":   # On to Generation Flows, then Return opens its page.
             popup = view().get("popover") or {}

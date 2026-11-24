@@ -115,16 +115,6 @@ def operator_property_messages():
     return found
 
 
-def explicit_contexts(source):
-    """{(line, msgid): context} for marks given a literal context, ``n_("Keys", "Angelo")``, as Blender's extractor reads them."""
-    found = {}
-    for node in ast.walk(ast.parse(source)):
-        if (isinstance(node, ast.Call) and getattr(node.func, "id", getattr(node.func, "attr", None)) in ("n_", "iface_", "tip_", "rpt_")
-                and len(node.args) >= 2 and literal(node.args[0]) and literal(node.args[1])):
-            found[(node.lineno, literal(node.args[0]))] = literal(node.args[1])  # The call's line, as scan records it.
-    return found
-
-
 def python_literals(root):
     """``(lookup_only, literals)``, each {normalized source: {string}}: literals a Python source uses only as lookup
     keys (``scan.literal_roles``), and every string literal it contains."""
@@ -157,11 +147,14 @@ def literal(node):
 
 
 def plural_and_notice_messages(paths):
-    """(ctxt, msgid, source) for ``plural_`` families and ``notice`` templates the Blender extractor cannot see."""
+    """(ctxt, msgid, source) for ``plural_`` families, ``notice`` templates and the wrappers only Angelo knows
+    (``scan.ANGELO_ONLY_WRAPPERS``): text the Blender extractor cannot see, in every module."""
     found = []
     for path in paths:
         relative = normalize_source(path.relative_to(sources.ROOT).as_posix())
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        source = path.read_text(encoding="utf-8")
+        found += [(ctxt, msgid, relative) for ctxt, msgid in scan.angelo_only_messages(source)]
+        for node in ast.walk(ast.parse(source)):
             if not isinstance(node, ast.Call):
                 continue
             name = node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", None)
@@ -231,7 +224,7 @@ def main():
     for path in addon:
         if path.stem not in sources.UI_MODULES and path.stem not in sources.MODEL_FACING:
             source = path.read_text(encoding="utf-8")
-            contexts = explicit_contexts(source)
+            contexts = scan.explicit_contexts(source)
             for msgid, line, wrapper in scan.scan(source, path.name, net=False)[1]:
                 if wrapper not in ("plural_", "notice"):  # Those two carry their own contexts (below).
                     ctxt = "Operator" if wrapper == "operator" else contexts.get((line, msgid), "")

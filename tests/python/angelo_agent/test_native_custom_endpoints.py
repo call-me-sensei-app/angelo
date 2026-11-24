@@ -227,13 +227,13 @@ class RegistryTests(unittest.TestCase):
             self.assertEqual(billing_kind(mode_for(HEX, "openai-responses")), "API_KEY")
             sol, house = spec["models"]
             self.assertEqual((sol["efforts"], sol["context_window"], sol["untested"]),
-                             (["low", "medium", "high"], 1050000, False))
+                             (["low", "medium", "high"], 922000, False))
             self.assertEqual((house["efforts"], house["images"], house["untested"]), ([], False, True))
             self.assertFalse(spec["web_search"])
             self.assertFalse(spec["openai_service"], "an unmapped model may sit behind a translating server")
             gemini = spec_for(mode_for(HEX, "gemini"))
             self.assertEqual((gemini["wire_api"], gemini["personal"]), ("gemini", "gemini_api"))
-            self.assertEqual(gemini["provider_settings"], {"stream_idle_timeout_ms": 900000})
+            self.assertNotIn("provider_settings", gemini)   # The wire's stream rules come with the wire (provider_entry).
         only_gpt = description(models=[{"id": "a", "format": "openai-responses", "profile": "gpt-6.1-sol"}])
         with Endpoints(only_gpt):
             self.assertTrue(spec_for(mode_for(HEX, "openai-responses"))["openai_service"])
@@ -295,14 +295,17 @@ class LaunchTests(unittest.TestCase):
         mode = mode_for(HEX, format_id)
         identity = endpoint_connections.connection_id(CONSOLE, "org-1", "user-1", mode)
         catalog = {"models": [{"slug": "gpt-6.1-sol", "use_responses_lite": True, "context_window": 272000}]}
-        run = run or (lambda *a, **k: SimpleNamespace(returncode=0, stdout=json.dumps(catalog).encode()))
+        # The Gemini wire's own catalog (``codex debug models`` with a Gemini provider) lists Carbon.
+        gemini = {"models": [{"slug": "gemini-4-carbon", "truncation_policy": {"mode": "tokens", "limit": 10000}}]}
+        run = run or (lambda argv, **k: SimpleNamespace(returncode=0, stdout=json.dumps(
+            catalog if "--bundled" in argv else gemini).encode()))
         endpoint_catalog._cache.clear()
         from angelo_agent import agent_runtime
         with tempfile.TemporaryDirectory() as state, Endpoints(entry), \
                 patch.object(agent_runtime, "kind", return_value="bundled"), \
                 patch.object(agent_runtime, "supports_wire", return_value=True), \
                 platform_env.cleared(PATH="/usr/bin", HTTPS_PROXY="http://corp:3128"), \
-                patch("angelo_agent.endpoint_catalog.subprocess.run", run), \
+                patch("angelo_agent.endpoint_catalog.child_process.run", run), \
                 patch("angelo_agent.endpoint_catalog._signature", return_value=("codex", 1, 1)):
             command, env = codex_command("codex", mode, state, reuse_login=False, connection_id=identity, api_key=KEY)
             pairs = dict(item.split("=", 1) for item in command[command.index("-c"):][1::2])
@@ -325,9 +328,10 @@ class LaunchTests(unittest.TestCase):
         self.assertEqual(env["NO_PROXY"], "llm.example.test")   # Only the server's host; everything else refused.
         self.assertEqual(env["HTTPS_PROXY"], team_network.REFUSING_PROXY)
         # The launched Codex gets the mapped model's profile entry under the server's name; the unmapped house-model
-        # gets none, so Codex keeps its generic metadata for it.
+        # gets none, so Codex keeps its generic metadata for it. The wire's own entries follow Angelo's: an explicit
+        # catalog replaces Codex's built-in one, and a server name the runtime knows keeps what it had.
         self.assertEqual(json.loads(pairs["model_catalog_json"]), str(Path(env["CODEX_HOME"]) / "angelo-endpoint-models.json"))
-        self.assertEqual([m["slug"] for m in written["models"]], ["team-gpt-sol"])
+        self.assertEqual([m["slug"] for m in written["models"]], ["team-gpt-sol", "gpt-6.1-sol"])
         self.assertEqual(written["models"][0]["display_name"], "team-gpt-sol")
         self.assertTrue(written["models"][0]["use_responses_lite"])   # gpt-6.1-sol's own request form.
 
@@ -335,9 +339,13 @@ class LaunchTests(unittest.TestCase):
         mode, command, env, pairs, written = self.launch(description(), "gemini")
         self.assertEqual(json.loads(pairs[f"model_providers.{mode}.env_http_headers.x-goog-api-key"]), ENV_KEY)
         self.assertNotIn(f"model_providers.{mode}.env_key", pairs)
-        self.assertEqual(json.loads(pairs[f"model_providers.{mode}.stream_idle_timeout_ms"]), 900000)
+        # An organization's own server: just under the host's limit, re-sent once (ENDPOINT_STREAM_SETTINGS).
+        self.assertEqual(json.loads(pairs[f"model_providers.{mode}.stream_idle_timeout_ms"]), 570000)
+        self.assertEqual(json.loads(pairs[f"model_providers.{mode}.stream_max_retries"]), 1)
         self.assertEqual(env[ENV_KEY], KEY)   # Scheme "none": the key alone.
-        self.assertIsNone(written)   # No bundled entry for the profile: Codex's own fallback, as personal Gemini.
+        # The mapped model gets Carbon's entry from the Gemini wire's catalog (not Codex's bundled one, which has none).
+        self.assertEqual([m["slug"] for m in written["models"]], ["gemini-4-carbon"])
+        self.assertEqual(written["models"][0]["truncation_policy"], {"mode": "tokens", "limit": 10000})
 
     def test_other_headers_schemes_and_fixed_headers(self):
         entry = description(formats={"openai-responses": {"path": "/openai/v1", "auth": {"header": "api-key"}}},
@@ -608,6 +616,40 @@ class ClaudeWindowTests(unittest.TestCase):
             self.assertEqual(settings["modelOverrides"], {"claude-opus-5-5": "team-opus"})
             self.assertEqual(launch_values(command[1:])["overrides"], overrides)
         self.assertEqual(endpoint_connections.claude_model_overrides(mode_for(HEX, "anthropic-messages")), {})  # Removed.
+
+    def test_a_model_claude_code_cannot_place_keeps_the_200k_window(self):
+        # Claude Code 2.1.323 assumes 1M (was 200K) for a model ID it doesn't recognize, so a smaller server model
+        # fills and fails every turn; CLAUDE_CODE_DISABLE_1M_CONTEXT=1 keeps 200K. Set only for such a launch: a mapped
+        # or real Claude name keeps its own window.
+        from angelo_agent.claude_transport import claude_arguments, launch_values
+        entry = description(formats={"openai-responses": {"path": "/v1"}, "anthropic-messages": {"path": ""}},
+                            models=[{"id": "team-opus", "format": "anthropic-messages", "profile": "claude-opus-5-5"},
+                                    {"id": "claude-haiku-5-5", "format": "anthropic-messages",
+                                     "profile": "claude-haiku-5-5"},
+                                    {"id": "house-llm", "format": "anthropic-messages"}])
+        messages = mode_for(HEX, "anthropic-messages")
+        with Endpoints(entry):
+            models = ("team-opus", "claude-haiku-5-5", "house-llm", "", "claude-opus-4-8", "claude-sonnet-5",
+                      "claude-3-5-sonnet-20241022", "claude-opus-5-5[1m]", "house-llm[1m]", "claude-house")
+            unknown = {model: endpoint_connections.claude_window_unknown(messages, model) for model in models}
+            # Claude Code places its own model IDs and aliases (real ones outside Angelo's price table included), and a
+            # name with the [1m] suffix states its window; a "claude-" name of no Claude family is still a guess.
+            # Angelo's price table plays no part.
+            self.assertEqual(unknown, {"team-opus": False, "claude-haiku-5-5": False, "house-llm": True, "": True,
+                                       "claude-opus-4-8": False, "claude-sonnet-5": False,
+                                       "claude-3-5-sonnet-20241022": False, "claude-opus-5-5[1m]": False,
+                                       "house-llm[1m]": False, "claude-house": True})
+            for mode in (mode_for(HEX, "openai-responses"), "claude_api", "claude_subscription"):
+                self.assertFalse(endpoint_connections.claude_window_unknown(mode, "house-llm"), mode)
+            for model, expected in (("house-llm", {"CLAUDE_CODE_DISABLE_1M_CONTEXT": "1"}), ("team-opus", None)):
+                values = {"tools": "", "direct": False, "fast": False, "model": model, "effort": "high",
+                          "thinking": False, "resume": "", "gateway": False,
+                          "overrides": endpoint_connections.claude_model_overrides(messages),
+                          "window_200k": unknown[model]}
+                command = claude_arguments("claude", values)
+                with self.subTest(model=model):
+                    self.assertEqual(json.loads(command[command.index("--settings") + 1]).get("env"), expected)
+                    self.assertEqual(launch_values(command[1:])["window_200k"], unknown[model])
 
 
 class PersonScopeTests(_EndpointUiCase):

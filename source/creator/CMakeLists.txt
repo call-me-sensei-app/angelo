@@ -972,6 +972,17 @@ if(UNIX AND NOT APPLE)
         DESTINATION "."
       )
     endif()
+    # What people run: `angelo` resolves its own folder and starts the app through blender-launcher
+    # (doc/angelo/releasing.rst, "Linux package").
+    install(
+      PROGRAMS ${CMAKE_SOURCE_DIR}/release/bin/angelo
+      DESTINATION "."
+    )
+    # The bundled agent runtime (agent_runtime.json, platform `linux`), beside the executable as on Windows.
+    # Development and CI builds name no runtime folder and bundle none.
+    if(ANGELO_AGENT_RUNTIME_DIR OR ANGELO_REQUIRE_AGENT_RUNTIME)
+      angelo_install_agent_runtime(linux ".")
+    endif()
   else()
     # main blender binary
     set(BLENDER_BIN "bin/blender")

@@ -260,7 +260,11 @@ static proxy_output_ctx *alloc_proxy_output_ffmpeg(MovieReader *anim,
   rv->c->color_trc = codec_ctx->color_trc;
   rv->c->colorspace = codec_ctx->colorspace;
 
-  int ret = avio_open(&rv->of->pb, filepath, AVIO_FLAG_WRITE);
+  /* Angelo: the file protocol only (movie_util.hh, `ffmpeg_open_input_local`). */
+  AVDictionary *local_only = nullptr;
+  av_dict_set(&local_only, "protocol_whitelist", "file", 0);
+  int ret = avio_open2(&rv->of->pb, filepath, AVIO_FLAG_WRITE, nullptr, &local_only);
+  av_dict_free(&local_only);
 
   if (ret < 0) {
     char error_str[AV_ERROR_MAX_STRING_SIZE];
@@ -508,7 +512,7 @@ static MovieProxyBuilder *proxy_builder_create(MovieReader *anim,
 
   memset(context->proxy_ctx, 0, sizeof(context->proxy_ctx));
 
-  if (avformat_open_input(&context->iFormatCtx, anim->filepath, nullptr, nullptr) != 0) {
+  if (ffmpeg_open_input_local(&context->iFormatCtx, anim->filepath) != 0) {
     MEM_delete(context);
     return nullptr;
   }

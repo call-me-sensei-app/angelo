@@ -38,6 +38,8 @@ SCRATCH_PREFIXES = (
     "angelo-merge-check-",
     "angelo-render-",
     "angelo-endpoint-check-",   # endpoint_ui: Test connection lists the runtime's catalog in an isolated profile.
+    "angelo-catalog-listing-",   # endpoint_catalog: one catalog listing's empty CODEX_HOME and folder, removed after.
+    "angelo-bake-check-",   # bake_check_host: the bake check's pictures, removed when it closes.
     "angelo-app-attach-",   # external_attach: a connected app's image attachments, decoded before their import.
 )
 

@@ -58,6 +58,7 @@ prefs.experimental.use_extended_asset_browser = True
 from angelo_agent import flow_nodes, studio_assets, studio_assets_host  # noqa: E402
 from angelo_agent.studio_state import StudioLibrary  # noqa: E402
 import qa_input  # noqa: E402
+import qa_hit
 
 REPORT = OUT / "node-drop-targets.json"
 IMAGES = {"Drop blue": (0, 0, 1, 1), "Drop green": (0, 1, 0, 1), "Drop red": (1, 0, 0, 1)}
@@ -135,7 +136,7 @@ def drop_point():
 
 def node_space(x, y):
     r = region("nodes")
-    vx, vy = r.view2d.region_to_view(x - r.x, y - r.y)
+    vx, vy = r.view2d.region_to_view(*qa_hit.from_window(qa_hit.RAW, r, x, y))
     return vx / prefs.system.ui_scale, vy / prefs.system.ui_scale
 
 
@@ -220,13 +221,13 @@ def find_colour(path, colour):
     scale = width / window().width
     r = region("browser")
     px = values.reshape(height, width, 4)[..., :3]
-    x0, y0 = int(r.x * scale), int(r.y * scale)
+    x0, y0 = (int(v * scale) for v in qa_hit.xy(qa_hit.RAW, r, 0, 0))
     block = px[y0:y0 + int(r.height * scale), x0:x0 + int(r.width * scale)]
     near = (numpy.abs(block - numpy.array(colour[:3], dtype=numpy.float32)) < .25).all(axis=2)
     ys, xs = numpy.nonzero(near)
     if len(xs) < 40:
         return None
-    return r.x + xs.mean() / scale, r.y + ys.mean() / scale
+    return qa_hit.xy(qa_hit.RAW, r, xs.mean() / scale, ys.mean() / scale)
 
 
 def find_rows(key, colours):
@@ -245,7 +246,7 @@ def find_rows(key, colours):
     ys = sorted({round(c[1]) for c in found.values()}, reverse=True)
     steps = [b - a for a, b in zip(xs, xs[1:]) if b - a > 20] + [a - b for a, b in zip(ys, ys[1:]) if a - b > 20]
     pitch = min(steps) if steps else 120 * prefs.system.ui_scale
-    origin = next(iter(found.values()), (r.x + pitch / 2, r.y + r.height - pitch / 2))
+    origin = next(iter(found.values()), qa_hit.xy(qa_hit.RAW, r, pitch / 2, r.height - pitch / 2))
     tiles = dict(found)
     known = list(found.values())
     for row in range(-3, 4):

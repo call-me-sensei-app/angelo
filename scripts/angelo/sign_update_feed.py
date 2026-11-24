@@ -59,7 +59,7 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from angelo_agent import app_version, ed25519, update_delta, update_feed  # noqa: E402  (standard library only)
+from angelo_agent import app_version, ed25519, release_manifest, update_delta, update_feed  # noqa: E402
 import changelog  # noqa: E402
 import release_downloads  # noqa: E402
 
@@ -338,7 +338,9 @@ def build_payload(version, sequence, downloads=(), *, critical=False, minimum="1
         "expires": (now + timedelta(days=expires_days)).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "minimum_supported": minimum,
         "latest": dict(version=version, released=entry["date"], notes_url=NOTES_URL.format(version=version),
-                       critical=critical, downloads=dict(downloads), **fields),
+                       critical=critical, downloads=dict(downloads),
+                       # "Based on Blender 5.3.0." under the entry's heading: the add-on check reads it.
+                       blender=entry["blender"].split()[0], **fields),
     }
     if not automatic_install:
         document["latest"]["automatic_install"] = False
@@ -380,7 +382,7 @@ def key_entry(key_id, public):
 KEY_ID = re.compile(r"[0-9A-Za-z][0-9A-Za-z._-]{0,39}")
 
 
-def add_key(keys_path, key_id, public):
+def add_key(keys_path, key_id, public, separate_from=None):
     """Add ``public`` as an active key to the shipped key list; True when the file changed.
 
     The step that lets builds verify feeds signed in Cloud KMS: run once per key version, before the
@@ -390,6 +392,15 @@ def add_key(keys_path, key_id, public):
     """
     if not KEY_ID.fullmatch(key_id):
         raise FeedToolError("--key-id is 1 to 40 letters, digits, '.', '_' or '-' (for example 2026-10)")
+    # Each key signs one thing, so either can be rotated or revoked alone: never a key the other list ever named.
+    other = (release_manifest.KEYS_FILE if Path(keys_path).resolve() != release_manifest.KEYS_FILE.resolve()
+             else update_feed.KEYS_FILE) if separate_from is None else separate_from
+    listed = update_feed.listed_keys(other)
+    if listed is None:
+        raise FeedToolError("%s cannot be read as a key list: the keys can't be kept apart" % other)
+    if public in listed:
+        raise FeedToolError("that key is listed in %s (active or revoked): the update feed key and the Linux "
+                            "release key are separate keys" % Path(other).name)
     if len(public) != ed25519.KEY_BYTES:
         raise FeedToolError("an Ed25519 public key is %d bytes" % ed25519.KEY_BYTES)
     path = Path(keys_path)

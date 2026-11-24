@@ -33,13 +33,31 @@ def clean(value, limit=120):
     return _PRINTABLE.sub("?", str(value or ""))[:limit].strip()
 
 
-def system_info(gpu=None, system=None, machine=None, release=None):
-    """The operating system, CPU architecture and graphics card. ``gpu`` is ``(vendor, renderer, version, backend)``."""
+def linux_distribution(os_release=None):
+    """``<NAME> <VERSION_ID>`` of the Linux distribution (``/etc/os-release``: "Ubuntu 24.04", "Fedora Linux 41"), or
+    "" when it cannot be read. Crashes on Linux differ by distribution (its Mesa, its kernel), not only by kernel."""
+    if os_release is None:
+        try:
+            os_release = platform.freedesktop_os_release()
+        except (OSError, AttributeError):
+            return ""
+    return " ".join(part for part in (os_release.get("NAME", ""), os_release.get("VERSION_ID", "")) if part)
+
+
+def system_info(gpu=None, system=None, machine=None, release=None, os_release=None):
+    """The operating system, CPU architecture and graphics card. ``gpu`` is ``(vendor, renderer, version, backend)``.
+    On Linux the version is the distribution and the kernel's numbers (``Ubuntu 24.04 (6.8.0-48)``); the running
+    machine's distribution is read only when ``system`` is not given (tests pass ``os_release``)."""
     name = system or platform.system()
     if name == "Darwin":
         name, version = "macOS", release or platform.mac_ver()[0]
     elif name == "Windows":
         name, version = "Windows", release or platform.version()
+    elif name == "Linux":
+        # The kernel's numbers only: a custom kernel's local version is free text its builder chose.
+        kernel = (re.match(r"\d+(?:\.\d+){1,2}(?:-\d+)?", release or platform.release()) or [""])[0]
+        distribution = linux_distribution(os_release) if os_release is not None or system is None else ""
+        version = "%s (%s)" % (distribution, kernel) if distribution else kernel
     else:
         name, version = name or "Unknown", release or platform.release()
     vendor, renderer, driver, backend = (list(gpu) + [""] * 4)[:4] if gpu else ("", "", "", "")

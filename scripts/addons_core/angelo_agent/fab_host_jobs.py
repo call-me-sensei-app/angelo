@@ -93,7 +93,8 @@ class Worker:
                 self._threads.add(self._thread)
                 try:
                     self._thread.start()
-                except RuntimeError as error:
+                except BaseException as error:   # A refusal too (an agent script's confinement refuses a thread
+                    # start with PermissionError): any unstarted thread leaves the owner restartable, never wedged.
                     self._threads.discard(self._thread)  # An unstarted thread has no live ownership to join.
                     self._thread = self._pending = None
                     job.error = error

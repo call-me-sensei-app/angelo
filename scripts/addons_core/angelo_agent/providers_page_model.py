@@ -24,6 +24,10 @@ DESCRIPTIONS = {CODING: n_("Models that work in Angelo with you. Every connected
 CLAUDE_ROUTE_TITLE = n_("Claude Code follows your administrator's network settings")
 CLAUDE_ROUTE_LINE = n_("This computer's Claude Code policy sets {names}. On team connections Claude Code's traffic then "
                        "follows those settings instead of going only to your organization's gateway.")
+FORGET_CHANGES = n_("Forget Agent Changes in a Folder…", "Operator")   # agent_changes_forget's operator label.
+# What its Browse does: the operator's own description (chat_destinations.FORGET_CHANGES_DOES; bpy-free here too).
+FORGET_CHANGES_DOES = n_("Load the code in a folder you choose as your own again: Angelo forgets which of its files "
+                         "agent scripts wrote, moved or linked. Only your own click can do this")
 DESCRIPTION_NO_COLLABORATORS = n_("Models that work in Angelo with you. Every connected account is a choice in the chat.")
 
 
@@ -110,10 +114,8 @@ def _attention(ui, policy):
     from . import saved_keys_ui, version_carry_over
     notices = []
     if policy.managed:
-        lines = []
-        if policy.problems:
-            from . import team_account_ui
-            lines.append(shown(Text(team_account_ui.MANAGED_PROBLEM, keys=", ".join(policy.problems))))
+        from . import policy_notes
+        lines = [shown(note) for note in policy_notes.organization(policy)]
         if not policy.allow_personal_connections:
             lines.append(shown(Text(managed_policy.PERSONAL_OFF)))
         lines.append(shown(managed_policy.contact(policy)))
@@ -126,6 +128,9 @@ def _attention(ui, policy):
             (not policy.allow_voice, iface_("Voice"))) if flag]
         from . import team_account_ui
         notices.append({"title": shown(Text(team_account_ui.MANAGED)), "lines": lines, "locks": locks, "glyph": "lock"})
+    from . import policy_notes
+    for note in policy_notes.own_file(policy):   # The person's own policy file, managed policy or not (its sentence).
+        notices.append({"title": shown(note), "lines": [], "glyph": "lock"})
     for title, notice in version_carry_over.attention_notices():
         notices.append({"title": iface_(title), "lines": [shown(notice)]})   # A Text keeps its fields.
     for problem in saved_keys_ui.notices():
@@ -152,8 +157,10 @@ def _permissions(prefs, policy):
                  "action": "toggle", "value": "helper_standing_consent"})
     name, text = describe("always_allow_scripts")
     locked = not policy.allow_auto_approval
+    from . import script_access   # The switch's text holds SENTENCE; its button opens the limits (script_limits).
     row = {"kind": "switch", "name": name, "lines": [text], "on": prefs.always_allow_scripts and not locked,
-           "action": "toggle", "value": "always_allow_scripts", "enabled": not locked}
+           "action": "toggle", "value": "always_allow_scripts", "enabled": not locked,
+           "buttons": [(iface_(script_access.LINK), "script_limits", "", "ghost")]}
     if locked:
         row["lock"] = shown(Text(managed_policy.AUTO_APPROVAL_OFF))
     elif prefs.always_allow_scripts:   # A consent from before 2.0.1 does not cover connected apps' chats yet.
@@ -162,6 +169,15 @@ def _permissions(prefs, policy):
                           else iface_("On for Angelo's own chats. Connected apps' chats still ask until you press "
                                       "Always allow on one of their script cards."))
     rows.append(row)
+    # Forget Agent Changes in a Folder (agent_changes_forget): its operator's label and what its click does; Browse
+    # runs it in the press's grant scope (providers_page_host.act), as its Preferences button does.
+    rows.append({"kind": "connection", "glyph": "info", "name": iface_(FORGET_CHANGES, "Operator"),
+                 "lines": [iface_(FORGET_CHANGES_DOES)],
+                 "buttons": [(iface_("Browse"), "forget_agent_changes", "", "ghost")]})
+    if "strict_script_protection" in prefs.bl_rna.properties:   # Off by default: it can slow agent scripts (Ruling 17).
+        name, text = describe("strict_script_protection")
+        rows.append({"kind": "switch", "name": name, "lines": [text], "on": prefs.strict_script_protection,
+                     "action": "toggle", "value": "strict_script_protection"})
     if policy.require_ask_for_edits:
         rows.append({"kind": "switch", "name": iface_("Auto · bounded edits"), "on": False, "enabled": False,
                      "action": "noop", "value": "", "lock": iface_("Turned off by your organization. Every chat uses Ask before changes.")})

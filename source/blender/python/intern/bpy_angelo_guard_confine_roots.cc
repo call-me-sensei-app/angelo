@@ -55,11 +55,13 @@ PyObject *guard_add_roots(PyObject * /*self*/, PyObject *args)
   if (refuse_if_confined("add_roots")) {
     return nullptr;
   }
-  add_each(private_folders, [](const std::string &path) { folders().private_roots.add(path); });
-  add_each(startup_folders, [](const std::string &path) { folders().startup_roots.add(path); });
+  /* Private, startup and tool-output roots refuse what they hold: one on a share nobody connected is held by its
+   * text (`Roots::add`). Trusted roots admit, so such a root is dropped. */
+  add_each(private_folders, [](const std::string &path) { folders().private_roots.add(path, true); });
+  add_each(startup_folders, [](const std::string &path) { folders().startup_roots.add(path, true); });
   add_each(trusted, [](const std::string &path) { folders().trusted_roots.add(path); });
   if (tool_folders != nullptr) {
-    add_each(tool_folders, [](const std::string &path) { folders().tool_roots.add(path); });
+    add_each(tool_folders, [](const std::string &path) { folders().tool_roots.add(path, true); });
   }
   PyObject *iterator = PyObject_GetIter(families);
   if (iterator == nullptr) {
@@ -120,6 +122,7 @@ PyObject *guard_judge_path(PyObject * /*self*/, PyObject *args)
   return PyUnicode_FromString(refusal == Refusal::Private ? "private" :
                               refusal == Refusal::Startup    ? "startup" :
                               refusal == Refusal::ToolOutput ? "tool_output" :
+                              refusal == Refusal::Network    ? "network" :
                                                                "");
 }
 

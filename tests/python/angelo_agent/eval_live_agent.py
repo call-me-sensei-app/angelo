@@ -65,7 +65,7 @@ import eval_diagnostics as diagnostics  # noqa: E402  (--debug-thinking, --ask-w
 import eval_warm_up as warm_up  # noqa: E402  (--warm-up-only)
 import eval_grading  # noqa: E402
 import eval_live_tasks as live, eval_rig_tasks as rig  # noqa: E402,E401  (rig: --hand-guidance, --chosen-tool)
-import eval_provider_limits as limits  # noqa: E402
+import eval_provider_limits as limits, eval_codex_logs as codex_logs  # noqa: E402,E401  (codex_logs: Codex's log)
 import eval_parallel as parallel  # noqa: E402  (--parallel-agents)
 import eval_returning_user as returning, eval_send_record as send_record  # noqa: E402,E401  (record at send, whole)
 import eval_trace_export as trace_export  # noqa: E402  (a turn that did not end normally: its runtime trace rows)
@@ -355,12 +355,11 @@ def run_trial(binary, output, accounts, args, trial, task_count, *, keychain=Fal
     # Each task may run to its timeout, then a stop grace and a preview accept; a scenario with a
     # background job (a render) may also wait for it once.
     timeout = task_count * (2 * args.task_timeout + 60) + 120 + job_wait(args) + diagnostics.extra_seconds(args)
-    started = time.monotonic()
+    environment = trial_environment(folder, accounts, args, trial, state, keychain=keychain, opt_in=opt_in)
+    started, since = time.monotonic(), time.time()
     with (folder / "run.log").open("w") as log:
         try:
-            code = subprocess.run(command, cwd=ROOT, env=trial_environment(folder, accounts, args, trial, state,
-                                                                           keychain=keychain, opt_in=opt_in),
-                                  stdout=log, stderr=subprocess.STDOUT, timeout=timeout).returncode
+            code = subprocess.run(command, cwd=ROOT, env=environment, stdout=log, stderr=subprocess.STDOUT, timeout=timeout).returncode
         except subprocess.TimeoutExpired:
             code = "timeout"
     if state is not None:
@@ -373,6 +372,7 @@ def run_trial(binary, output, accounts, args, trial, task_count, *, keychain=Fal
         report = {"tasks": [], "success": False, "error": "No trial report: %s" % error}
     report.update(exit_code=code, elapsed_s=round(time.monotonic() - started, 3), log=str(folder / "run.log"),
                   addon=pinned, parallel_edit=parallel.launch_line(folder / "run.log"))
+    report = codex_logs.after_angelo_trial(report, folder, environment, args.connection_id, since)   # On Codex.
     return trace_export.after_trial(folder, report, code, accounts, args)   # A task left in flight; trace rows.
 
 

@@ -20,6 +20,7 @@ import bpy
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import native_crash  # noqa: E402
+import update_carry_over_prefs  # noqa: E402
 
 ARGS = sys.argv[sys.argv.index("--") + 1:]
 RECEIPT = Path(ARGS[ARGS.index("--receipt") + 1])
@@ -47,6 +48,9 @@ PREFERENCES = (("edit", "undo_steps", 61), ("view", "show_tooltips_python", True
 BRIEF = "Carry-over gate brief {index}"
 
 
+SEEDED_THEME_INNER = (54 / 255, 107 / 255, 161 / 255, 1.0)   # 8-bit exact: a theme keeps colours in 8 bits
+
+
 def seed():
     from angelo_agent import ui
     from angelo_agent.checkpoints import CheckpointStore
@@ -58,6 +62,11 @@ def seed():
     prefs = bpy.context.preferences
     for group, name, value in PREFERENCES:
         setattr(getattr(prefs, group), name, value)
+    # A person's theme colour and asset library, beside the four values above: whole families the update must keep.
+    prefs.themes[0].user_interface.wcol_regular.inner = SEEDED_THEME_INNER
+    library = Path.home() / "Documents" / "Carry-over library"
+    library.mkdir(parents=True, exist_ok=True)
+    prefs.filepaths.asset_libraries.new(name="Carry-over library", directory=str(library))
     if CRASHING:
         import addon_utils
         folder = Path(bpy.utils.user_resource('SCRIPTS', path="addons", create=True)) / CRASHING_ADDON
@@ -97,7 +106,7 @@ def seed():
         store.save(chat)
         chats.update(chat)
         seeded.append({"id": identity, "provider": provider, "brief": memory["brief"]["objective"],
-                       "messages": len(chat["messages"])})
+                       "messages": len(chat["messages"]), "native_id": chat["native_id"]})
     chats.save()
     first = seeded[0]["id"]
     workspace = state / "workspace"
@@ -117,6 +126,7 @@ def seed():
             "version": "%d.%d" % bpy.app.version[:2], "chats": seeded, "scene": str(scene),
             "snapshot": {"chat": first, "id": record["id"], "sha256": hashlib.sha256(data).hexdigest()},
             "preferences": [list(item) for item in PREFERENCES], "attachment_sha256": hashlib.sha256(PNG).hexdigest(),
+            "preference_values": update_carry_over_prefs.values(bpy.context.preferences, bpy.context.window_manager.keyconfigs.user),
             "crashing_addon": CRASHING_ADDON if CRASHING else None}
 
 

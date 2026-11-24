@@ -22,7 +22,7 @@ from .chat_settings import clean_options
 from .files import MAX_FILE
 from .legacy_names import current_tool_name
 from .memory_spec import MAX_POINTER, pointer, text, validate_memory
-from .request_rows import person_request
+from .request_rows import person_request, persons_text
 from .task_memory import admit_evidence, read_memory, scope_token, update_memory
 
 MAX_MESSAGES = 4096
@@ -312,7 +312,7 @@ class _Evidence:
             raise ValueError("Use a public literal HTTPS reference, not a local/private address")
         for index in range(len(self.messages) - 1, -1, -1):
             message = self.messages[index]
-            value = message.get("text") if person_request(message) else None
+            value = persons_text(message) if person_request(message) else None   # A Go's notes only (plan_mode).
             if not isinstance(value, str) or identity not in value[:32000]:
                 continue
             tokens = (match.group().rstrip(").,;!") for match in _URL.finditer(value[:32000]))

@@ -74,6 +74,10 @@ if "FINISHED" not in bpy.ops.wm.open_mainfile(filepath=blend, load_ui=False, use
     raise RuntimeError("Blender couldn't read the saved file")
 if spec.get("saved") is not None and read() != spec["saved"]:
     raise RuntimeError(spec["superseded"])
+if spec.get("engine"):   # Collision in the form this engine reads, on this copy only (collision_conventions).
+    addon_utils.enable("io_scene_gltf2", default_set=False, persistent=False)   # Registers Game Physics.
+    from angelo_agent import collision_conventions
+    collision_conventions.apply(bpy.context.scene, spec["engine"])
 folder = os.path.dirname(target)
 descriptor, scratch = tempfile.mkstemp(prefix=".angelo-link-", suffix=os.path.splitext(target)[1], dir=folder)
 os.close(descriptor)
@@ -141,7 +145,7 @@ class WriteBack:
         self._again = None        # (key, blend, target, exporter, options, baked, stamp): the newest during one.
         self._done = queue.Queue()
 
-    def request(self, key, blend, target, exporter, options, baked=(), stamp=None, saved=None):
+    def request(self, key, blend, target, exporter, options, baked=(), stamp=None, saved=None, engine=None):
         """Write ``target`` from the saved ``blend`` with ``exporter`` ("gltf", "fbx") and its ``options``, glTF with
         the ``baked`` ``[(object, material)]`` assigned first, and ``stamp`` ({"path", "asset"}) after; one write-back
         at a time. ``saved``: the .blend's stat at the save, settled here off the UI thread before the child reads the
@@ -149,12 +153,12 @@ class WriteBack:
         baked = [list(pair) for pair in baked]
         with self._lock:
             if self._running is not None:
-                self._again = (key, blend, target, exporter, options, baked, stamp, saved)
+                self._again = (key, blend, target, exporter, options, baked, stamp, saved, engine)
                 return
             self._running = key
         try:
             thread_start.start(threading.Thread(target=self._run, args=(key, blend, target, exporter, options, baked,
-                                                                        stamp, saved),
+                                                                        stamp, saved, engine),
                                                 name="Angelo engine link write-back", daemon=True), self._idle)
         except Exception as failure:   # noqa: BLE001 - this save ends unwritten, said (``finished``); the next starts.
             self._done.put((key, type(failure).__name__))
@@ -176,12 +180,13 @@ class WriteBack:
             except queue.Empty:
                 return items
 
-    def _run(self, key, blend, target, exporter, options, baked=(), stamp=None, saved=None):
+    def _run(self, key, blend, target, exporter, options, baked=(), stamp=None, saved=None, engine=None):
         error = None
         try:
             with child_spec({"stamp": stamp, "target": target, "exporter": exporter, "options": options,
                              "baked": list(baked), "saved": _expected(saved), "superseded": SUPERSEDED,
-                             "blend": blend}, writes=(target, (stamp or {}).get("path"))) as spec:
+                             "blend": blend, "engine": engine},
+                            writes=(target, (stamp or {}).get("path"))) as spec:
                 # The child opens the .blend itself, between two stats of it (``CHILD``), never from its arguments.
                 command = [angelo_binary(), "--background", "--factory-startup", "--python-exit-code", "1",
                            "--python-expr", CHILD, "--", spec]

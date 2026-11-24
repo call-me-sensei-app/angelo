@@ -45,6 +45,7 @@
 
 #include "bpy_angelo_guard_confine_changes.hh"
 #include "bpy_angelo_guard_confine_intern.hh"
+#include "bpy_angelo_guard_confine_made.hh"
 #include "bpy_angelo_guard_confine_journal.hh"
 #include "bpy_angelo_guard_confine_paths.hh"
 #include "bpy_angelo_guard_confine_record.hh"
@@ -180,6 +181,8 @@ RegionMark region_enter()
     logging_snapshot();    /* The root logger and Angelo's (logging.cc). */
     if (active_regions == 0) {
       process_snapshot(); /* The whole process's state, as the first region on any thread finds it. */
+      made_objects_forget(); /* No pipe or socket made before counts as the script's (_made.cc). */
+      ownership_run_began(); /* Tracked for this whole run, or not at all (S10). */
     }
     BPY_angelo_guard_agent_ran(); /* The person's Tab or press before it no longer vouches for focus. */
     if (active_regions == 0) {
@@ -251,6 +254,9 @@ void region_leave(const RegionMark &mark, PyObject *findings, PyObject *script_n
   depth--;
   signals_thread_restore(findings); /* This thread's signal mask: no other thread can set it. */
   const bool last_region = --active_regions == 0;
+  if (last_region) {
+    made_objects_forget(); /* What the regions made is no script's any more (_made.cc). */
+  }
   writers_region_left();
   if (last_region) {
     process_restore(findings); /* After the collector is back as the script left it: put back as it was. */

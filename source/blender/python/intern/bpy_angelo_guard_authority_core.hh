@@ -108,6 +108,14 @@ inline constexpr const char *ALWAYS_ALLOW = "always_allow";         /* "on" -> t
 inline constexpr const char *CHAT_CLIENTS = "chat_clients";         /* chat id -> external client. */
 inline constexpr const char *APPROVED_CALLS = "approved_calls"; /* call id -> invocation digest. */
 inline constexpr const char *APPROVAL_MODES = "approval_modes"; /* chat id -> "AUTO_BOUNDED". */
+/** Always run this exact script in this project (2.1.0): "project/digest" -> true. */
+inline constexpr const char *REVIEWED_SCRIPTS = "reviewed_scripts";
+/** Folder as context (2.1.0): chat id -> the digest of the folder's real path (hex). */
+inline constexpr const char *CONTEXT_FOLDERS = "context_folders";
+/** Standing rules (2.1.0): a text's digest -> Use (true) or Don't use (false). */
+inline constexpr const char *RULE_DECISIONS = "rule_decisions";
+/** Standing rules (2.1.0): "text" -> the digest of the All projects text (hex). */
+inline constexpr const char *GLOBAL_RULES = "global_rules";
 
 class Authority {
  public:
@@ -116,14 +124,28 @@ class Authority {
   /**
    * The regions `surface` (a canvas or card host, per window) draws now, replacing what it drew
    * before. A region new to it, or drawn elsewhere than before, starts its shield again and needs
-   * a move into it. Refused (false) when a text is too long or there are too many.
+   * a move into it. Refused (false) when a text is too long or there are too many. `owner`: the
+   * Blender region it draws them in (the review of f6b01a9..da9ba66, SHOULD 1; the maintainer: "Fix
+   * properly in 2.1.0"): they take only a move or press Blender's own routing gives that region
+   * (`note_move`'s `target`), never one a sidebar, header, HUD, asset shelf or popup drawn over
+   * them takes. 0 only in tests: the binding requires a region.
    */
   bool set_regions(WindowKey window,
                    const std::string &surface,
                    const std::vector<RegionSpec> &regions,
-                   double now);
-  /** The pointer at (x, y) in `window`: a move from outside an armed-in-time region into it. */
-  void note_move(WindowKey window, int x, int y, double now);
+                   double now,
+                   uint64_t owner = 0);
+  /**
+   * The pointer at (x, y) in `window`: a move from outside an armed-in-time region into it. `target`:
+   * the region Blender's own event routing gives the pointer there (`wm_event_pointer_region`: a
+   * temporary region over it first, then the area's overlapping regions where they are opaque, then
+   * the region under it; 0 for none). Only a surface whose `owner` it is sees the pointer.
+   */
+  void note_move(WindowKey window, int x, int y, uint64_t target, double now);
+  void note_move(WindowKey window, int x, int y, double now)
+  {
+    note_move(window, x, y, 0, now);
+  }
   /** `window` lost focus: every region in it starts again, and its next press mints nothing. */
   void note_deactivate(WindowKey window, double now);
   /**
@@ -133,12 +155,24 @@ class Authority {
    * the keyboard, the Dock or another app leaves none, so the person's next press is an ordinary one.
    */
   void note_activate(WindowKey window, double now);
+  /** When `window`'s focus epoch last changed (lost focus, came forward): what a control placed before it
+   * counts again from, still on screen (`ui_angelo_follow_focus`, as `sync` restarts a region). */
+  double epoch_changed(WindowKey window) const;
+  /** What a control placed before `window`'s last focus change counts again from: that change while the
+   * window is in front (it was seen from then), `now` while it is in the back or unknown (the re-review of
+   * cf980b8, SHOULD A and NIT E). */
+  double restart_from(WindowKey window, double now) const;
   /** Whether the last press in `window` was the one that brought it forward (it aims, never grants). */
   bool press_activating(WindowKey window) const;
   /** Whether `window` lost focus and has taken no event since that ends its window-forward click. */
   bool returning(WindowKey window) const;
-  /** A real pointer press: mints a ticket when it lands on an armed region. True when minted. */
-  bool note_press(WindowKey window, int x, int y, double now);
+  /** A real pointer press: mints a ticket when it lands on an armed region of a surface whose `owner`
+   * is `target` (the region Blender gives the press, as `note_move`). True when minted. */
+  bool note_press(WindowKey window, int x, int y, uint64_t target, double now);
+  bool note_press(WindowKey window, int x, int y, double now)
+  {
+    return note_press(window, x, y, 0, now);
+  }
   /** The person's button came up: a gesture's hold ends at the next pointer move. */
   void note_release(WindowKey window, double now);
   /**
@@ -288,6 +322,74 @@ class Authority {
   /** Everything, for tests and a file load that drops every window's history. */
   void reset();
 
+  /**
+   * A temporary region of `window` (a menu, popover, dialog, pie, search box, tooltip; `key` its own) is
+   * drawn over (x, y, width, height) window pixels: a consent region under it takes no move and no press
+   * there (it is not what the person sees or clicks), and when the cover goes or moves, every region it
+   * covered starts again from then and from the window's next frame (the review of cf980b8..f6b01a9,
+   * SHOULD 3; the maintainer: "Prove + fix in 2.1.0").
+   */
+  void set_cover(WindowKey window,
+                 uint64_t key,
+                 int x,
+                 int y,
+                 int width,
+                 int height,
+                 double now,
+                 bool restart_only = false);
+  /** The temporary region `key` of `window` is gone: what it covered starts again (`set_cover`). */
+  void clear_cover(WindowKey window, uint64_t key, double now);
+  /** One drawn temporary region for `sync_covers`: its key and (x, y, width, height) window pixels.
+   * `restart_only`: an area's overlapping region (a sidebar, toolbar, header, HUD, asset shelf drawn
+   * over its area's main region). Event routing already keeps input over its opaque parts from what
+   * is under it (`note_move`'s `target`), and its transparent parts pass input through, so it refuses
+   * nothing; when it hides, shrinks or moves, what it covered starts again (the review of
+   * f6b01a9..da9ba66, SHOULD 1). */
+  struct DrawnCover {
+    uint64_t key = 0;
+    int x = 0, y = 0, width = 0, height = 0;
+    bool restart_only = false;
+  };
+  /** Where cover `key` was (x, y, width, height window pixels). */
+  struct Rect {
+    uint64_t key = 0;
+    int x = 0, y = 0, width = 0, height = 0;
+  };
+  /** `window` drew exactly these covers: each covers where it is (`set_cover`), and any other cover (a
+   * region freed without `clear_cover`: a file load, a screen change, a sidebar hidden) goes
+   * (`clear_cover`). Returns where each restart-only cover that went or moved was, so the window
+   * manager restarts Blender's own buttons there too (a temporary region's close does that itself). */
+  std::vector<Rect> sync_covers(WindowKey window, const std::vector<DrawnCover> &drawn, double now);
+  /** As above, and `visible`: every region the window shows now (its areas' and its temporary regions). A canvas
+   * surface's own menu whose region is not among them goes (a file load, a screen change, a close no code reported:
+   * the last review of da9ba66..1b4e7f0, SHOULD 1), and so do the consent regions of a surface drawn in a region that
+   * is gone (NIT 3: a freed region's pointer is never reused for them). */
+  std::vector<Rect> sync_covers(WindowKey window,
+                                const std::vector<DrawnCover> &drawn,
+                                const std::vector<uint64_t> &visible,
+                                double now);
+  /** Angelo's own menu or popover on canvas surface `surface` is drawn over (x, y, width, height) window
+   * pixels, or (`width` 0) is gone: a cover as a temporary region's, except over `surface`'s own regions
+   * (the review of f6b01a9..da9ba66, SHOULD 2). It can only refuse and restart, never grant. */
+  void surface_cover(WindowKey window,
+                     const std::string &surface,
+                     int x,
+                     int y,
+                     int width,
+                     int height,
+                     double now,
+                     uint64_t owner = 0);
+
+  /** What `window`'s arming reads now, for a GUI suite's failure details only (never a decision). */
+  struct Readout {
+    uint64_t epoch = 0, frame = 0;
+    int presented = 0;
+    double last_present = -1.0e9, activated = -1.0e9, real_move_at = -1.0e9, changed = -1.0e9;
+    int real_x = 0, real_y = 0, px = 0, py = 0;
+    bool known = false, active = true, returning = false, activation_move = false, pointer_known = false;
+  };
+  Readout readout(WindowKey window) const;
+
  private:
   struct Region {
     RegionSpec spec;
@@ -299,8 +401,15 @@ class Authority {
     bool moved_in = false; /* A real move inside it, ARM_SECONDS after it was drawn there. */
     double press_aim = -1.0; /* When a press (not a move) aimed at it; a grant waits SHIELD_SECONDS after. */
   };
+  struct Cover {
+    int x = 0, y = 0, width = 0, height = 0; /* Window pixels: a temporary region drawn there. */
+    std::string surface; /* A canvas surface's own menu (`surface_cover`): never over that surface's regions. */
+    bool restart_only = false; /* An overlapping region: restarts what it covered, refuses nothing. */
+    uint64_t owner = 0; /* A canvas menu's: the region it is drawn in (`sync_covers`'s `visible`). */
+  };
   struct Window {
     uint64_t epoch = 0;
+    double changed = -1.0e9;       /* When `epoch` last changed (`note_activate`, `note_deactivate`). */
     bool returning = false;
     double activated = -1.0e9;     /* When it came forward (`note_activate`). */
     bool active = true;            /* Not in the background (`note_deactivate` .. `note_activate`). */
@@ -308,8 +417,10 @@ class Authority {
     bool press_activating = false; /* The last press was the one that brought it forward. */
     bool pointer_known = false;
     int px = 0, py = 0;
+    uint64_t target = 0; /* The region Blender routes the pointer at (px, py) to (`note_move`). */
     double tabbed = -1.0e9, pressed = -1.0e9; /* The person's last Tab and last press, and where. */
     int press_x = 0, press_y = 0;
+    uint64_t press_target = 0; /* The region Blender gave the last press (`note_press`). */
     std::string focus_idname, focus_digest, focus_surface;
     double focus_since = 0.0;
     std::string opened; /* The surface the person opened (`open_surface`), or empty. */
@@ -322,10 +433,24 @@ class Authority {
     int real_x = 0, real_y = 0;
     int warp_x0 = 0, warp_y0 = 0, warp_x1 = 0, warp_y1 = 0;
     std::map<std::string, std::vector<Region>> surfaces;
+    std::map<std::string, uint64_t> owners; /* The Blender region each surface draws in (`set_regions`). */
+    std::map<uint64_t, Cover> covers; /* The temporary regions drawn over it now (`set_cover`). */
     uint64_t frame = 0;   /* The frame being drawn; `note_presented` counts it and moves on. */
     int presented = 0;    /* How many frames reached the screen, up to PRESENTS_KEPT. */
     double presents[PRESENTS_KEPT] = {}; /* Frame f's time at presents[f % PRESENTS_KEPT]. */
   };
+  /** Whether a cover of `window` is drawn over (x, y) for a region of `surface` (never its own). Under the lock. */
+  static bool covered(const Window &window, int x, int y, const std::string &surface);
+  /** Whether Blender routes input it gives region `target` to `surface` of `window` (its owner). */
+  static bool owns(const Window &window, const std::string &surface, uint64_t target);
+  /** Whether the pointer rests on `spec` of `surface`: inside it, over the region it is drawn in. */
+  static bool pointer_on(const Window &window, const std::string &surface, const RegionSpec &spec);
+  /** Every region of `window` under `cover` starts again from `now` and the window's next frame; a ticket its press
+   * minted goes too (the last review of da9ba66..1b4e7f0, NIT 2). Under the lock. */
+  void restart_covered(Window &window, const Cover &cover, double now);
+  /** The tickets for `region`'s control go (not a dialog's, which names the dialog). Under the lock. */
+  void drop_tickets(const RegionSpec &region);
+
   struct Ticket {
     std::string idname, digest;
     double minted = 0.0;
@@ -343,6 +468,10 @@ class Authority {
   static double region_shown(const Window &window, const Region &region);
   void push_ticket(const Ticket &ticket); /* Under the lock. */
   void sync(Window &window, double now);
+  std::vector<Rect> sync_covers(WindowKey window,
+                                const std::vector<DrawnCover> &drawn,
+                                const std::vector<uint64_t> *visible,
+                                double now);
 
   mutable std::mutex mutex_;
   std::map<WindowKey, Window> windows_;
@@ -377,6 +506,22 @@ class Scope {
   static bool active();
   /** Whether the person's (or a test harness's) scope is open on this thread. */
   static bool person();
+  /** Whether a test harness's scope is open on this thread (an app started with --enable-event-simulate). */
+  static bool harness();
+  /** The control the person's innermost grant scope on this thread was opened for (`grant`: "<idname>\n<digest>"),
+   * else empty: a setting that only its own control may change asks this, not `person()`. */
+  static const std::string &control();
+  /** While alive, `control()` is `value` (``guard_grant``, around its person scope). */
+  class Control {
+   public:
+    explicit Control(std::string value);
+    ~Control();
+    Control(const Control &) = delete;
+    Control &operator=(const Control &) = delete;
+
+   private:
+    std::string previous_;
+  };
   /** Whether operator `idname` may grant in the scopes open on this thread. */
   static bool admits_operator(const Authority &authority, const std::string &idname);
 

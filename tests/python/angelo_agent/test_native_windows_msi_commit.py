@@ -124,6 +124,31 @@ class MsiCommitTests(unittest.TestCase):
         shallow = build(self.root / "results" / "release", COMMIT, b"release stage copy")
         self.assertEqual(msi_commit.candidates([], [self.root], "*.msi"), [shallow])
 
+    PATTERN = "Angelo-*-windows-x64.msi"
+
+    def test_a_named_msi_the_pattern_excludes_is_refused_aloud_never_dropped(self):
+        """The dry cut of 2.1.0 (Teams step): --msi named a file the --pattern did not match; it was dropped without a
+        word and the summary said "(0 refused)". A named file is used or refused, with the reason."""
+        named = build(self.root / "teams", COMMIT, b"teams build", name="Angelo-Teams-2.1.0-x64.msi")
+        chosen, lines = msi_commit.choose(COMMIT, [named], pattern=self.PATTERN)
+        self.assertIsNone(chosen)
+        self.assertIn("refused %s: its name does not match %s" % (named, self.PATTERN), lines)
+        self.assertTrue(lines[-1].endswith("(1 refused)"), lines)
+        done = self.run_tool("--commit", COMMIT, "--msi", named, "--pattern", self.PATTERN)
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("refused %s: its name does not match %s" % (named, self.PATTERN), done.stdout)
+
+    def test_every_msi_considered_and_not_used_is_listed_with_its_reason(self):
+        older = build(self.root / "results", COMMIT, b"first build")
+        newer = build(self.root / "results" / "release", COMMIT, b"second build")
+        os.utime(older, (time.time() - 60, time.time() - 60))
+        other = build(self.root / "other", COMMIT, b"another product", name="Helper-Setup.msi")
+        chosen, lines = msi_commit.choose(COMMIT, folders=[self.root], pattern=self.PATTERN)
+        self.assertEqual(chosen, newer)
+        self.assertIn("refused %s: its name does not match %s" % (other, self.PATTERN), lines)
+        self.assertIn("passed over %s: a proven build older than %s" % (older, newer), lines)
+        self.assertEqual(len(lines), 2, lines)   # Every MSI considered has its line, the chosen one is printed last.
+
 
 @unittest.skipIf(os.name == "nt", environment_skip(
     "gcp_windows_validate.sh is a bash launcher run from the macOS workstation, not on Windows"))
@@ -245,7 +270,8 @@ class ScriptContractTests(unittest.TestCase):
 
     def test_every_touched_file_stays_within_500_lines(self):
         for name in TOUCHED + ("source_tree.py", "source_extract.py", "source_send.py", "shipped_sources.py", "msi_commit.py",
-                               "gcp_windows_validate.sh", "gcp_windows_source.sh", "gcp_windows_wait.sh"):
+                               "gcp_windows_validate.sh", "gcp_windows_source.sh", "gcp_windows_wait.sh",
+                               "gcp_windows_bench_inputs.sh"):
             with self.subTest(name):
                 self.assertLessEqual(len(text(name).splitlines()), 500)
 

@@ -37,12 +37,15 @@ DRAW = ("a draw callback: draws Angelo's own overlay from its own state; never r
         "module imports scene_queries, scene_geometry or bmesh)")
 CARD = "a card's own poll or close: reads the card's own state or a job's progress record; no scene data"
 BAKE_END = "marks a bake's end; the next step runs from the guarded chain or the guarded job tick"
+RENDER_MARK = ("counts renders of other scenes (a render_init handler that only marks); the bake check reads the count "
+               "at its next guarded job tick")
 SPLIT = ("ticks once (edit_tool_hold.ticked) and keeps its interface moving; its data stages hold "
          "(test_native_edit_tool_paths, test_split_ticks_keep_their_interface_and_hold_their_data)")
 STAGE = "keeps Angelo's private stage scenes from evaluating; touches only those scenes"
 
 REVIEWED = {
     ('about_card.py', 'AboutCard.act', 'timer', '_show_whats_new'): UI,
+    ('addon_compat_live.py', '_ask', 'timer', '_poll'): UI,
     ('ai_render_card.py', 'AiRenderCard._render', 'timer', '_watch_run'): UI,
     ('app_notices.py', 'register', 'timer', 'tick'): UI,
     ('asset_browser_entry.py', '_start_input', 'timer', 'live_windows.deferred(lambda: bpy.context.window_manager, pointer, start)'): INPUT,
@@ -118,6 +121,12 @@ REVIEWED = {
     ('live_view_draw.py', 'held', 'timer', 'redraw'): UI,
     ('look_notify.py', 'watch', 'timer', '_timer'): UI,
     ('marble_host.py', 'poll', 'timer', '_tick'): UI,
+    ('markup_edit_host.py', '_encode_then', 'timer', 'finish'): PROCESS,   # Encodes a picture; writes the chat's own.
+    ('markup_edit_host.py', '_start', 'timer', 'follow'): PROCESS,   # Follows a Media Studio job's record.
+    ('markup_send.py', 'send', 'timer', 'deliver'): CLICK,   # The person's Send, once its picture is encoded.
+    ('markup_overlay.py', 'open_reference', 'timer', '_load'): UI,   # Reads the picture into the viewer's texture.
+    ('markup_overlay.py', 'register', 'handler:load_pre', '_load_pre'): LIFECYCLE,   # Closes the viewer.
+    ('markup_overlay.py', 'ANGELO_OT_markup_viewer.invoke', 'draw', '_draw'): DRAW,
     ('media_shelf.py', 'show_studio_tab', 'timer', 'choose'): UI,
     ('media_shelf.py', '_redraw_later', 'timer', 'run'): UI,
     ('media_shelf.py', '_defer', 'timer', 'run'): UI,
@@ -161,6 +170,7 @@ REVIEWED = {
     ('splash_setup.py', 'after_close', 'timer', 'live_windows.deferred(lambda: bpy.context.window_manager, pointer, run)'): CLICK,
     ('splash_setup.py', '_redirect', 'timer', 'live_windows.deferred(lambda: bpy.context.window_manager, pointer, run)'): CLICK,
     ('splash_setup.py', 'register', 'handler:save_post', '_remember_scene_chat'): LIFECYCLE,
+    ('strict_protection.py', '_tell', 'timer', "lambda: studio_library_ops.report('WARNING', message)"): UI,
     ('studio.py', 'defer_drop', 'timer', 'live_windows.deferred(lambda: bpy.context.window_manager, wp, finish)'): CLICK,
     ('studio_assets_host.py', 'register', 'handler:load_factory_preferences_post', 'preferences_read'): LIFECYCLE,
     ('studio_tab_build.py', 'run', 'timer', 'step'): LAYOUT,
@@ -225,6 +235,7 @@ REVIEWED = {
     ('flow_window.py', 'prepare_area', 'draw', '_draw'): DRAW,
     ('flow_window.py', 'register', 'draw', '_draw'): DRAW,
     ('intro.py', 'ANGELO_OT_intro.invoke', 'draw', '_draw'): DRAW,
+    ('bake_check_host.py', '_count_renders', 'handler:render_init', '_count_render'): RENDER_MARK,
     ('job_bake_maps.py', 'TextureSetRunner._start', 'handler-loop', 'self.handlers'): BAKE_END,
     ('job_bakes.py', 'TextureBakeRunner._start', 'handler-loop', 'self.handlers'): BAKE_END,
     ('layout_hold.py', 'register', 'handler:load_post', '_load_post'): LIFECYCLE,
@@ -236,6 +247,7 @@ REVIEWED = {
     ('media_shelf.py', 'register', 'draw', '_sample'): DRAW,
     ('photo_drop_jobs.py', '_ensure_draw', 'draw', '_draw'): DRAW,
     ('providers_page_host.py', 'ensure_handler', 'draw', '_draw'): DRAW,
+    ('shape_cut_tool.py', 'ANGELO_OT_shape_cut.invoke', 'draw', 'self._draw'): DRAW,
     ('providers_sheet.py', 'ConnectionSheet._check', 'helper:host.after', "lambda: host.close('done')"): CARD,
     ('providers_sheet.py', 'ConnectionSheet._check', 'helper:host.after', 'lambda: self._check(host)'): CARD,
     ('references.py', '_redraw_when_set', 'timer', 'poll'): UI,
@@ -279,8 +291,10 @@ REVIEWED = {
 CANVAS = ("acts only on the person's own presses over its canvas, card or overlay; timers and window events pas"
           's on (input_policy.overlay_passes or its own type check), so nothing runs on a TIMER tick')
 REVIEWED_MODALS = {
+    ('markup_overlay.py', 'ANGELO_OT_markup_viewer'): CANVAS,
     ('agent_workspace_ui.py', 'workspace_operators.ANGELO_OT_accept_native_preview'): "the person's own Accept on a retained preview; accept_native_preview refuses under an operation",
     ('render_region_draw.py', 'ANGELO_OT_render_region_draw'): "the person's own drag of a render region; nothing on a timer",
+    ('shape_cut_tool.py', 'ANGELO_OT_shape_cut'): "the person's own Shape Cut drawing: it cuts only on their presses and moves; timers and window events pass on (overlay_passes)",
     ('bake_maps_card.py', 'ANGELO_OT_bake_maps_note'): "shows a texture set's progress text in the top bar; reads no scene data",
     ('asset_browser_entry.py', 'ANGELO_OT_asset_browser_input'): CANVAS,
     ('asset_shelf_add.py', 'ANGELO_OT_asset_shelf_add_input'): CANVAS,

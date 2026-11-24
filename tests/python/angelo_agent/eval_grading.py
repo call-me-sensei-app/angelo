@@ -100,7 +100,7 @@ def basis(task):
     """
     if task.get("kind") == "read_only":
         return answer_check(task) or ("ungraded" if legacy_question(task) else None)
-    for key in ("checks", "result_checks", "scenario_checks"):
+    for key in ("checks", "result_checks", "scenario_checks", "firsthour_checks"):
         if task.get(key):
             return key
     return "ungraded" if isinstance(task.get("ungraded"), str) and task["ungraded"].strip() else None

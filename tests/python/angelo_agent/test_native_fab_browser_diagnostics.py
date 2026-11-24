@@ -10,7 +10,6 @@ import subprocess
 import sys
 import tempfile
 import threading
-import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -24,6 +23,7 @@ from angelo_agent import fab_browser_diagnostics as diagnostic
 from angelo_agent import fab_browser_ownership as ownership
 from angelo_agent.fab_browser_connection import Connection
 from angelo_agent.fab_browser_process import BrowserProcess, BrowserUnavailable
+from fab_fake_clock import use_fake_clock
 
 MARKER = 'a' * 32
 
@@ -45,21 +45,21 @@ class FabBrowserDiagnosticTests(unittest.TestCase):
     def test_process_timeout_has_fixed_reason(self):
         with patch.object(ownership.subprocess, 'run', side_effect=subprocess.TimeoutExpired('private', 1)):
             with self.assertRaises(ownership.OwnershipUnavailable) as caught:
-                ownership._run(['/bin/ps'], time.monotonic() + 5)
+                ownership._run(['/bin/ps'], use_fake_clock(self, ownership).now + 5)
         self.assertEqual(caught.exception.code, 'INSPECTION_TIMEOUT')
         self.assertNotIn('private', str(caught.exception))
 
     def test_process_denial_has_fixed_reason(self):
         with patch.object(ownership.subprocess, 'run', side_effect=PermissionError('private detail')):
             with self.assertRaises(ownership.OwnershipUnavailable) as caught:
-                ownership._run(['/bin/ps'], time.monotonic() + 5)
+                ownership._run(['/bin/ps'], use_fake_clock(self, ownership).now + 5)
         self.assertEqual(caught.exception.code, 'INSPECTION_DENIED')
 
     def test_oversized_inspection_has_fixed_reason(self):
         with patch.object(ownership.subprocess, 'run', return_value=SimpleNamespace(returncode=0, stdout='x' * 9)), \
                 patch.object(ownership, 'MAX_OUTPUT', 8):
             with self.assertRaises(ownership.OwnershipUnavailable) as caught:
-                ownership._run(['/bin/ps'], time.monotonic() + 5)
+                ownership._run(['/bin/ps'], use_fake_clock(self, ownership).now + 5)
         self.assertEqual(caught.exception.code, 'INSPECTION_OVERSIZED')
 
     def write(self, folder, identity=None):

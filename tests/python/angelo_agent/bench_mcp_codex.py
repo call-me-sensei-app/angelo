@@ -42,6 +42,7 @@ import bench_workdirs as workdirs
 import eval_gate
 import eval_grading
 import eval_live_tasks as live
+import eval_codex_logs as codex_logs  # A throttle Codex retried without telling its client: its own log.
 import eval_provider_limits as limits
 import mcp_request_parameters
 import provider_isolation as isolation
@@ -367,6 +368,7 @@ def run_trial(config, trial, folder, fake_base_url=None, tasks=None):
               "gate_version": version, "test_code": bench_integrity.test_code(),
               "load_average_start": (list(os.getloadavg()) if hasattr(os, "getloadavg") else None), "started_at": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
     blender = stream = client = None
+    since = time.time()   # The trial's own rows of Codex's log start here (eval_codex_logs).
     try:   # An empty folder where no project context reaches Codex (bench_workdirs).
         cwd = workdirs.fresh(config["claude_cwd"], config.get("codex_home"), "codex")
         blender, output["blender"] = trial_base.launch_blender(config, folder, port)
@@ -406,6 +408,8 @@ def run_trial(config, trial, folder, fake_base_url=None, tasks=None):
         if blender is not None:
             trial_base.quit_blender(blender, client) if client else trial_base.stop_process(blender, grace=1.)
     output["load_average_end"] = (list(os.getloadavg()) if hasattr(os, "getloadavg") else None)
+    # Codex has exited (stream.close): its log is complete for this trial (eval_codex_logs).
+    codex_logs.after_mcp_trial(output, folder, [stream.thread_id] if stream is not None else None, since)
     (folder / "trial.json").write_text(json.dumps(output, indent=2, default=str))
     return output
 

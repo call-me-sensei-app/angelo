@@ -41,6 +41,7 @@ os.environ.update(ANGELO_DISABLE_DEFAULT_CHAT="1", ANGELO_CONNECTIONS_DIR=str(OU
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fresh_shader  # noqa: E402
+import qa_hit  # noqa: E402  (the 3D view's own pixels to window pixels)
 import rendered_view_fixtures as fx  # noqa: E402
 import test_native_view_fixture_boot as fixture_boot  # noqa: E402
 import _bpy  # noqa: E402
@@ -134,10 +135,10 @@ def viewport():
         bpy.ops.screen.screenshot(filepath=str(path), check_existing=False)
 
     def across(fraction):
-        return (region.x + fraction * region.width) / window.width
+        return qa_hit.xy(qa_hit.RAW, region, fraction * region.width, 0)[0] / window.width
 
     def down(fraction):
-        return 1.0 - (region.y + (1.0 - fraction) * region.height) / window.height
+        return 1.0 - qa_hit.xy(qa_hit.RAW, region, 0, (1.0 - fraction) * region.height)[1] / window.height
     return path, tuple((across(x0), down(y0), across(x1), down(y1)) for x0, y0, x1, y1 in SKY)
 
 

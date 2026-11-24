@@ -234,6 +234,26 @@ class ProgramsThroughALink(unittest.TestCase):
         self.assertIn("Forget Agent Changes in a Folder", message)
         self.assertNotIn("Restart Angelo", message)   # C's record outlives a restart.
 
+    def test_each_refusal_names_its_cause_for_the_caller(self):
+        """A caller that reports a refused start in its own words (a web export's finding) reads why, never the
+        English sentence: ``run_refusal`` is ``agent_change``, ``changed`` or ``unknown`` (the gltfpack refusal text,
+        deferred from 2.0.1)."""
+        self.c.region = True   # Nothing vouched.
+        with self.assertRaises(PermissionError) as caught:
+            owned_paths.require_runnable(str(self.link))
+        self.assertEqual(caught.exception.run_refusal, owned_paths.RUN_UNKNOWN)
+        owned_paths.vouch_program(str(self.link))
+        with open(self.real, "a") as handle:
+            handle.write("echo reinstalled in place\n")
+        with self.assertRaises(PermissionError) as caught:
+            owned_paths.require_runnable(str(self.link))
+        self.assertEqual(caught.exception.run_refusal, owned_paths.RUN_CHANGED)
+        self.c.mark_made(os.path.realpath(self.real))
+        with self.assertRaises(PermissionError) as caught:
+            owned_paths.require_runnable(str(self.link))
+        self.assertEqual(caught.exception.run_refusal, owned_paths.RUN_AGENT_CHANGE)
+        self.assertEqual(len({owned_paths.RUN_UNKNOWN, owned_paths.RUN_CHANGED, owned_paths.RUN_AGENT_CHANGE}), 3)
+
     def test_a_path_a_script_rewrote_in_place_is_never_searched(self):   # The review's SHOULD-2.
         planted = program(self.root / "planted/claude", "9.9.9")
         key = os.environ.encodekey("PATH")

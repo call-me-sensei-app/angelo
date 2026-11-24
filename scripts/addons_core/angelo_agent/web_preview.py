@@ -32,6 +32,7 @@ POLL_SECONDS = 0.25
 QUIET_SECONDS = 0.6        # Stillness before a re-export.
 MAX_QUIET_SECONDS = 10.0
 SHARE = 3.0                # Wait at least this many times the last export's duration.
+MAX_FOCUS = 256            # Selected names sent to the page for framing; more say nothing more about where to look.
 
 PAGE_TEXT = {   # Key -> English; translated when the preview starts (``_strings``).
     "title": n_("Web Preview"),
@@ -58,6 +59,10 @@ PAGE_TEXT = {   # Key -> English; translated when the preview starts (``_strings
     "angelo_side": n_("Angelo viewport"), "web_side": n_("Three.js"),
     "average_difference": n_("Average difference {value}%"),
     "compare_failed": n_("Angelo couldn't draw its viewport: {reason}"),
+    # Framing (web_preview/app.js): what the page looks at.
+    "frame_camera": n_("Camera"), "frame_selection": n_("Selection"), "frame_all": n_("All"),
+    "frame_follow": n_("Follow Angelo's selection"),
+    "frame_missing": n_("The selection isn't in the preview (hidden, merged or not exported)"),
 }
 
 # Who holds the exporter (2.0.1): "person" (the live preview the person or their agent started: the File menu, Stop
@@ -161,6 +166,7 @@ def _tick():
         _state["picture_pending"] = False
         _dirty(_state["dirty_at"] or 0.0)   # The World's picture landed: export it now.
     _compare()
+    _focus()
     dirty_at = _state["dirty_at"]
     quiet = scene_changes.quiet_seconds(_state["last_ms"], QUIET_SECONDS, SHARE, MAX_QUIET_SECONDS)
     if dirty_at is not None and time.monotonic() - dirty_at >= quiet:
@@ -172,6 +178,29 @@ def _tick():
             return POLL_SECONDS
     _shaders_changed()
     return POLL_SECONDS
+
+
+def focus_of(view_layer, scene, limit=MAX_FOCUS):
+    """What the person looks at in Angelo, by object name: the selection (at most ``limit`` names, the active
+    object first), the active object and the scene camera. Names only: the page finds them in the exported scene."""
+    active = view_layer.objects.active
+    selected = [active.name] if active is not None and active.select_get(view_layer=view_layer) else []
+    for obj in view_layer.objects.selected:
+        if len(selected) >= limit:
+            break
+        if obj is not active:
+            selected.append(obj.name)
+    camera = scene.camera
+    return {"selected": selected, "active": active.name if active is not None else None,
+            "camera": camera.name if camera is not None else None}
+
+
+def _focus():
+    """Tell the page what Angelo shows (the server ignores an unchanged focus), so it can frame it."""
+    window = _window()
+    if window is None or window.screen is None:
+        return
+    _state["server"].publish_focus(focus_of(window.view_layer, window.scene))
 
 
 def _compare():

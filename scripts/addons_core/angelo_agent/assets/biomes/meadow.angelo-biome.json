@@ -1,0 +1,99 @@
+{
+ "schema": "angelo-biome/1",
+ "name": "Meadow",
+ "description": "Grass clumps with flowers in drifts and the odd stone, on gentle ground.",
+ "layers": [
+  {
+   "name": "Stones",
+   "assets": [
+    {
+     "query": "rock",
+     "kind": "model"
+    }
+   ],
+   "density": 0.015,
+   "spacing": 1.0,
+   "transform": {
+    "scale": [
+     0.3,
+     0.9
+    ],
+    "align": 1.0,
+    "yaw": true,
+    "tilt": 0.0
+   },
+   "seed": 31,
+   "rules": {
+    "slope": {
+     "min": 0,
+     "max": 30,
+     "soft": 5
+    }
+   }
+  },
+  {
+   "name": "Grass",
+   "assets": [
+    {
+     "query": "grass",
+     "kind": "model"
+    }
+   ],
+   "density": 3.0,
+   "spacing": 1.0,
+   "transform": {
+    "scale": [
+     0.7,
+     1.3
+    ],
+    "align": 0.6,
+    "yaw": true,
+    "tilt": 0.0
+   },
+   "seed": 32,
+   "rules": {
+    "slope": {
+     "min": 0,
+     "max": 30,
+     "soft": 5
+    },
+    "noise": {
+     "scale": 5,
+     "amount": 0.3
+    }
+   }
+  },
+  {
+   "name": "Flowers",
+   "assets": [
+    {
+     "query": "flower",
+     "kind": "model"
+    }
+   ],
+   "density": 0.6,
+   "spacing": 1.0,
+   "transform": {
+    "scale": [
+     0.7,
+     1.2
+    ],
+    "align": 0.4,
+    "yaw": true,
+    "tilt": 0.0
+   },
+   "seed": 33,
+   "rules": {
+    "slope": {
+     "min": 0,
+     "max": 25,
+     "soft": 5
+    },
+    "noise": {
+     "scale": 10,
+     "amount": 0.7
+    }
+   }
+  }
+ ]
+}

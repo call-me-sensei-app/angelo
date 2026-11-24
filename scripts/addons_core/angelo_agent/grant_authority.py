@@ -26,6 +26,10 @@ ALWAYS_ALLOW = "always_allow"           # "on" -> True.
 CHAT_CLIENTS = "chat_clients"           # chat id -> the external client it belongs to.
 APPROVED_CALLS = "approved_calls"       # "<chat id>/<call id>" -> the invocation digest the approval was for.
 APPROVAL_MODES = "approval_modes"       # chat id -> "AUTO_BOUNDED" while the chat is in Auto (Ask narrows).
+REVIEWED_SCRIPTS = "reviewed_scripts"   # "<project>/<sha256>" -> True: Always run this exact script (2.1.0).
+CONTEXT_FOLDERS = "context_folders"     # chat id -> SHA-256 of the real path of its Folder as context (2.1.0).
+RULE_DECISIONS = "rule_decisions"       # A rules text's SHA-256 -> True (Use) or False (Don't use) (2.1.0).
+GLOBAL_RULES = "global_rules"           # "text" -> SHA-256 of the All projects rules (2.1.0).
 NO_AUTHORITY = "This build has no grant authority: nothing can be granted."
 
 

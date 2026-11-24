@@ -50,6 +50,8 @@ BUILDERS = {"worker_process.py": "worker_environment",
 # Modules that name environment variables in a list but start no child with them, each with why.
 NOT_BUILDERS = {
     "private_conventions.py": "reads APPDATA and LOCALAPPDATA to find the person's private folders; starts no child",
+    "context_folder_roots.py": "reads APPDATA, LOCALAPPDATA, PROGRAMDATA and SystemRoot to refuse apps' private "
+                               "folders as a chat's context folder; starts no child",
     "worker_merge_spellings.py": "reads HOME and USERPROFILE (and every variable) to know how text can spell a private "
                                  "folder, for the merge's privacy check; starts no child",
 }

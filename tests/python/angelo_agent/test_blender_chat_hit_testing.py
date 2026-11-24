@@ -34,6 +34,7 @@ import qa_operator  # noqa: E402
 from angelo_agent.chat_hit_testing import contains
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 ui._authentication.start = lambda *args, **kwargs: None
 type(ui._authentication).start = lambda *args, **kwargs: None

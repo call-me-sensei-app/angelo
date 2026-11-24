@@ -25,7 +25,12 @@ import ast
 import re
 
 WRAPPERS = {"n_", "iface_", "tip_", "rpt_", "plural_", "notice", "pgettext", "pgettext_iface", "pgettext_tip",
-            "pgettext_rpt", "pgettext_n", "data_"}
+            "pgettext_rpt", "pgettext_n", "data_", "file_text"}
+# Calls taking ``(message, msgctxt)``: a literal second argument is the message's context.
+CONTEXT_WRAPPERS = ("n_", "iface_", "tip_", "rpt_", "file_text")
+# Wrappers Blender's own extractor does not know: Angelo's extractor reads their literals in every module, UI ones
+# included (``extract_pot``), or the text would ship in English.
+ANGELO_ONLY_WRAPPERS = ("file_text",)
 PLURAL_ARGS = (1, 2)
 # Canvas sinks: (function name) -> positional message index; keywords are checked by name below.
 CANVAS_SINKS = {"text": 0, "centered": 0, "elide": 0, "label": 0, "button": 0, "paragraph": 0, "caption": 0,
@@ -324,6 +329,28 @@ def _net_candidate(node):
 
 
 LOOKUP_CALLS = {"get", "pop", "setdefault", "startswith", "endswith", "index", "count", "getattr", "hasattr", "setattr"}
+
+
+def _string(node):
+    return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
+
+
+def explicit_contexts(source):
+    """{(line, msgid): context} for marks given a literal context, ``n_("Keys", "Angelo")``, as Blender's extractor
+    reads them."""
+    found = {}
+    for node in ast.walk(ast.parse(source)):
+        if (isinstance(node, ast.Call) and function_name(node) in CONTEXT_WRAPPERS and len(node.args) >= 2
+                and _string(node.args[0]) and _string(node.args[1])):
+            found[(node.lineno, _string(node.args[0]))] = _string(node.args[1])  # The call's line, as scan records it.
+    return found
+
+
+def angelo_only_messages(source):
+    """``[(ctxt, msgid)]`` marked by a wrapper only Angelo's extractor knows (``ANGELO_ONLY_WRAPPERS``)."""
+    return [(_string(node.args[1]) if len(node.args) >= 2 and _string(node.args[1]) else "", _string(node.args[0]))
+            for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Call)
+            and function_name(node) in ANGELO_ONLY_WRAPPERS and node.args and _string(node.args[0])]
 
 
 def literal_roles(source):

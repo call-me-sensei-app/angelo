@@ -28,20 +28,44 @@ from .ui_text import n_
 
 # The features Angelo ships, in menu order. A module that adds one registers it at its own register(); a feature
 # from another branch adds its id here with its registration (test_native_chat_destinations checks both).
-TOP_LEVEL = ("attach", "goal", "media_studio", "photo_to_3d", "library", "video_tools", "flows", "render_engine", "render_tools",
-             "workflows", "base_mesh", "hands", "select_through", "tension_map", "uv_checker", "engine_skeleton", "web_export",
-             "web_preview", "godot_link", "apps_settings", "learn", "report_bug", "request_feature")
+TOP_LEVEL = ("attach", "goal", "markup", "plan", "media_studio", "photo_to_3d", "library", "video_tools", "flows", "render_engine", "render_tools",
+             "workflows", "scatter", "base_mesh", "rig", "model", "inspect", "web_export", "web_preview",
+             "godot_link", "apps_settings", "context_folder", "rules", "learn", "report_bug", "request_feature")
 # Features drawn inside a built-in group rather than as rows of their own (1.0.8: six Create rows for video and
 # rendering pushed the base meshes and Workflows below the fold). A member whose group is not registered is drawn at
-# the top level, so a feature is never hidden.
-VIDEO_GROUP, RENDER_GROUP = "video_tools", "render_tools"
+# the top level, so a feature is never hidden; a built-in group with no member yet is left out.
+# 2.1.0 (coordinator ruling, 2026-11-15): the top level was full at 1280 x 800 (ROW_BUDGET) while five lanes added
+# tools, so the four inspection tools became one Inspect tile and modelling tools share one Model tile. A lane maps
+# its own tool into a group here, alongside the tool; it never takes a new tile while the grid is at its budget.
+VIDEO_GROUP, RENDER_GROUP, INSPECT_GROUP, MODEL_GROUP = "video_tools", "render_tools", "inspect", "model"
+RIG_GROUP = "rig"   # 2.1.0 (v210-features, 2026-11-18): hands and the rigging tools share the hands tile's place.
+GROUPS = (VIDEO_GROUP, RENDER_GROUP, INSPECT_GROUP, MODEL_GROUP, RIG_GROUP)
 PARENTS = {"video": VIDEO_GROUP, "shot_to_video": VIDEO_GROUP, "shot_motion": VIDEO_GROUP,
-           "ai_render": RENDER_GROUP, "render_region": RENDER_GROUP, "bake_maps": RENDER_GROUP}
+           "ai_render": RENDER_GROUP, "render_region": RENDER_GROUP, "bake_maps": RENDER_GROUP,
+           "camera_look": RENDER_GROUP,
+           "select_through": INSPECT_GROUP, "tension_map": INSPECT_GROUP, "uv_checker": INSPECT_GROUP,
+           "engine_skeleton": INSPECT_GROUP,
+           "splat_mesh": MODEL_GROUP, "collision_hulls": MODEL_GROUP,   # 2.1.0 v210-features (splats, colliders).
+           "retopology": MODEL_GROUP}   # 2.1.0 v210-retopo.
+PARENTS["shape_cut"] = MODEL_GROUP   # Shape Cut (shape_cut_tool).
+PARENTS["uv_layout"] = MODEL_GROUP   # UV Layout (uv_layout_ui).
+PARENTS["hands"] = RIG_GROUP
+PARENTS["rig_retarget"] = RIG_GROUP   # Rigging (rigging_ops; doc/angelo/rigging.rst).
+PARENTS["rig_game_rig"] = RIG_GROUP
+PARENTS["rig_root_motion"] = RIG_GROUP
+PARENTS["rig_clips"] = RIG_GROUP
+PARENTS["rig_ik_controls"] = RIG_GROUP
+PARENTS["rig_ik_fk"] = RIG_GROUP
+# The most rows of grid tiles the top level shows without scrolling at a 1280 x 800 screen in every language
+# (test_native_chat_add_layout keeps it exact). Rows, not tiles: the grid has two columns, so a tile joining a section
+# with an odd count fills its half-row for free. A tool past it goes into a group.
+ROW_BUDGET = 9
 # Every feature Angelo ships, whether it is a row of its own or a group's member.
 SHIPPED = TOP_LEVEL + tuple(PARENTS)
 
 ATTACH = n_("Attach")
 CREATE = n_("Create")
+TOOLS = n_("Tools")   # The heading over the Model and Inspect groups (2.1.0).
 START_FROM = n_("Start from")
 PLACEMENTS = ("grid", "bar", "footer")
 
@@ -106,6 +130,14 @@ def _members_of(group_id):
     return lambda chosen, fit_target, worker=False: [_row(item) for item in members(group_id, worker)]
 
 
+def shown(worker=False):
+    """The ``TOP_LEVEL`` ids the menu offers at its top level, in its order: a built-in group with no member to offer
+    is left out, as ``entries`` leaves it out. What a check of the top level in view expects (never ``TOP_LEVEL``
+    itself: test_native_chat_destinations)."""
+    return tuple(feature_id for feature_id in TOP_LEVEL
+                 if not (feature_id in GROUPS and not members(feature_id, worker)))
+
+
 def entries(worker=False):
     """The menu's top level, in order: one dict per feature (a row, or a ``group`` whose rows ``group_rows`` gives),
     each with the ``section`` heading it is drawn under (a feature with none stays under the one before it). A
@@ -116,7 +148,7 @@ def entries(worker=False):
     for item in features():
         if not _offered(item, worker) or PARENTS.get(item.id) in _features:
             continue
-        if item.id in (VIDEO_GROUP, RENDER_GROUP) and not members(item.id, worker):
+        if item.id in GROUPS and not members(item.id, worker):
             continue
         if item.placement == "grid":   # Only the grid's headings carry over: the bar and footer have none.
             section = item.section or section
@@ -135,7 +167,7 @@ def group_rows(group_id, chosen=(), fit_target="", worker=False):
     item = _features.get(group_id)
     if item is None or item.children is None or not _offered(item, worker):
         return []
-    if group_id in (VIDEO_GROUP, RENDER_GROUP):
+    if group_id in GROUPS:
         return [dict(row, feature=row.get("feature", group_id)) for row in item.children(chosen, fit_target, worker)]
     return [dict(row, feature=group_id) for row in item.children(chosen, fit_target)]
 
@@ -163,6 +195,13 @@ register(Feature("video_tools", n_("Video"), n_("Generate a clip, or make one fr
                  glyph="video", order=15, section=CREATE, children=_members_of(VIDEO_GROUP), owner="chat_destinations"))
 register(Feature("render_tools", n_("Render"), n_("AI render, a region over the last render, or every map at once"),
                  glyph="region", order=22, section=CREATE, children=_members_of(RENDER_GROUP),
+                 owner="chat_destinations"))
+register(Feature("rig", n_("Rig"), n_("Hands, retarget, game rigs, root motion, clips and IK"), glyph="skeleton",
+                 order=45, children=_members_of(RIG_GROUP), owner="chat_destinations"))   # Where hands was.
+register(Feature("model", n_("Model"), n_("Cut shapes into surfaces and lay out UVs for a texture"), glyph="base_mesh",
+                 order=46, section=TOOLS, children=_members_of(MODEL_GROUP), owner="chat_destinations"))
+register(Feature("inspect", n_("Inspect"), n_("Select through, see stretch, check UVs or a rig for a game engine"),
+                 glyph="select", order=48, section=TOOLS, children=_members_of(INSPECT_GROUP),
                  owner="chat_destinations"))
 
 
@@ -209,6 +248,11 @@ PROVIDERS = n_("AI Providers…")
 PROVIDERS_WHY = n_("See what is connected, and change it")
 APPROVAL_POLICY = n_("Approval policy…")   # The chat's Approval Policy menu (trusted_scripts_ui): its only way in.
 APPROVAL_POLICY_WHY = n_("When the agent asks before changes, and whether this chat's scripts are trusted")
+FORGET_CHANGES = n_("Forget Agent Changes in a Folder…")   # The operator's own label (agent_changes_forget).
+# What the click does: the operator's own description, one string for every way in (a consent surface says what
+# the action does, never the protection it lifts). Written out, not imported: this module stays bpy-free.
+FORGET_CHANGES_DOES = n_("Load the code in a folder you choose as your own again: Angelo forgets which of its files "
+                         "agent scripts wrote, moved or linked. Only your own click can do this")
 SNAPSHOT_SETTINGS = n_("Snapshot settings…")
 SNAPSHOT_SETTINGS_WHY = n_("Choose when snapshots are taken and how much disk space they may use")
 SNAPSHOT_REVIEW = n_("Remove old snapshots…")
@@ -295,7 +339,7 @@ def _app_row(app, state, result, windows):
 def _apps_settings_rows(chosen, fit_target, platform=None, states=None):
     """Connect Claude Code / Codex (or, once connected, where to disconnect), team sign-in while signed out, AI
     Providers (where each connection's details show), the chat's approval policy (and Trust scripts for this chat),
-    then the snapshot settings and their review."""
+    Forget Agent Changes in a Folder, then the snapshot settings and their review."""
     import sys
     windows = (platform or sys.platform) == "win32"
     if states is None:   # Windows needs no state: its rows only say the connection is coming.
@@ -308,6 +352,9 @@ def _apps_settings_rows(chosen, fit_target, platform=None, states=None):
                      operator="angelo.settings"))
     rows.append(leaf("apps_settings", "approval_policy", APPROVAL_POLICY, APPROVAL_POLICY_WHY, glyph="apps",
                      operator="angelo.approval_policy"))
+    # Forget Agent Changes (a grant: the click on this row is the person's, grant_guard.clicked in chat_add_nav).
+    rows.append(leaf("apps_settings", "forget_agent_changes", FORGET_CHANGES, FORGET_CHANGES_DOES, glyph="apps",
+                     operator="angelo.forget_agent_changes"))
     rows.append(leaf("apps_settings", "snapshot_settings", SNAPSHOT_SETTINGS, SNAPSHOT_SETTINGS_WHY,
                      operator="angelo.checkpoint_settings"))
     rows.append(leaf("apps_settings", "snapshot_review", SNAPSHOT_REVIEW, SNAPSHOT_REVIEW_WHY,
@@ -323,17 +370,26 @@ def _goal_feature():
                    owner="goal_loop")
 
 
+def _plan_feature():
+    """Plan mode (plan_mode.rst): the chat researches and proposes approaches, read only, until the person's Go. Beside
+    Attach and Goal (each shapes what the next message does), so the grid gains no row in any language."""
+    from .planning_text import MENU_TITLE, MENU_WHY
+    return Feature("plan", MENU_TITLE, MENU_WHY, glyph="plan", order=2, section=ATTACH, action="popup_add_plan",
+                   placement="bar", lead_only=True, owner="planning_controls")
+
+
 def _apps_settings_feature():
     return Feature("apps_settings", APPS_SETTINGS, APPS_SETTINGS_WHY, glyph="apps", order=53, section=n_("Share"),
                    children=_apps_settings_rows, owner="chat_destinations")
 
 
 def register_builtins():
-    """The features this module, ``chosen_tools`` and ``goal_loop`` own (Blender-free); the rest register from their
-    modules."""
+    """The features this module, ``chosen_tools``, ``goal_loop`` and ``planning_controls`` own (Blender-free); the rest
+    register from their modules."""
     register(_attach_feature())
     register(_base_mesh_feature())
     register(_goal_feature())
+    register(_plan_feature())
     register(_hands_feature())
     register(_apps_settings_feature())
 

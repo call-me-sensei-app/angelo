@@ -28,7 +28,7 @@ import threading
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
-from . import thread_start
+from . import thread_start, web_preview_frame
 
 PAGE_ROOT = Path(__file__).with_name("web_preview")
 EVENT_WAIT = 15.0          # Seconds between keep-alive comments on an idle event stream.
@@ -242,6 +242,9 @@ class PreviewServer:
         self._viewport = b""
         self._viewport_report = b"{}"
         self._compare = None            # The page's latest Compare request, until the main thread takes it.
+        self.focuses = 0                # Focus messages published: what Angelo shows, for the page's framing.
+        self._frame = None              # What the page frames now, as it last reported it (web_preview_frame).
+        self._focus = {"selected": [], "active": None, "camera": None}
         self._server = open_site(self.token, self)   # The one server, shared with session pages (2.0.1).
 
     @property
@@ -266,11 +269,13 @@ class PreviewServer:
             self._version += 1
             self._changed.notify_all()
 
-    def wait_for_change(self, seen, asked, timeout, drawn=None):
-        """(version, captures asked, viewports) once one moves past what a stream has sent, or after ``timeout``."""
+    def wait_for_change(self, seen, asked, timeout, drawn=None, focused=None):
+        """(version, captures asked, viewports) once one moves past what a stream has sent (or the focus, when
+        ``focused`` is given), or after ``timeout``."""
         with self._changed:
             if self._version == seen and self.captures_asked == asked and self.viewports == (
-                    self.viewports if drawn is None else drawn) and not self.closed:
+                    self.viewports if drawn is None else drawn) and self.focuses == (
+                    self.focuses if focused is None else focused) and not self.closed:
                 self._changed.wait(timeout)
             return self._version, self.captures_asked, self.viewports
 
@@ -292,6 +297,35 @@ class PreviewServer:
             self._viewport_report = body
             self.viewports += 1
             self._changed.notify_all()
+
+    def publish_focus(self, focus):
+        """What Angelo shows now, by object name: ``selected`` (names), ``active`` and ``camera`` (a name or None).
+        The page frames it on request or while it follows; the scene is not exported again. An unchanged focus is
+        not a change. ValueError for anything but these names (never a path or other data)."""
+        if not isinstance(focus, dict) or set(focus) != {"selected", "active", "camera"}:
+            raise ValueError("a focus has exactly selected, active and camera")
+        selected = focus["selected"]
+        if not isinstance(selected, list) or not all(isinstance(name, str) for name in selected):
+            raise ValueError("selected must be a list of names")
+        for field in ("active", "camera"):
+            if focus[field] is not None and not isinstance(focus[field], str):
+                raise ValueError(field + " must be a name or None")
+        focus = {"selected": list(selected), "active": focus["active"], "camera": focus["camera"]}
+        with self._changed:
+            if focus == self._focus:
+                return
+            self._focus = focus
+            self.focuses += 1
+            self._changed.notify_all()
+
+    def page_frame(self):
+        """What the page frames, as it last reported it (``web_preview_frame``), or None before its first report."""
+        with self._changed:
+            return None if self._frame is None else dict(self._frame)
+
+    def focus_bytes(self):
+        with self._changed:
+            return json.dumps(dict(self._focus, version=self.focuses), ensure_ascii=False).encode("utf-8")
 
     def viewport_bytes(self):
         with self._changed:
@@ -346,6 +380,8 @@ class PreviewServer:
         if name == "viewport.png":
             body = self.viewport_bytes()
             return handler._send(200 if body else 404, body or b"", "image/png", head)
+        if name == "focus.json":
+            return handler._send(200, self.focus_bytes(), "application/json; charset=utf-8", head)
         if name == "viewport.json":
             return handler._send(200, self.viewport_report(), "application/json; charset=utf-8", head)
         body, kind = self.static(name)
@@ -359,7 +395,8 @@ class PreviewServer:
         origins = {"http://127.0.0.1:%d" % port, "http://localhost:%d" % port}
         if not handler.own_host() or handler.headers.get("Origin") not in origins:
             return handler._send(403, b"Forbidden")
-        limit = {"capture": MAX_CAPTURE, "feedback": MAX_FEEDBACK, "compare": MAX_COMPARE}.get(name)
+        limit = {"capture": MAX_CAPTURE, "feedback": MAX_FEEDBACK, "compare": MAX_COMPARE,
+                 "frame": web_preview_frame.MAX_BYTES}.get(name)
         try:
             length = int(handler.headers.get("Content-Length", ""))
         except ValueError:
@@ -373,6 +410,12 @@ class PreviewServer:
             if not body.startswith(PNG):
                 return handler._send(400, b"Not a PNG")
             self.receive_capture(body)
+        elif name == "frame":   # What the page frames (web_preview_frame): kept only in its checked shape.
+            frame = web_preview_frame.parse(body)
+            if frame is None:
+                return handler._send(400, b"Not a frame report")
+            with self._changed:
+                self._frame = frame
         else:
             try:
                 report = json.loads(body.decode("utf-8"))
@@ -391,11 +434,11 @@ class PreviewServer:
         handler.send_header("Content-Type", "text/event-stream")
         handler._common()
         handler.end_headers()
-        seen, asked, drawn = None, self.captures_asked, self.viewports
+        seen, asked, drawn, focused = None, self.captures_asked, self.viewports, self.focuses
         self.streams += 1
         try:
             while not self.closed:
-                version, wanted, viewport = self.wait_for_change(seen, asked, EVENT_WAIT, drawn)
+                version, wanted, viewport = self.wait_for_change(seen, asked, EVENT_WAIT, drawn, focused)
                 if self.closed:
                     handler.wfile.write(b"event: closed\ndata: {}\n\n")
                     break
@@ -408,6 +451,9 @@ class PreviewServer:
                 elif viewport != drawn:
                     drawn = viewport
                     handler.wfile.write(b"event: viewport\ndata: %d\n\n" % viewport)
+                elif self.focuses != focused:
+                    focused = self.focuses
+                    handler.wfile.write(b"event: focus\ndata: %d\n\n" % focused)
                 else:
                     handler.wfile.write(b": keep-alive\n\n")
                 handler.wfile.flush()

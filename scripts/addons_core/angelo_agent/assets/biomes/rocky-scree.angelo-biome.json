@@ -1,0 +1,99 @@
+{
+ "schema": "angelo-biome/1",
+ "name": "Rocky scree",
+ "description": "Boulders and loose stones on steep ground, sparse tough grass in between.",
+ "layers": [
+  {
+   "name": "Boulders",
+   "assets": [
+    {
+     "query": "boulder",
+     "kind": "model"
+    }
+   ],
+   "density": 0.03,
+   "spacing": 1.0,
+   "transform": {
+    "scale": [
+     0.6,
+     1.8
+    ],
+    "align": 1.0,
+    "yaw": true,
+    "tilt": 15
+   },
+   "seed": 41,
+   "rules": {
+    "slope": {
+     "min": 20,
+     "max": 70,
+     "soft": 8
+    }
+   }
+  },
+  {
+   "name": "Stones",
+   "assets": [
+    {
+     "query": "rock",
+     "kind": "model"
+    }
+   ],
+   "density": 0.5,
+   "spacing": 1.0,
+   "transform": {
+    "scale": [
+     0.15,
+     0.5
+    ],
+    "align": 1.0,
+    "yaw": true,
+    "tilt": 25
+   },
+   "seed": 42,
+   "rules": {
+    "slope": {
+     "min": 15,
+     "max": 75,
+     "soft": 8
+    },
+    "noise": {
+     "scale": 12,
+     "amount": 0.4
+    }
+   }
+  },
+  {
+   "name": "Tough grass",
+   "assets": [
+    {
+     "query": "grass",
+     "kind": "model"
+    }
+   ],
+   "density": 0.4,
+   "spacing": 1.0,
+   "transform": {
+    "scale": [
+     0.5,
+     1.0
+    ],
+    "align": 0.7,
+    "yaw": true,
+    "tilt": 0.0
+   },
+   "seed": 43,
+   "rules": {
+    "slope": {
+     "min": 0,
+     "max": 45,
+     "soft": 5
+    },
+    "noise": {
+     "scale": 6,
+     "amount": 0.6
+    }
+   }
+  }
+ ]
+}

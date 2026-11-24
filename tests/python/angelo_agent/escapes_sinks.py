@@ -16,6 +16,8 @@ import sys
 
 import bpy
 
+import child_blender   # A child Angelo runs the suite's code from its own file.
+
 CHILD_ENV = ("ANGELO_PROBE_SINK", "LD_PRELOAD", "TZ", "HOME")
 
 
@@ -144,8 +146,7 @@ def _child_value(path, expression):
             "ob = bpy.data.objects['probe']\nscene = ob.users_scene[0]\nscene.frame_set(3)\n"
             "depsgraph = scene.view_layers[0].depsgraph\n"
             "print('CHILD ' + json.dumps({'value': %s}))\n") % (str(path), expression)
-    done = subprocess.run([bpy.app.binary_path, "--background", "--factory-startup", "--python-expr", code],
-                          capture_output=True, text=True, timeout=600)
+    done = child_blender.run(code, capture_output=True, text=True, timeout=600)
     for line in done.stdout.splitlines():
         if line.startswith("CHILD "):
             return json.loads(line[6:])["value"]

@@ -164,6 +164,13 @@ Test-Check "version resource" {
     "{0} / {1} / {2}" -f $info.CompanyName, $info.ProductName, $info.FileVersion
 }
 Test-Check "default folders (background run)" {
+    # The series this source builds (BKE_blender_version.h: BLENDER_VERSION 503 is 5.3): never a literal, which a
+    # base update leaves behind (the 5.2 one failed every identity run on a correct 5.3 folder).
+    $versionLine = Select-String -Path (Join-Path $SourceDir "source\blender\blenkernel\BKE_blender_version.h") `
+        -Pattern "^#define BLENDER_VERSION (\d+)$" | Select-Object -First 1
+    if (-not $versionLine) { throw "BKE_blender_version.h has no BLENDER_VERSION" }
+    $versionNumber = [int]$versionLine.Matches[0].Groups[1].Value
+    $major, $minor = [math]::Floor($versionNumber / 100), ($versionNumber % 100)
     $script = Join-Path $env:TEMP "angelo_identity_probe.py"
     @"
 import bpy, json
@@ -176,10 +183,10 @@ print("ANGELO_PROBE" + json.dumps({"config": bpy.utils.user_resource("CONFIG", c
     if (-not $line) { throw "the probe printed nothing: $output" }
     $probe = ($line -replace "^ANGELO_PROBE", "") | ConvertFrom-Json
     $name = $identity.paths.user_dir_name
-    if ($probe.config -notlike (Join-Path $appData "$name\5.2\config")) { throw "config is $($probe.config)" }
+    if ($probe.config -notlike (Join-Path $appData "$name\$major.$minor\config")) { throw "config is $($probe.config)" }
     if ($probe.cache -notlike (Join-Path $env:LOCALAPPDATA "$name\Cache\*")) { throw "cache is $($probe.cache)" }
     if ((Split-Path $probe.tmp.TrimEnd("\") -Leaf) -notlike ($identity.paths.temp_prefix + "_*")) { throw "temp is $($probe.tmp)" }
-    if ($probe.version[0] -ne 5 -or $probe.version[1] -ne 2) { throw "bpy.app.version is $($probe.version -join '.')" }
+    if ($probe.version[0] -ne $major -or $probe.version[1] -ne $minor) { throw "bpy.app.version is $($probe.version -join '.')" }
     if (-not $before -and (Test-Path $blenderFoundation)) { throw "Angelo created $blenderFoundation" }
     $probe.config
 }

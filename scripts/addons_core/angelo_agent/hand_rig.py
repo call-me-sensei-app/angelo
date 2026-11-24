@@ -200,21 +200,11 @@ def find_hands(skel, hand=None, thumb=None):
     neither margin is clear, ``thumb`` (a bone of the thumb's chain) must name it."""
     if hand is not None and hand not in skel.index:
         raise HandError("The armature has no bone named %r" % hand[:64])
-    candidates = [skel.index[hand]] if hand is not None else range(len(skel.names))
-    found = {}
-    for h in candidates:
-        chains = _digit_paths(skel, h)
-        if not MIN_CHAINS <= len(chains) <= MAX_CHAINS:
-            if hand is not None:
-                raise HandError("Bone %r has %d digit chains of 2-3 deforming bones below it; a hand has 3 to 6"
-                                % (skel.names[h][:64], len(chains)))
-            continue
-        found[h] = chains
-    # A forearm whose one child is the hand also has the hand's digits below a single shared bone: that shared bone
-    # is the hand, not a palm bone of the forearm.
-    def is_hand(bone):
-        return bone in found or MIN_CHAINS <= len(_digit_paths(skel, bone)) <= MAX_CHAINS
-    above = {h for h, chains in found.items() if any(is_hand(palm) for palm, _ in chains if palm is not None)}
+    found, above = _with_digits(skel, [skel.index[hand]] if hand is not None else range(len(skel.names)))
+    if hand is not None and not found:
+        h = skel.index[hand]
+        raise HandError("Bone %r has %d digit chains of 2-3 deforming bones below it; a hand has 3 to 6"
+                        % (skel.names[h][:64], len(_digit_paths(skel, h))))
     if hand is not None and above:
         raise HandError("Bone %r is above a hand; name the hand bone itself" % hand[:64])
     hands = []
@@ -228,6 +218,30 @@ def find_hands(skel, hand=None, thumb=None):
                 raise
             # Unnamed: a bone whose chains are no hand (a skirt, hair, a tail) never refuses the armature's hands.
     return hands
+
+
+def _with_digits(skel, candidates):
+    """({bone: digit chains} for the ``candidates`` with 3-6 digit chains, the set of those above another hand).
+
+    A forearm whose one child is the hand also has the hand's digits below a single shared bone: that shared bone
+    is the hand, not a palm bone of the forearm."""
+    found = {}
+    for h in candidates:
+        chains = _digit_paths(skel, h)
+        if MIN_CHAINS <= len(chains) <= MAX_CHAINS:
+            found[h] = chains
+
+    def is_hand(bone):
+        return bone in found or MIN_CHAINS <= len(_digit_paths(skel, bone)) <= MAX_CHAINS
+    above = {h for h, chains in found.items() if any(is_hand(palm) for palm, _ in chains if palm is not None)}
+    return found, above
+
+
+def hand_bones(skel):
+    """Every bone that carries a hand's digits (3-6 chains of 2-3 deforming bones) and is not above another such
+    bone, whether or not its thumb can be told apart: where it is, ``find_hands`` also names the fingers."""
+    found, above = _with_digits(skel, range(len(skel.names)))
+    return [h for h in found if h not in above]
 
 
 def _classify(skel, h, chains, thumb_name):

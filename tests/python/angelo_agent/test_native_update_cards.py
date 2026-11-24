@@ -17,7 +17,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parents[2] / "scripts/addons_core"))
 from test_native_notice_cards import VIEW, PlanChecks, flat, labels, offer  # noqa: E402
-from angelo_agent import card_kit as kit, update_card  # noqa: E402
+from angelo_agent import addon_compat as compat, card_kit as kit, update_card  # noqa: E402
 
 SIZES = ((1147, 787), (520, 380), (2560, 1440))
 
@@ -135,6 +135,81 @@ class PhaseTests(unittest.TestCase, PlanChecks):
         self.assertNotEqual(first, card.version())
         live.state, live.wait = "ready", "agent"
         self.assertNotEqual(card.version(), first)
+
+
+
+def summary(target=(5, 4, 0), current=(5, 3, 0)):
+    """Four add-ons not yet known to work (one failing, one outside its range, two open ranges), one known."""
+    def item(module, name, **kw):
+        values = dict(version=(1, 0, 0), declared_min=(4, 2, 0), loaded=True)
+        values.update(kw)
+        return compat.Addon(module, name, **values)
+    return compat.summarize([item("a", "Alpha"), item("z", "Zed", extension=True, declared_max=(5, 4, 0)),
+                             item("b", "Beta", cause="AttributeError: bpy_struct has no attribute 'x'"),
+                             item("k", "Kept", extension=True, declared_max=(6, 0, 0)), item("c", "Gamma")],
+                            target, current, platform="macos-arm64")
+
+
+def disclosures(plan):
+    return [op[2] for op in plan.ops if op[0] == "disclosure"]
+
+
+class AddonTests(unittest.TestCase, PlanChecks):
+    """The card names the add-ons not yet known to work on the update's Blender, and what safe start does."""
+
+    def card(self, phase="ready", found=None, **live):
+        found = summary() if found is None else found
+        return update_card.UpdateCard(offer(), "1.0.0", lambda c, o: None, live=Live(phase, **live),
+                                      addons=lambda selected: found)
+
+    def plan(self, card, region=(1147, 787), scale=1.0):
+        return card.layout(VIEW, region[0], region[1], scale, kit.UiState())
+
+    def test_the_card_names_them_most_pressing_first_and_says_what_safe_start_does(self):
+        for phase in ("ready", "notify"):
+            with self.subTest(phase=phase):
+                text = flat(self.plan(self.card(phase, why="permission")))
+                self.assertIn("Not yet known to work on Angelo 1.1: Beta, Zed, Alpha and 1 more.", text)
+                self.assertIn("If one stops Angelo as it starts, the next start opens without your add-ons", text)
+                self.assertIn("Show add-ons", disclosures(self.plan(self.card(phase, why="permission"))))
+
+    def test_the_list_opens_with_a_reason_for_each_and_still_fits(self):
+        card = self.card()
+        card.act("addons", None, Host())
+        plan = self.plan(card)
+        text = flat(plan)
+        self.assertIn("Hide add-ons", disclosures(plan))
+        self.assertIn("Fails to load now: AttributeError: bpy_struct has no attribute 'x'", text)
+        self.assertIn("Made for Blender versions before 5.4.0. Angelo 1.1 uses Blender 5.4.0.", text)
+        self.assertIn("Made for Blender 4.2.0 and later. Its author has not said it works with Blender 5.4.0 yet.",
+                      text)
+        self.assertNotIn("Kept", text, "one known to work is only counted")
+        for region in SIZES:
+            for scale in (1.0, 2.0):
+                with self.subTest(region=region, scale=scale):
+                    self.check_plan(self.plan(card, region, scale), region)
+        before = card.version()
+        card.act("addons", None, Host())
+        self.assertNotEqual(card.version(), before, "the layout follows the toggle")
+        self.assertIn("Show add-ons", disclosures(self.plan(card)))
+
+    def test_all_known_to_work_is_said_plainly(self):
+        found = compat.summarize([compat.Addon("k", "Kept", (1, 0, 0), loaded=True)], (5, 3, 1), (5, 3, 0))
+        plan = self.plan(self.card(found=found))
+        self.assertIn("All 1 of your add-ons are known to work on Angelo 1.1.", flat(plan))
+        self.assertNotIn("Show add-ons", disclosures(plan))
+
+    def test_without_addons_of_the_persons_own_nothing_is_said(self):
+        plan = self.plan(self.card(found=compat.Summary((5, 4, 0))))
+        self.assertNotIn("add-ons", flat(plan))
+        plan = self.plan(update_card.UpdateCard(offer(), "1.0.0", lambda c, o: None, live=Live("ready")))
+        self.assertNotIn("add-ons", flat(plan))
+
+    def test_every_reason_has_its_sentence(self):
+        for why in ("too_new", "too_old", "platform", "needs_update", "newer", "open_range", "no_range",
+                    "not_loaded", "base_unknown"):
+            with self.subTest(why=why):
+                self.assertIn(why, update_card.ADDON_REASONS)
 
 
 class SaveCardTests(unittest.TestCase, PlanChecks):

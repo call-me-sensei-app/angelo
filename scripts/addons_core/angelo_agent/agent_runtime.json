@@ -1,20 +1,22 @@
 {
   "_about": "The one pin of Angelo's agent runtime: the patched OpenAI Codex build the app bundles (agent_runtime.py; doc/angelo/gpt_launch.rst, 'Agent runtime and prompt caching'). The app refuses a runtime that reports another version or lacks a listed feature; build_files/cmake/angelo_agent_runtime.cmake installs exactly the listed files, and a release build (ANGELO_REQUIRE_AGENT_RUNTIME) also its release_marker, which makes the app refuse a path in ANGELO_AGENT_RUNTIME; the release checks and the signer read the same lists. On Windows, upstream_signed names OpenAI's unchanged release executables, which ship with OpenAI's own Authenticode signature (upstream_signer): the signer keeps it and refuses to sign over it, and signs the rest (the fork-built codex.exe, codex-code-mode-host.exe and codex-windows-sandbox-setup.exe); macOS re-signs every file. Change a value here, nowhere else.",
   "name": "OpenAI Codex",
-  "version": "0.166.0",
+  "version": "0.171.0",
   "license": "Apache-2.0",
   "upstream": {
     "repository": "https://github.com/openai/codex",
-    "tag": "rust-v0.166.0",
+    "tag": "rust-v0.171.0",
     "feature_request": "https://github.com/openai/codex/issues/21796"
   },
   "fork": {
-    "branch": "angelo/rust-v0.166.0-gemini-wire",
-    "commit": "caab709d09b56e552daa83c5f640996325affeb0",
+    "branch": "angelo/rust-v0.171.0-2.1.0",
+    "commit": "c4aede52c264e8b3bd1f8b81fea2263000e9dc2d",
     "repository": "https://github.com/call-me-sensei-app/codex",
     "_public_commit": "public_commit and public_tag: the published branch's head (the same tree as commit, the one the bundled codex was built from) and its tag, added once the maintainer publishes the branch."
   },
   "features": ["cacheAffinityKey"],
+  "app_server_flags": ["--ignore-user-config"],
+  "_app_server_flags": "Arguments of `codex app-server` that the pinned build accepts. --ignore-user-config: the runtime reads neither the person's $CODEX_HOME/config.toml, .env nor global AGENTS.md, and writes nothing into that folder's configuration or instructions; the sign-in kept there and -c settings still apply (the fork's ANGELO.md, '`codex app-server --ignore-user-config`'). This list alone passes nothing: runtime_launch passes each argument at every app-server start, agent_runtime refuses to start a runtime whose pin lacks --ignore-user-config, and release_checks refuses such a pin and a build whose `codex app-server --help` lacks one",
   "notifications": ["turn/modelInputImages", "turn/modelRequestStarted"],
   "request_fields": {"DynamicToolCallParams": ["modelStep"]},
   "config_keys": ["code_mode_forward_dynamic_tool_images", "serial_dynamic_tools"],
@@ -43,6 +45,21 @@
       "optional": [],
       "upstream_signed": ["codex-command-runner.exe"],
       "upstream_signer": "OpenAI OpCo, LLC"
+    },
+    "linux": {
+      "_about": "The extracted tarball's agent-runtime folder (beside the angelo executable). The same two programs as macOS: Angelo turns Codex's shell tool off, so Codex's Linux command sandbox (bubblewrap, which needs unprivileged user namespaces) is never started and is not bundled. Built for the GNU target on a glibc_ceiling system (Rocky Linux 8, upstream Blender's floor), with OpenAI's rusty-v8 prebuilt checked against the fork's manifest; release_checks refuses a build needing a newer glibc (elf_info.py). No OS code signing: the release's signed file manifest covers these files.",
+      "folder": "agent-runtime",
+      "release_marker": "agent-runtime-release.json",
+      "rust_target": "x86_64-unknown-linux-gnu",
+      "glibc_ceiling": "2.28",
+      "interpreter": "/lib64/ld-linux-x86-64.so.2",
+      "version_ceilings": {"GLIBC": "2.28", "GCC": "7.0.0"},
+      "_version_ceilings": "The newest symbol version, by prefix, the oldest supported system (Rocky Linux 8: glibc 2.28, libgcc_s from GCC 8, whose newest is GCC_7.0.0) provides. A needed version above its ceiling, or with a prefix not listed here, is refused (elf_info.floor_problems), as are a non-system interpreter and any RUNPATH not under $ORIGIN.",
+      "system_libraries": ["libc.so.6", "libm.so.6", "libdl.so.2", "libpthread.so.0", "librt.so.1", "libutil.so.1",
+                           "libgcc_s.so.1", "ld-linux-x86-64.so.2"],
+      "_system_libraries": "The only shared libraries the Linux programs may load: glibc's own and libgcc_s, present on every glibc 2.28+ system. Anything else (OpenSSL's libssl.so.1.1 vs .3, for one) differs between distributions, so it is linked statically; release_checks refuses a binary that needs another.",
+      "required": ["codex", "codex-code-mode-host"],
+      "optional": []
     }
   }
 }

@@ -115,7 +115,9 @@ PulseAudioDevice::PulseAudioDevice(const std::string& name, DeviceSpecs specs, i
 
 	AUD_pa_context_set_state_callback(m_context, PulseAudio_state_callback, this);
 
-	AUD_pa_context_connect(m_context, nullptr, PA_CONTEXT_NOFLAGS, nullptr);
+	// Angelo: never autospawn a PulseAudio daemon (a program the person's client.conf names): connect only to one
+	// already running, as the desktop's session starts it.
+	AUD_pa_context_connect(m_context, nullptr, PA_CONTEXT_NOAUTOSPAWN, nullptr);
 
 	AUD_pa_threaded_mainloop_start(m_mainloop);
 

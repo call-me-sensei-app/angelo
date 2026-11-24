@@ -10,10 +10,10 @@ exact predicates the Angelo side is graded with:
 * the task list and checks of ``eval_live_tasks.tasks_for`` (the default, long or coverage set);
 * ``angelo_agent.scene_validation.verify`` with ``VerificationContext``;
 * ``scene_digest``, ``bind_checks``, ``grading_targets`` and ``smooth_shaded``, copied verbatim at run
-  time out of ``eval_live_agent_session.py`` (that driver refuses to import
-  outside its own trial, so its helpers are extracted with ``ast``).
+  time out of ``eval_closed_checks.py``, the grading module of the Angelo trial driver
+  (``eval_live_agent_session.py``), extracted with ``ast`` as they always were.
 
-``grade_code`` mirrors ``Trial.grade`` of that session line for line. The only
+``grade_code`` mirrors that driver's ``Trial.grade`` and ``eval_closed_checks.closed_checks`` line for line. The only
 difference is that the read-only digest crosses the socket as JSON, so both
 sides of that comparison are JSON-normalized (tuples become lists; float values
 survive exactly). A question's answer is read by the driver itself
@@ -29,7 +29,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
-SESSION_SCRIPT = HERE / "eval_live_agent_session.py"
+SESSION_SCRIPT = HERE / "eval_closed_checks.py"   # The trial driver's grading helpers (moved there unchanged).
 SESSION_HELPERS = ("scene_digest", "bind_checks", "grading_targets", "smooth_shaded")
 IMPORT_PATHS = (str(ROOT / "scripts/addons_core"), str(HERE))
 
@@ -41,7 +41,7 @@ def session_helpers_source(path=SESSION_SCRIPT):
              if isinstance(node, ast.FunctionDef) and node.name in SESSION_HELPERS}
     missing = [name for name in SESSION_HELPERS if name not in found]
     if missing:
-        raise RuntimeError("eval_live_agent_session.py no longer defines %s" % ", ".join(missing))
+        raise RuntimeError("%s no longer defines %s" % (Path(path).name, ", ".join(missing)))
     return "\n\n\n".join(found[name] for name in SESSION_HELPERS)
 
 

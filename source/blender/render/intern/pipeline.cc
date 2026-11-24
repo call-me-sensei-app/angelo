@@ -970,6 +970,11 @@ void RE_display_init(Render *re)
 
 void RE_display_ensure_gpu_context(Render *re)
 {
+  /* Without a usable GPU the render has no context of its own: its GPU users take their CPU path
+   * or refuse (#WM_gpu_is_available). */
+  if (!WM_gpu_is_available()) {
+    return;
+  }
   re->display->ensure_system_gpu_context();
 }
 

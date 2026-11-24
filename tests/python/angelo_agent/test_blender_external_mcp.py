@@ -563,8 +563,7 @@ def heartbeat():
                 (view_scroll.down if below else view_scroll.up)(target, area, region, distance)
                 return 0.3
             import qa_input   # The person's press (gui_launch's --enable-event-simulate).
-            # The page lays out in region pixels (unscaled, left to right): the rect's centre in window pixels.
-            qa_input.press(target, region.x + rect[0] + rect[2] / 2, region.y + rect[1] + rect[3] / 2)
+            qa_input.press(target, *qa_hit.point(qa_hit.PIXELS, region, rect))   # The page lays out in region pixels.
             state["copy_pressed"] = time.monotonic()
             state["phase"] = "copy_pressed"
             return 0.2
@@ -651,4 +650,5 @@ def finish():
 
 # Held until Angelo's start-up (the first tab build its enable schedules) is over: qa_boot.gated.
 import qa_input  # noqa: E402  (a click on its way holds the tick: qa_input.after_clicks)
+import qa_hit  # noqa: E402  (surface points to window pixels)
 bpy.app.timers.register(qa_boot.gated(qa_input.after_clicks(heartbeat)), first_interval=0.5, persistent=True)

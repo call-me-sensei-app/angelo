@@ -40,6 +40,7 @@ from angelo_agent import studio_workspaces  # noqa: E402
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 # The start-up build stops part-way: Generation Flows' fill fails until the welcome has closed ("built" phase). Set
 # before the start-up build can run: it starts at the first timer pass, and --python runs before the event loop.
@@ -89,20 +90,20 @@ def press(x, y):
 
 
 def click_card(action):
-    from angelo_agent import canvas_rtl, card_host
+    from angelo_agent import card_host
     active = card_host._active
     area = next(a for a in window().screen.areas if a.as_pointer() == active.area)
     region = next(r for r in area.regions if r.type == 'WINDOW')
     rect = next(r for r, a, v in reversed(active.plan.hits) if a == action)
-    press(region.x + canvas_rtl.pointer_x(rect[0] + rect[2] / 2, region.width), region.y + rect[1] + rect[3] / 2)
+    press(*qa_hit.point(qa_hit.PIXELS, region, rect))
 
 
 def click_welcome(action):
-    from angelo_agent import canvas_rtl, intro
+    from angelo_agent import intro
     area = next(a for a in window().screen.areas if a.as_pointer() == intro._open["area"])
     region = next(r for r in area.regions if r.type == 'WINDOW')
     rect = next(r for r, a, v in intro._open["plan"]["hits"] if a == action)
-    press(region.x + canvas_rtl.pointer_x(rect[0] + rect[2] / 2, region.width), region.y + rect[1] + rect[3] / 2)
+    press(*qa_hit.point(qa_hit.PIXELS, region, rect))
 
 
 def settled():

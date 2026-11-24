@@ -54,6 +54,7 @@ import test_native_marble_cache_probe as cache_probe  # noqa: E402
 import test_native_marble_cache_native as cache_native  # noqa: E402
 import test_native_marble_cache_contract as cache_contract  # noqa: E402
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')  # This suite needs the default Director startup.
 ROUNDS = OUT / "rounds"
@@ -155,9 +156,8 @@ def snap(name, crops=True):
     for kind, zoom in (("hero", 2), ("icon", 6)):
         record = drawn.get(kind)
         if crops and record and record["at"] >= redrawn:
-            x, y, w, h = record["rect"]
-            crop = OUT / ("%s-%s.png" % (name, kind))
-            moment[kind + "_pixels"] = rounds.crop(path, (region.x + x, region.y + y, w, h), crop, zoom)
+            crop = OUT / ("%s-%s.png" % (name, kind))   # Region pixels: marble_draw applies scale and mirror.
+            moment[kind + "_pixels"] = rounds.crop(path, qa_hit.rect(qa_hit.RAW, region, record["rect"]), crop, zoom)
             state["screenshots"].append(str(crop))
     state["moments"][name] = moment
     return moment

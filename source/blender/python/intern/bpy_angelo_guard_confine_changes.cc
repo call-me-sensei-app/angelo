@@ -151,7 +151,7 @@ static Facts facts_of(const std::string &path)
 {
   Facts facts;
   BLI_stat_t info;
-  if (BLI_stat(path.c_str(), &info) == 0) {
+  if (lookup_stat(path, &info) == 0) {
     facts.exists = true;
 #ifdef _WIN32
     facts.folder = (info.st_mode & _S_IFDIR) != 0;
@@ -952,37 +952,40 @@ int changes_forget(const std::string &folder_key)
   }
   /* The files now in the folder that a script wrote or moved there, by identity and content: forgiven by identity, so
    * a copy of the same content elsewhere (never forgotten) still counts as the script's. Links are not followed: a
-   * link in the folder names a file elsewhere, which the person did not forget. */
-  std::error_code error;
-  std::filesystem::recursive_directory_iterator walk(
-      std::filesystem::path(reinterpret_cast<const char8_t *>(folder_key.c_str())),
-      std::filesystem::directory_options::skip_permission_denied,
-      error);
-  size_t seen = 0;
-  for (; !error && walk != std::filesystem::recursive_directory_iterator() && seen < 200000;
-       walk.increment(error), seen++)
-  {
-    std::error_code kind_error;
-    if (walk->is_symlink(kind_error) || kind_error || !walk->is_regular_file(kind_error)) {
-      continue;
-    }
-    const std::u8string spelled = walk->path().u8string();
-    const std::string path(spelled.begin(), spelled.end());
-    const Facts facts = facts_of(path);
-    const std::optional<Identity> id = entry_identity(path);
-    if (!id || s.forgiven.count(*id)) {
-      continue;
-    }
-    std::optional<std::string> digest;
-    for (const Content &content : s.contents) {
-      if (content.size != facts.size) {
+   * link in the folder names a file elsewhere, which the person did not forget. Never walked when it is a remote
+   * folder on a share nobody connected (bpy_angelo_guard_confine_remote.hh). */
+  if (lookup_may_touch(folder_key)) {
+    std::error_code error;
+    std::filesystem::recursive_directory_iterator walk(
+        std::filesystem::path(reinterpret_cast<const char8_t *>(folder_key.c_str())),
+        std::filesystem::directory_options::skip_permission_denied,
+        error);
+    size_t seen = 0;
+    for (; !error && walk != std::filesystem::recursive_directory_iterator() && seen < 200000;
+         walk.increment(error), seen++)
+    {
+      std::error_code kind_error;
+      if (walk->is_symlink(kind_error) || kind_error || !walk->is_regular_file(kind_error)) {
         continue;
       }
-      digest = digest ? digest : digest_of(path, facts.size);
-      if ((id->first == content.dev && id->second == content.ino) || (digest && *digest == content.digest)) {
-        s.forgiven.insert(*id);
-        forgotten++;
-        break;
+      const std::u8string spelled = walk->path().u8string();
+      const std::string path(spelled.begin(), spelled.end());
+      const Facts facts = facts_of(path);
+      const std::optional<Identity> id = entry_identity(path);
+      if (!id || s.forgiven.count(*id)) {
+        continue;
+      }
+      std::optional<std::string> digest;
+      for (const Content &content : s.contents) {
+        if (content.size != facts.size) {
+          continue;
+        }
+        digest = digest ? digest : digest_of(path, facts.size);
+        if ((id->first == content.dev && id->second == content.ino) || (digest && *digest == content.digest)) {
+          s.forgiven.insert(*id);
+          forgotten++;
+          break;
+        }
       }
     }
   }

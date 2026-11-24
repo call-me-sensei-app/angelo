@@ -443,7 +443,7 @@ class ChatWiringTests(unittest.TestCase):
         """Any dispatch branch that approves a call or allows scripts is a grant (``GRANTS``)."""
         granted = set()
         for name, module, marks in (("dispatch_action", "chat_view.py", ("ops.angelo.approve",)),
-                                    ("dispatch", "chat_cards.py", ("allow_from_card",))):
+                                    ("dispatch", "chat_cards.py", ("_from_card(",))):   # Every consent a card gives.
             tree = ast.parse((ADDON / module).read_text(encoding="utf-8"))
             for node in ast.walk(_function(tree, name)):
                 body = "".join(ast.unparse(statement) for statement in node.body) if isinstance(node, ast.If) else ""
@@ -454,6 +454,12 @@ class ChatWiringTests(unittest.TestCase):
                                         and isinstance(c.value, str)}
         self.assertTrue(granted)
         self.assertLessEqual(granted, approval_arming.GRANTS)
+
+    def test_every_granting_chat_control_is_shielded_in_c_too(self):
+        """A control armed here is one C arms as well (``grant_guard.SHIELDED``: only after the shield and a move into
+        it), so its ticket needs an aimed press on every path, Always run this exact script included (2.1.0)."""
+        from angelo_agent import grant_guard
+        self.assertLessEqual(approval_arming.GRANTS, grant_guard.SHIELDED)
 
 
 class KeyboardGateTests(ArmingCase):

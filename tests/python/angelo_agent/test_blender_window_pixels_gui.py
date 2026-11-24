@@ -66,6 +66,7 @@ import qa_frames  # noqa: E402  (a reference is a drawn frame)
 import rail_positions_fixture as fx  # noqa: E402
 from angelo_agent import director, live_view, live_view_draw, parallel_sessions, ui, view_editor  # noqa: E402
 from angelo_agent.view_png import encode_png  # noqa: E402
+import qa_hit
 
 REPORT = OUT / "window-pixels-gui.json"
 PIXEL_TOLERANCE = 32       # 8-bit steps: a pixel differs only when a channel is off by more than this
@@ -168,8 +169,8 @@ def compare(label, window, area, shot, seen):
     for region in area.regions:
         if region.width < 4 or region.height < 4:
             continue
-        x0, y0 = round(region.x * scale), round(region.y * scale)
-        x1, y1 = round((region.x + region.width) * scale), round((region.y + region.height) * scale)
+        x0, y0 = (round(v * scale) for v in qa_hit.xy(qa_hit.RAW, region, 0, 0))
+        x1, y1 = (round(v * scale) for v in qa_hit.xy(qa_hit.RAW, region, region.width, region.height))
         a, b = shot[y0:y1, x0:x1].astype(numpy.int16), seen[y0:y1, x0:x1].astype(numpy.int16)
         if a.size == 0:
             continue

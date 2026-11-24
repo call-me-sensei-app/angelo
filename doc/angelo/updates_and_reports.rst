@@ -17,6 +17,11 @@ Two switches decide what is active:
   this build. The key is created in Cloud KMS by the key ceremony below and
   trusted with ``sign_update_feed.py add-key`` before the release build
   (``releasing.rst``); the release signers refuse a build without it.
+* **The Linux release key.** ``linux_release_keys.json`` lists the public keys
+  a Linux release's file manifest may be signed with (`Linux release
+  signing`_). Until the Cloud KMS ceremony adds one, a Linux build trusts no
+  release, so it never installs an update by itself (the card offers the
+  download), and a Linux release build fails its release-ready check.
 * **The crash-report endpoint**, which only a signed feed announces. Until one
   does, the dialog shows Send report disabled, and offers Save report… and
   Report on the website. Sending becomes possible, without a new build, once a
@@ -54,17 +59,24 @@ Module                                    Responsibility
 ``card_host.py``                          One card at a time over the largest 3D view; its modal input.
 ``update_card.py``                        The update notice through its phases (download, ready, restart) and
                                           the generic notice card.
+``update_card_addons.py``                 The update card's add-on section (`Your add-ons and the update`_).
+``addon_compat.py``                       Which of the person's add-ons are known to work on an update's Blender.
+``addon_compat_live.py``                  Blender's side of it: the facts, the load record, repository listings.
 ``update_download.py``                    The resumable, verified download of an update file.
 ``update_delta.py``                       Rebuilding the new app bundle from the installed one and a delta.
 ``update_stage_mac.py``                   macOS: can this app replace itself; unpack and verify the new bundle.
 ``update_stage_win.py``                   Windows: is this a per-user Windows Installer install; the MSI's signer.
+``update_stage_linux.py``                 Linux: is this a release folder as extracted; unpack and check the new
+                                          release against its signed manifest.
+``release_manifest.py``                   Linux: the signed file manifest of a release and the check that a
+                                          folder is exactly it (``linux_release_keys.json``). Fail closed.
 ``update_flow.py``                        Preparing an update in the background (delta, else full; ready.json).
 ``update_hold.py``                        One worker or removal at a time in an update's folder, in this process
                                           and across processes.
 ``update_install.py``                     Handing over to the installer script; reading its result.
 ``update_helpers/``                       The installer scripts (``install_update_macos.sh``,
-                                          ``install_update_windows.cmd`` with ``other_copies_windows.ps1``),
-                                          copied out before they run.
+                                          ``install_update_linux.sh``, ``install_update_windows.cmd`` with
+                                          ``other_copies_windows.ps1``), copied out before they run.
 ``update_ready.py``                       The preparation worker, the card's live phase, retries, throttling.
 ``update_restart.py``                     Restart to Update: the work guard, the save prompt, the hand-over, quit;
                                           the next launch's result.
@@ -81,6 +93,8 @@ Module                                    Responsibility
 ``scripts/angelo/sign_update_feed.py``    Trusts a key (``add-key``), builds, signs (Cloud KMS or a local
                                           rehearsal key) and verifies feeds.
 ``scripts/angelo/make_update_delta.py``   Writes and checks a delta between two published macOS apps.
+``scripts/angelo/sign_linux_release.py``  Linux: trusts a release key (``add-key``), writes the signed manifest,
+                                          signs the download (minisign), verifies a folder or a tarball.
 ========================================  =====================================================================
 
 The bpy-free modules are host-tested directly. ``app_notices.register`` is
@@ -195,11 +209,21 @@ What the person sees
     platform's installer link in the browser and counts as Later.
   * *restarting*: a spinner until Angelo quits; it cannot be dismissed.
 
+  In the *ready* and *notify* phases, and under the two options, the card also
+  says which of the person's add-ons are not yet known to work on the version
+  it installs (`Your add-ons and the update`_).
+
   Later hides the card for 3 days (1 day for a critical release). Skip is not
   offered for a critical release or for a version older than
   ``minimum_supported`` ("Angelo 1.0 is no longer supported. Please update.").
   A release with no download for this platform makes Release notes the
   primary button.
+
+  The card always shows the latest check's offer. A card that a more important
+  one displaced comes back afterwards; when a newer check finds a different
+  offer, the newer card replaces it rather than waiting behind it, and an offer
+  already on screen is not queued to show a second time
+  (``update_ui.show_notice``).
 * **"Restart to Update"** (once the update is ready; before that, "Angelo 1.1
   available") beside the title in Director's top bar and beside the version in
   Manual mode's status bar, until the version is skipped or installed. Both are
@@ -213,6 +237,57 @@ What the person sees
   governs the background download), the last check or the update's state
   ("Downloading Angelo 1.1: 45%", "Angelo 1.1 is ready."), Check Now, Restart to
   Update when ready, What's New, the crash-report choice, View Last Report Sent.
+
+Your add-ons and the update
+---------------------------
+
+Upgrading should not be a gamble on the add-ons a person relies on. So the update
+card names the person's enabled add-ons (never those that ship with Angelo:
+``angelo_safe_start.shipped_here``) that are **not yet known to work** on the
+Blender version the update is built on (the feed's ``blender``; a release of the
+running line without it keeps this line's Blender series), and says what add-on
+safe start does if one of them stops Angelo as it starts (``app_identity.rst``,
+"A start that did not finish"): "If one stops Angelo as it starts, the next start
+opens without your add-ons and names the one that stopped it. Turn it back on in
+Preferences > Add-ons once it has been updated." **Show add-ons** opens the list in
+the card, one sentence per add-on saying why (at most six; the rest are counted).
+When every one is known to work the card says so in one line; a person with no
+add-ons of their own sees nothing.
+
+"Known" rests only on real signals, never on a list of add-on names
+(``addon_compat.judge``, first match wins):
+
+1. **Failing now**: it failed as it loaded in this session (``angelo_safe_start.
+   failed_now``), named with its cause.
+2. **A newer version on the platform**: the repository it came from lists a newer
+   version compatible with the new Blender. Said first, since updating it before
+   Angelo is the fix (more pressing when the installed one's range excludes it).
+3. **Outside its declared range**: an extension's ``blender_version_min``,
+   ``blender_version_max`` (exclusive) or ``platforms``, which Blender itself
+   enforces (it does not load an extension outside them); a legacy add-on's
+   ``bl_info["blender"]`` minimum above the new version.
+4. **Known to work**: it loads in this Angelo now and the update keeps the same
+   Blender series (``MAJOR.MINOR``); or Angelo recorded it loading, at this add-on
+   version, on the new version's series (``angelo_addon_loads``: each completed start
+   writes ``<config>/angelo-start/addon-loads.json`` with module names and versions,
+   never a path, read from the new version's own folder beside this one); or its
+   author closed its range (``blender_version_max``) past the new version.
+5. **Not yet known**: anything else. An open range ("4.2 and later") was written
+   before the new version existed, so it is not taken as proof; only 13 of the 1,415
+   add-ons extensions.blender.org listed when asked for Blender 5.4.0 on 2026-11-14 state a
+   maximum.
+
+The repository listing is Blender's own query (``platform``, ``blender_version``,
+``python_version``; nothing about the person or their add-ons), asked once per
+session per repository on a worker thread, only for an update to another Blender
+series, only for a remote repository that needs no access token and only while
+Blender's online access is allowed, at most 16 MB within a 20-second timeout
+(``addon_compat_live``). Until it answers, or when it cannot, the verdicts stand
+without it. The facts are read on the main thread and again only when the enabled
+add-ons, this session's failures or a listing change; reading them costs Blender's
+cached add-on scan and one small manifest read per extension. Host tests:
+``test_native_addon_compat`` (the verdicts, the listing, the load record) and the
+``AddonTests`` of ``test_native_update_cards``.
 
 The signed feed
 ===============
@@ -282,8 +357,13 @@ one of its subdomains, or on ``github.com`` itself (not its subdomains); a
 crash endpoint that is not https on ``angelo.studio`` or one of its subdomains.
 ``services`` is optional: without ``crash_reports`` there is nowhere to send.
 
-Two optional fields are ignored by a build that predates them (it reads only
-the keys it knows inside a download):
+Three optional fields are ignored by a build that predates them (it reads only
+the keys it knows inside a release and a download):
+
+* ``blender`` in a release: the Blender version it is built on
+  (``MAJOR.MINOR.PATCH``), which the add-on check judges against. The tool
+  writes it from the ``Based on Blender X.Y.Z`` line of the release's
+  ``CHANGELOG.md`` entry; any other form refuses the feed.
 
 * ``deltas`` in a platform's download: at most 8 packages, each from an older
   ``MAJOR.MINOR.PATCH`` listed once, with its own https link, SHA-256, size and
@@ -470,6 +550,100 @@ an Authenticode signature has the feed's signature and the downloads bucket's
 write access as its only guards.
 Keep the bucket's token as restricted as the KMS key.
 
+Linux release signing
+---------------------
+
+Linux has no operating-system code signing, so a Linux release signs its own
+files with the **Linux release key**: ``linux-release`` in Cloud KMS (key ring
+``angelo-release``, project ``<project>``), Ed25519, separate from the feed
+key so either can be rotated or revoked alone, with the same signers. Its
+public keys ship in ``linux_release_keys.json``, in ``update_keys.json``'s
+form, and each one's minisign public key is in
+``doc/angelo/linux_release_keys/<id>.pub`` and on the downloads page.
+``sign_linux_release.py`` does every step and verifies each signature with the
+public key before it writes anything.
+
+* **The file manifest** (``release_manifest.py``): ``angelo-release-manifest.json``
+  at the top of ``Angelo-<version>-linux-x64`` lists every entry of the folder,
+  sorted: each file's size, SHA-256 and executable bit, each link's target (it
+  must stay inside the folder) and each folder. ``angelo-release-manifest.sig``
+  beside it holds the key id and the Ed25519 signature of
+  ``angelo-release-manifest-v1\n`` followed by the SHA-512 of the manifest's
+  bytes: Cloud KMS signs at most 64 KiB, and a whole release's manifest is
+  larger. ``sign_linux_release.py manifest`` writes both on the final folder,
+  before it is packed, and refuses a key the shipped list does not trust and a
+  folder without its own key list. The updater accepts a new release only when
+  ``release_manifest.check_tree`` does: the signature by a trusted key, then
+  exactly the listed entries, nothing missing, added or changed, no special
+  file, set-id bit or file others may write.
+* **The download's signature**: ``Angelo-<version>-linux-x64.tar.xz.minisig``,
+  minisign's default form, which is plain Ed25519 over the file's BLAKE2b-512
+  (not RFC 8032's Ed25519ph, which Cloud KMS does not offer), so KMS signs it
+  whatever the file's size; its trusted comment names the file and the key id.
+  The key number minisign shows is derived from the public key (the first 8
+  bytes of SHA-256 over ``angelo-minisign-keynum\n`` and the key). It signs the
+  tarball itself rather than ``SHA256SUMS``: a Linux release added to a
+  published version (``publish_installers.py --add-to-version``) never
+  rewrites ``SHA256SUMS``. People check a download with
+  ``minisign -Vm Angelo-<version>-linux-x64.tar.xz -P <public key>``, and see that the
+  trusted comment minisign prints names that file (minisign does not bind the name itself).
+* **Release-ready**: ``sign_linux_release.py check-keys`` (an active key is
+  shipped), ``check-tree`` on the folder and ``verify-tarball`` on the download
+  (its ``.minisig``, with the ``minisign`` program too when installed, and the
+  manifest inside, member by member, without extracting). ``publish_installers.py
+  --tarball`` runs ``verify-tarball`` again against the checkout's key list and
+  needs the tarball's clean builder-path receipt, then publishes the tarball and
+  its ``.minisig``, both listed in the tarball's own ``.sha256``.
+
+The key ceremony is the feed key's (above), once, by a project owner, before
+the first Linux release build (builds made before it never trust the key):
+
+1. ``gcloud kms keys create linux-release --keyring angelo-release --location
+   global --project <project> --purpose asymmetric-signing
+   --default-algorithm ec-sign-ed25519 --protection-level hsm`` (``software``
+   where KMS does not offer Ed25519 in an HSM there; record which).
+2. ``roles/cloudkms.signerVerifier`` on ``linux-release`` only, to the feed key's
+   signers; ``roles/cloudkms.admin`` stays with the project owners; Cloud KMS
+   Data Access audit logs on.
+3. ``gcloud kms keys versions get-public-key 1 --key linux-release --keyring
+   angelo-release --location global --project <project> --output-file
+   linux-release-public.pem``.
+4. In a reviewed change: ``python3 scripts/angelo/sign_linux_release.py add-key
+   --key-id linux-<yyyy>-<mm> --pem linux-release-public.pem`` (it refuses the
+   feed's key, a reused id and a private key), which writes the key list entry
+   and ``doc/angelo/linux_release_keys/<id>.pub``.
+5. Rehearse first with a local key (``keygen``, then ``add-key --keys`` on a copy
+   of the list, ``manifest``, ``minisign``, ``verify-tarball`` and ``minisign
+   -V``); record the key's path, protection level and id in the handover.
+
+Rotation and exposure follow the feed key's rules. A stolen Linux release key
+alone installs nothing: Angelo installs only what a feed signed by the feed key
+names by SHA-256 on ``downloads.angelo.studio`` (it does let a compromised
+mirror serve a tarball that passes a person's manual ``minisign -V``: check
+that the trusted comment minisign prints names the file you downloaded). A
+stolen feed key alone gets nothing unpacked: the updater fetches the
+tarball's ``.minisig`` (at most 4 KiB, under the same mirror rules) and
+verifies it against the release keys over the downloaded bytes before
+``lzma`` or ``tarfile`` read any of them; unpacking then gives every mode
+explicitly (never the session's umask) and stops at eight times the download.
+A ready stage is used only while its manifest signature verifies with the keys
+the running build trusts now and the feed still names the same tarball
+(``Ready.download_sha256``, ``Ready.key_id``): a revoked key, an emptied list or
+a respun tarball sends the update back to preparation. The two key lists never
+share a key, revoked entries included (both ``add-key`` commands refuse it, and
+a host test checks the shipped lists), and a release must carry the reviewed
+``linux_release_keys.json`` byte for byte (``manifest``, ``check-tree`` and
+``verify-tarball`` refuse another, such as one that still trusts a rehearsal
+key). Linux crash logs are read from the shared ``/tmp`` only when they are
+this user's alone (``crash_log.mine``): owned by them and writable by nobody
+else. The crash handler (``creator_crash_log.cc``) creates each record, and its
+side file, afresh and ``0600`` whatever the umask, removing an old one of the
+user's first and never opening through a link or over a file another user left
+(``O_CREAT|O_EXCL|O_NOFOLLOW``), so a co-user can neither plant nor rewrite one. The download's ``.minisig`` is checked against the name
+the feed publishes, whatever the cache calls the file, and the PASS lines of
+``sign_linux_release.py`` end with the SHA-256 of the key list they compared
+against.
+
 Installing updates
 ==================
 
@@ -493,7 +667,29 @@ is the *notify* phase with its reason:
     upgrade code, their context and their recorded ``InstallLocation``). An
     install for all users (``ALLUSERS=1``) is updated by its administrator; a
     copied folder or a development build is not Windows Installer's.
-  * Linux: not yet.
+  * **Linux**: the running executable belongs to a release folder exactly as
+    extracted (``update_stage_linux.support``): it holds the release's signed
+    manifest for the running version; every entry in it is what the manifest
+    lists there, by name and kind (the swap moves the whole folder aside and the
+    next version deletes it, so a ``portable`` settings folder, a file the person
+    copied in, or a released file replaced by a folder of their own would be
+    lost: ``modified``); it is not on a read-only file system; the person owns it
+    (another person's folder or ``/opt`` is ``permission``) and nobody else may
+    write it or rename it away: a folder writable by everyone, by a group that is
+    not provably the person's private one (``update_stage_linux.private_group``:
+    named after them, no other member, no other local account's primary group;
+    a proven answer is kept for the session, a failed lookup is asked again),
+    or inside a non-sticky folder others may write, is ``shared``. A release the
+    person extracted is ``0755`` whatever their umask (extraction only removes
+    mode bits, and the release gates refuse a top folder a group may write); a
+    folder the person made and extracted into is ``0775`` under umask 002 with
+    their private group, which still counts as theirs, and the update replaces it
+    with a ``0755`` one. A
+    development build or a distribution's repackaging, which has no manifest, is
+    ``location_linux``; a build that trusts no Linux release key is
+    ``untrusted`` and offers the download at once instead of fetching it every
+    session. The card says which, in the person's language
+    (``update_card.WHY_MANUAL``), and offers the download.
 
 * the version has not failed to install twice already
   (``update_state.install_failures``).
@@ -775,6 +971,72 @@ version and, on Windows, Windows Installer's exit code, plus
   the file, the new version or, after a failure, the old one, in the
   launcher's own folder as its shortcut does: Windows keeps a process's current
   folder from being deleted, and the new version deletes the update's folder.
+
+* **Linux** (``install_update_linux.sh``, ``/bin/bash``, the system's tools
+  only; the relaunched app gets the person's ``PATH`` back): the same
+  hand-shake and wait (``/proc/<pid>/status``, a zombie or a process number
+  reused by another start time counts as ended), then stops if another process
+  runs the installed executable (every ``/proc/<pid>/exe`` compared with it as
+  a file, by device and inode). The new folder was checked against its signed
+  manifest when it was staged (``update_stage_linux.stage``), and right before
+  the script starts its fingerprint is checked again and its manifest
+  signature verified again with the keys the running build trusts now; a
+  process of the same user that could change the stage after that could change
+  the installed app just as well. A stage on another file system is copied
+  beside the installed folder first (``cp -a``) and compared with the stage
+  byte for byte (``diff -r --no-dereference``); a difference, or a missing
+  ``diff``, fails as ``copy`` and changes nothing. Then one atomic exchange of
+  the two folders (``renameat2(RENAME_EXCHANGE)``, through the new release's
+  own Python, else the system's), so the person's path never stands empty, and
+  the old release moves into the update's folder (``previous``, or
+  ``.<name>.previous-<n>`` beside the install on another file system). Where
+  no exchange is possible (an old kernel, a file system without it such as
+  NFS), two renames: first a note beside the install (``<name> - update
+  interrupted.txt``, naming both folders and how to put the old one back) and
+  ``result.txt`` saying ``interrupted``, then the old folder renamed to a visible
+  ``<name> (previous)`` beside it, then the new one into place; the note goes
+  once the swap is done, and a failed second rename puts the old folder back.
+  The folder name and the note are in the person's language: Angelo
+  translates them when the hand-over starts (``update_card.linux_recovery``,
+  never a name that exists) and passes them as ``ANGELO_UPDATE_KEPT``,
+  ``ANGELO_UPDATE_NOTE`` and ``ANGELO_UPDATE_NOTE_TEXT``, in reading order
+  (``ui_text.file_text``: never Blender's pre-shaped visual Arabic), the note
+  always a ``.txt``. Angelo records both paths in the update's
+  ``recovery.json``, a file the script never writes, with the install folder's
+  device and inode, the running version and the SHA-256 of the note's bytes
+  (``update_flow.record_recovery``). Cleanup deletes only what matches all of
+  it, never anything found by a translated name: every recorded or
+  ``previous.txt`` path must be absolute and already normal (no ``.`` or ``..``
+  part), compared as a string, and directly beside the install; the kept folder
+  only when it is the recorded folder with the recorded device, inode and
+  version, a version older than the one now running; the note only when it is
+  the recorded ``.txt``, a regular file opened without following a link or
+  blocking, whose bytes hash to the recorded value and name both folders (the
+  install folder also on its own, not only inside the kept folder's path),
+  while the app at the install runs. Cleanup never raises: its readers open
+  ``recovery.json``, ``previous.txt``, the note and the manifest without
+  blocking and count anything but a regular UTF-8 file as no match; each step
+  (note, leftovers, kept folder) is independent, so one that fails (a note in a
+  sticky shared folder, a read-only mount) never skips the others; and
+  ``update_ready._handle_results_once``, the one way in at launch, logs any
+  exception instead of ending a timer or an operator. The record identifies, it does not
+  authenticate: it lives in Angelo's private update folder, and a writer there
+  could copy another folder's device, inode and version into it. What that
+  reaches is a folder or ``.txt`` directly beside the install, never a link,
+  another depth or another kind of file. The script creates the note with
+  ``O_CREAT|O_EXCL|O_NOFOLLOW`` (through the same Python as the exchange), so a
+  file, link or FIFO that appears at its name refuses the update (``note``) and
+  is never opened. A recorded note is also removed at the next start
+  after an attempt that stopped before it moved anything. At the next start of the installed version an
+  ``interrupted`` result counts as installed (the stop came after the swap), and
+  the previous folder and a note beside a running app are removed.
+  The host tests force this path and a stop between the renames through
+  ``ANGELO_UPDATE_TEST_*`` switches, which Angelo never passes on (it drops every
+  ``ANGELO_UPDATE_*`` variable of its own environment before it starts the
+  script). The folder keeps
+  its path and name, so the person's launchers and desktop entry keep working.
+  The script starts the release's launcher (``angelo``) with the file, in the
+  person's home folder: the new version or, after a failure, the old one.
 
 The next launch
 ---------------

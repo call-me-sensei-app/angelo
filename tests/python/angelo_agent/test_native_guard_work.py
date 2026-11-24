@@ -56,6 +56,13 @@ CLASSIFIED = {
     "live_target.py:__get__:ref": "a weak reference Angelo stores on its own object, called on the main thread "
                                   "(residual: an Angelo object's own state)",
     "marble_draw.py:replay:painter": "a painter the draw itself built from its own table, in the same call",
+    # Calls of a taken value with no name between (``x.get(...)(...)``), seen since the re-review of d67b4e25575:
+    "script_rename_watch.py:__exit__:<pop>": "restore callables its own __enter__ pushed onto its own list, popped by "
+                                              "its own __exit__ on the same thread (residual: an Angelo object's own "
+                                              "state)",
+    "studio_agent.py:execute:<get>": "the started callback of the binding Angelo's own studio built for this call",
+    "view_depth.py:_encoded:<get>": "the encoder in the plan its own caller built for this one picture",
+    "worker_values.py:decode_error:<get>": REGISTRY,
     "session_lease.py:release:finalizer": "the weakref.finalize the lease itself stored on Angelo's own writer (_take), "
                                           "taken back and called by that store's close (Controller.close, through its "
                                           "compacting save); not a hand-off between threads (residual: an Angelo "
@@ -76,9 +83,16 @@ def _direct_calls_of_taken(tree):
                     and isinstance(node.value.func, ast.Attribute) and node.value.func.attr in GETS):
                 for target in node.targets:
                     taken |= {name.id for name in ast.walk(target) if isinstance(name, ast.Name)}
+            if (isinstance(node, (ast.For, ast.AsyncFor)) and isinstance(node.iter, ast.Call)
+                    and getattr(node.iter.func, "id", None) == "iter" and node.iter.args
+                    and isinstance(node.iter.args[0], ast.Attribute) and node.iter.args[0].attr in GETS):
+                taken |= {name.id for name in ast.walk(node.target) if isinstance(name, ast.Name)}   # iter(q.get, x)
         for node in ast.walk(function):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in taken:
                 found.append((function.name, node.func.id, node.lineno))
+            elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Call)   # q.get()(...): no name between.
+                  and isinstance(node.func.func, ast.Attribute) and node.func.func.attr in GETS):
+                found.append((function.name, "<%s>" % node.func.func.attr, node.lineno))
     return found
 
 
@@ -99,6 +113,17 @@ def _long_lived_executors(tree):
             if name in EXECUTORS and id(node) not in scoped:
                 found.append(node.lineno)
     return found
+
+
+class ScanTests(unittest.TestCase):
+    def test_the_scan_sees_every_shape_of_a_taken_call(self):
+        """Re-review of d67b4e25575, SHOULD-5: ``self._jobs.get()(self.bus)`` and ``for f in iter(q.get, None): f()``
+        passed the scan."""
+        source = ("def a(q):\n    q.get()(1)\n"
+                  "def b(q):\n    for f in iter(q.get, None):\n        f()\n"
+                  "def c(q):\n    f = q.get()\n    f()\n")
+        found = sorted((function, name) for function, name, _line in _direct_calls_of_taken(ast.parse(source)))
+        self.assertEqual(found, [("a", "<get>"), ("b", "f"), ("c", "f")])
 
 
 class InventoryTests(unittest.TestCase):
@@ -128,7 +153,9 @@ class InventoryTests(unittest.TestCase):
                               "worker_dispatch.py": ["guard_work.run(call)", "guard_work.run(action)",
                                                      "guard_work.run(on_error, error)",
                                                      "main_calls.append(guard_work.work(call))"],
-                              "controller.py": ["guard_work.work(callback)", "guard_work.run(callback, result)"]}.items():
+                              "controller.py": ["guard_work.work(callback)", "guard_work.run(callback, result)"],
+                              "desktop_linux.py": ["item = guard_work.work(work)", "run_work(item, self.bus)",
+                                                   "run_work = guard_work.run"]}.items():
             text = (ADDON / name).read_text(encoding="utf-8")
             for needle in needles:
                 with self.subTest(module=name, needle=needle):

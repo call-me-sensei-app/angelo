@@ -30,6 +30,42 @@ WEB_PROFILE = {"use_visible": True, "export_apply": True, "export_gpu_instances"
 FBX_DEFAULTS = {"use_mesh_modifiers": True, "use_custom_props": False, "add_leaf_bones": True,
                 "bake_anim_use_all_actions": True}
 REPORT_SUFFIX = ".preflight.json"
+SECTIONS_BUDGET_MS = 1500   # What every section together may add to one preflight (each also declares its own).
+SECTIONS = {}               # key -> (function(window, facts) -> dict | None, budget_ms): read-only report sections.
+_RESERVED = {"target", "format", "engine_version", "findings", "counts", "exported_objects", "check_ms",
+             "version_note", "sections_ms"}
+
+
+def add_section(key, function, budget_ms):
+    """Add (or replace) a read-only section of the report: ``function(window, facts)`` returns a dict for
+    ``report[key]``, or None for nothing. It runs after the engine findings within ``budget_ms`` of what the
+    preflight has left; one that raises never fails the preflight (doc/angelo/engine_preflight.rst, "Sections")."""
+    if key in _RESERVED:
+        raise ValueError("%s is one of the report's own fields" % key)
+    SECTIONS[key] = (function, int(budget_ms))
+
+
+def remove_section(key):
+    SECTIONS.pop(key, None)
+
+
+def apply_sections(window, facts, report, budget_ms=SECTIONS_BUDGET_MS, clock=time.perf_counter):
+    """Run every added section into ``report``, in the order added, while its budget fits."""
+    started, times = clock(), {}
+    for key, (function, own_ms) in list(SECTIONS.items()):
+        if (clock() - started) * 1000.0 + own_ms > budget_ms:
+            report[key] = {"skipped": "budget"}
+            continue
+        began = clock()
+        try:
+            result = function(window, facts)
+        except Exception as error:   # noqa: BLE001 - a section never fails the preflight; its error type is said.
+            result = {"error": type(error).__name__}
+        times[key] = round((clock() - began) * 1000.0, 1)
+        if result is not None:
+            report[key] = result
+    if times:
+        report["sections_ms"] = times
 
 
 def resolve_format(target, fmt="AUTO"):
@@ -89,6 +125,7 @@ def run(window, target, fmt="AUTO", engine_version=None, selection_only=False, p
         low, high = engine_rules.VERSIONS[target]
         report["version_note"] = ("These rules were read from %s %s to %s; %s may differ" % (
             engine_rules.DISPLAY[target], low, high, engine_version))
+    apply_sections(window, facts, report)   # Other modules' read-only sections (the character pre-review).
     report["check_ms"] = round((time.perf_counter() - started) * 1000.0, 1)
     return report, facts, options
 

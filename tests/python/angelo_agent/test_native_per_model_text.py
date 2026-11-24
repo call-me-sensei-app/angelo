@@ -51,8 +51,11 @@ class PerModelTextTests(unittest.TestCase):
         # Plus "angelo_goal holds a goal across turns" after the native goal tools (toolset 51, goal_mode.rst): +39 B,
         # 14,285. Accepted goal-scope correction 0b81c98224d moves that 39B clause to an 82B capability tail: +43B.
         # The release the API facts name, Blender 5.3 (blender_release.RELEASE): +0 B, 14,328.
+        # BAKE_MAPS's for_engine and for_link in angelo_job_start's arguments (+61 B; long_jobs.rst, "Texture sets"): 14,389.
+        # RETOPOLOGY and its faces and symmetry in the job arguments (toolset 57, retopology.rst): +77 B, 14,466.
+        # UV_LAYOUT and its layout in the job arguments (toolset 58, uv_layout.rst): +268 B, 14,734.
         self.assertEqual(digest(providers.CLAUDE_INSTRUCTIONS + CLAUDE_PLAN_INSTRUCTIONS + claude_tail(None)),
-                         ("a16f9e12807b", 14328))
+                         ("57178384951b", 14805))   # Plan mode's clause, agent_guidance.PLAN_SENTENCE (toolset 59): +71 B.
 
     def test_both_runtimes_state_the_job_start_arguments_in_one_form(self):
         from angelo_agent.codex_reference import job_arguments
@@ -94,8 +97,14 @@ class PerModelTextTests(unittest.TestCase):
         # The release the API facts name, Blender 5.3 (blender_release.RELEASE): +0 B, 26,108.
         # Downloads among the deferred families (toolset 55, downloads.rst): +11 B, 26,119; the limits rise by 8 B,
         # to 26,119/26,148 (test_native_codex_launch says why).
-        self.assertEqual(digest(text), ("5b7eba33d436", 26119))
-        self.assertLessEqual(len(text.encode()), 26119)
+        # BAKE_MAPS's for_engine and for_link in angelo_job_start's arguments (+61 B; long_jobs.rst, "Texture
+        # sets"): 26,180; the limits rise by 61 B, to 26,180/26,209.
+        # RETOPOLOGY and its faces and symmetry in the job arguments (toolset 57, retopology.rst): +77 B, 26,257; the
+        # limits rise by 77 B, to 26,257/26,286.
+        # UV_LAYOUT and its layout in the job arguments (toolset 58, uv_layout.rst): +268 B, 26,525; plan mode (toolset 59):
+        # +13 B deferred families, +71 B its clause, 26,609; the limits rise by 84 B, to 26,609/26,638.
+        self.assertEqual(digest(text), ("22dfe80305d4", 26609))
+        self.assertLessEqual(len(text.encode()), 26609)
         # On a runtime that shows tools' pictures without image() (image_proof.codex_guidance): that sentence only,
         # +29 B. Every other runtime keeps the text above. The release the API facts name (Blender 5.3): +0 B, 26,137.
         forwarded = providers.codex_instructions(short_identifiers=True, deferred=True, plan=True, team=True,
@@ -107,8 +116,8 @@ class PerModelTextTests(unittest.TestCase):
         automatic = ("adds one data:image URL per further line, each shown to you automatically;\n"
                      "image(url) is optional (its second argument")
         self.assertEqual(forwarded, text.replace(manual, automatic))
-        self.assertEqual(len(forwarded.encode()), 26148)  # Same native policy, plus only the29B picture fact.
-        self.assertLessEqual(len(forwarded.encode()), 26148)
+        self.assertEqual(len(forwarded.encode()), 26638)  # Same native policy, plus only the29B picture fact.
+        self.assertLessEqual(len(forwarded.encode()), 26638)
 
     def test_deferred_sculpt_policy_arrives_before_any_family_lookup(self):
         from itertools import product
@@ -126,7 +135,7 @@ class PerModelTextTests(unittest.TestCase):
                 self.assertNotIn("mesh_revision", codex_tail(None, deferred=True, team=team))
                 # A non-sculpt lookup receives the same initial policy; no family request is required.
                 if plan:
-                    self.assertLessEqual(len(text.encode()), 26148 if forwarded else 26119)
+                    self.assertLessEqual(len(text.encode()), 26638 if forwarded else 26609)
         restricted = set(COLLABORATOR_TOOLS) - set(SCULPT_NAMES)
         self.assertNotIn(SCULPT_SENTENCE, codex_tail(restricted, deferred=True, team=False))
         for name in SCULPT_NAMES:

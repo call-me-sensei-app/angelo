@@ -60,7 +60,7 @@ class NamesTests(unittest.TestCase):
         self.assertEqual(engine_detect.running([]), frozenset())
 
     def test_an_unsupported_or_failing_system_finds_nothing(self):
-        self.assertEqual(engine_detect.process_names("linux"), [])
+        self.assertEqual(engine_detect.process_names("freebsd14"), [])
         with mock.patch.object(engine_detect, "_mac_names", side_effect=OSError("no libproc")):
             self.assertEqual(engine_detect.running(platform="darwin"), frozenset())
         with mock.patch.object(engine_detect, "_windows_names", side_effect=AttributeError("no kernel32")):
@@ -160,7 +160,7 @@ class InstalledTests(unittest.TestCase):
         seen = []
         engine_detect.installed("win32", {}, lambda pattern: seen.append(pattern) or False)
         self.assertEqual(seen, [])
-        self.assertEqual(engine_detect.installed("linux", {}, lambda pattern: True), frozenset())
+        self.assertEqual(engine_detect.installed("freebsd14", {}, lambda pattern: True), frozenset())
 
 
 class MemoryTests(unittest.TestCase):

@@ -39,9 +39,13 @@ ELLIPSIS = "\u2026"
 
 
 def person_only(message):
-    """Whether a stored row is one of these cards or refusals (an offer, a withdrawn one): the person's UI, never a
-    model's context (``routing.handoff``, ``external_transcript``), whatever made the row (a card, a refused request)."""
-    recipe = message.get("i18n") if isinstance(message, dict) else None
+    """Whether a stored row is one of these cards or refusals (an offer, a withdrawn one), or any row marked
+    ``person_only``: the person's UI, never a model's context (``routing.handoff``, ``external_transcript``), whatever made the row (a card, a refused request)."""
+    if not isinstance(message, dict):
+        return False
+    if message.get("person_only") is True:   # Any such row (a share a script was refused: share_refusal_notice).
+        return True
+    recipe = message.get("i18n")
     return isinstance(recipe, (list, tuple)) and bool(recipe) and recipe[0] in (OFFER, CHANGED, STALE)
 
 

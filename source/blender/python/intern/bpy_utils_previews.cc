@@ -19,6 +19,7 @@
 
 #include "bpy_rna.hh"
 #include "bpy_utils_previews.hh"
+#include "bpy_angelo_guard_confine.hh"
 
 #include "../generic/py_capi_utils.hh"
 
@@ -119,6 +120,12 @@ static PyObject *bpy_utils_previews_load(PyObject * /*self*/, PyObject *args)
                         &path_type,
                         &force_reload))
   {
+    return nullptr;
+  }
+  /* Angelo: the file is read for a confined thread now (a thumbnail job reads it later), so it is judged now, as
+   * `open` is (head-12 re-read SHOULD). */
+  if (BPY_angelo_guard_read_refused_raise(filepath_data.value)) {
+    Py_XDECREF(filepath_data.value_coerce);
     return nullptr;
   }
 

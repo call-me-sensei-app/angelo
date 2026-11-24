@@ -43,6 +43,8 @@
 #include "../generic/python_compat.hh" /* IWYU pragma: keep. */
 #include "../generic/python_utildefines.hh"
 
+#include "bpy_angelo_guard_confine.hh"
+
 namespace blender {
 
 /* Disabled duplicating strings because the array can still be freed and
@@ -3300,6 +3302,14 @@ static StructRNA *bpy_prop_deferred_data_or_srna(PyObject *self,
     return nullptr;
   }
 
+  /* Angelo: a confined script defines no property on Preferences, add-on preferences or the keymap (the review of
+   * a121c9a, M2: a redefined property loses its update). */
+  if (const char *refusal = BPY_angelo_guard_definition_refusal(srna)) {
+    BPY_angelo_guard_raise(refusal, error_prefix);
+    *r_deferred_result = nullptr;
+    return nullptr;
+  }
+
 /* Crash if this is ever used by accident! */
 #ifndef NDEBUG
   *r_deferred_result = reinterpret_cast<PyObject *>(intptr_t(1));
@@ -5773,6 +5783,11 @@ static PyObject *BPy_RemoveProperty(PyObject *self, PyObject *args, PyObject *kw
   }
   if (srna == nullptr) {
     PyErr_Format(PyExc_TypeError, "%s: struct rna not available for this type", error_prefix);
+    return nullptr;
+  }
+  /* Angelo: nor removes one (the review of a121c9a, M2). */
+  if (const char *refusal = BPY_angelo_guard_definition_refusal(srna)) {
+    BPY_angelo_guard_raise(refusal, error_prefix);
     return nullptr;
   }
 

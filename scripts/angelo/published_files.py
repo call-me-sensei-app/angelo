@@ -54,6 +54,7 @@ class Item:
         self.url = layout.url(version, name)
         self.headers = layout.headers(name)
         self.source = None   # A delta's older version; None for an installer and a checksum file.
+        self.signs = None    # A detached signature's installer name (``<installer>.minisig``); None otherwise.
 
 
 def sums_item(version, sums):
@@ -61,8 +62,8 @@ def sums_item(version, sums):
 
 
 def checksum_item(installer, deltas=()):
-    """``(Item, bytes)``: ``<installer>.sha256``, a ``shasum -a 256`` line for the installer and for each delta
-    published with it, so ``shasum -a 256 -c`` checks a download."""
+    """``(Item, bytes)``: ``<installer>.sha256``, a ``shasum -a 256`` line for the installer and for each delta and
+    signature published with it, so ``shasum -a 256 -c`` checks a download."""
     entries = {item.name: item.sha256 for item in [installer, *deltas]}
     data = layout.sums_text(entries).encode("ascii")
     checksum = Item(installer.version, layout.checksum_name(installer.name), None, len(data),
@@ -228,9 +229,10 @@ def coverage(version, sums, owns, exists=None):
     for source, entries, installer in sources:
         if installer is not None:
             strays = sorted(name for name in entries if name != installer
-                            and not layout.is_delta_of(name, version, platforms[installer]))
+                            and not layout.is_delta_of(name, version, platforms[installer])
+                            and not layout.is_signature_of(name, version, platforms[installer]))
             if installer not in entries or strays:
-                problems.append("%s must list %s and only its platform's deltas to %s%s" % (
+                problems.append("%s must list %s and only its platform's deltas to %s and signature%s" % (
                     source, installer, version, "; it lists %s" % ", ".join(strays) if strays else ""))
                 continue
         for name, digest in sorted(entries.items()):

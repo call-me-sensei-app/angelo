@@ -57,7 +57,9 @@ def _job_layout(message, record, state, x, top, width, wrap, line_height):
 
 def attached_height(message, width, wrap, line_height, state):
     """The height of the card below this activity row (0 when it has none)."""
-    from . import flow_chat
+    from . import flow_chat, planning_card
+    if message.get("tool") == "angelo_plan":   # A plan's card (plan_mode.rst).
+        return planning_card.attached_height(message, width, wrap, line_height, state)
     if flow_chat.has_card(message):
         return flow_chat.run_layout(message, 16, 0, width, wrap, line_height)[1]
     record = job_record(message)
@@ -65,7 +67,9 @@ def attached_height(message, width, wrap, line_height, state):
 
 
 def draw_attached(message, state, x, top, width, wrap, line_height):
-    from . import chat_view, flow_chat, studio
+    from . import chat_view, flow_chat, planning_card, studio
+    if message.get("tool") == "angelo_plan":
+        return planning_card.draw_attached(message, state, x, top, width, wrap, line_height)
     if flow_chat.has_card(message):
         ops, _ = flow_chat.run_layout(message, x, top, width, wrap, line_height)
         flow_chat.draw(ops, state["hits"], chat_view.elide, chat_view.shape, chat_view.text, studio.thumbnail)
@@ -85,19 +89,30 @@ def draw_attached(message, state, x, top, width, wrap, line_height):
             state["hits"].append(op[1:])
 
 
+# What Always run this exact script does not cover (the 2.1.0 break-it review, A-2): only the script's own bytes.
+REMEMBER_LIMIT = n_("What it reads, such as a text block, a file or a scene property, isn't covered: a change there "
+                    "doesn't ask again. Angelo doesn't offer this when it sees a script run code it loads, but it "
+                    "can't recognise every way, so check what the script loads.")
 
 
 def always_allow_rows(controller, call, wrap, width, size, font):
     """The note a script card shows above its standing-consent buttons, else ().
 
     Allow for this session (``offers_session_allow``) and Always allow (``offers_always_allow``), in every chat, an
-    External conversation's too."""
+    External conversation's too. Once the person opened a script's exact text, remembering those bytes for this project
+    comes first (``reviewed_scripts``; off in 2.1.0)."""
+    from .script_access import SENTENCE
+    access = wrap(iface_(SENTENCE), width, size, font)   # What a script can reach, said one way (A-8).
+    if controller.offers_remember_script(call):
+        return (wrap(iface_("Always run this exact script in this project runs it again without asking while its text "
+                            "stays exactly the same; any change asks again."), width, size, font) + access
+                + wrap(iface_("You can remove it from Rules in the + menu."), width, size, font)
+                + wrap(iface_(REMEMBER_LIMIT), width, size, font))
     rows = []
     if controller.offers_session_allow(call) or controller.offers_always_allow(call):
         rows += wrap(iface_("Allow for this session runs this chat's scripts without asking until Angelo restarts. "
                             "Always allow runs Angelo's agent's scripts in every Auto chat, connected apps' chats "
-                            "included, until you turn it off in Preferences. Scripts have full access to files, the "
-                            "network and other apps on this computer."), width, size, font)
+                            "included, until you turn it off in Preferences."), width, size, font) + access
     return tuple(rows)
 
 
@@ -106,8 +121,13 @@ def always_allow_button(controller, call):
     buttons = []
     if controller.offers_session_allow(call):
         buttons.append(("script_session_allow", iface_("Allow for this session")))
+    if controller.offers_remember_script(call):
+        buttons.insert(0, ("script_remember", iface_("Always run this exact script in this project")))
     if controller.offers_always_allow(call):
         buttons.append(("script_always_allow", iface_("Always allow")))
+    from . import script_access
+    if buttons and script_access.LIMITS_URL:   # What scripts can reach, beside every offer to run them unasked.
+        buttons.append(("url", iface_(script_access.LINK), script_access.LIMITS_URL))
     return tuple(buttons)
 
 
@@ -142,12 +162,13 @@ def draw_always_allow(call_id, state, x, y, button=None):
     look follows the card.
     """
     from . import chat_view, ui_tokens as tk
-    action, label = button or ("script_always_allow", iface_("Always allow"))
+    action, label = (button or ("script_always_allow", iface_("Always allow")))[:2]
+    value = button[2] if button and len(button) > 2 else call_id   # A link carries its page.
     width = button_width(label)
     chat_view.shape(x, y, width, 28, tk.LINE, 8)
     chat_view.shape(x + 1, y + 1, width - 2, 26, tk.PANEL_HOVER, 7)
     chat_view.text(label, x + 14, y + 9, 12, tk.TEXT)
-    state["hits"].append(((x, y, width, 28), action, call_id))
+    state["hits"].append(((x, y, width, 28), action, value))
     return x + width
 
 
@@ -222,7 +243,7 @@ def dispatch(context, controller, state, action, value):
         approval_wait.reveal(state, controller)
         return
     from .review_again import shielded
-    if action in {"script_session_allow", "script_always_allow"} and shielded(value):
+    if action in {"script_session_allow", "script_always_allow", "script_remember"} and shielded(value):
         return   # A card asked again a moment ago: never a consent the person has not seen (review_again).
     if action == "script_standing_off":   # Narrowing: the chat's line's Turn off.
         from .trusted_scripts_ui import turn_off_standing
@@ -233,9 +254,15 @@ def dispatch(context, controller, state, action, value):
     if action == "script_always_allow":
         from .trusted_scripts_ui import always_allow_from_card
         return bool(always_allow_from_card(context, controller, value))
+    if action == "script_remember":
+        from .trusted_scripts_ui import remember_script_from_card
+        return bool(remember_script_from_card(context, controller, value))
     if action.startswith("flow_"):
         from . import flow_chat
         return flow_chat.dispatch(context, controller, action, value)
+    if action.startswith("plan_"):   # A plan card's or plan mode's chip (planning_card; Go is a grant in its scope).
+        from . import planning_card
+        return planning_card.dispatch(context, controller, state, action, value)
     from . import job_ui
     done = True
     if action == "job_cancel":
@@ -274,6 +301,9 @@ REFUSED = {
                                "right now."),
     "script_always_allow": n_("Scripts weren't allowed: this script is no longer waiting, or a script is running "
                               "right now."),
+    "plan_edit": n_("That approach couldn't be copied: a newer plan replaced it, or planning ended."),
+    "script_remember": n_("This script wasn't remembered: it is no longer waiting, a script is running right now, "
+                          "or the approval couldn't be saved."),
 }
 NOTHING_HAPPENED = n_("That button couldn't do anything right now. Try again in a moment.")
 

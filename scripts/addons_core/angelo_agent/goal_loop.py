@@ -31,7 +31,7 @@ import time
 
 from . import goal_state as G
 from . import goal_probes as P
-from . import goal_text
+from . import goal_text, planning_state as S
 
 REQUEST_KIND = "angelo_goal"
 CONTINUE_KIND = "angelo_continue"   # The person's Continue on a stopped turn (a host request the person clicked).
@@ -172,7 +172,7 @@ def request_started(controller, text, host_kind=None, person=None, *, use_compos
                 if goal is not None and not G.ended(goal):
                     G.end(goal, G.STOPPED, STOPPED_BY_PERSON)   # The person chose another goal in the chat bar.
                 _stamp(controller, pending)
-                pending["objective"] = str(text)[:G.OBJECTIVE_MAX]
+                pending["objective"] = str(S.sent_objective(controller, text))[:G.OBJECTIVE_MAX]   # The person's words.
                 pending["status"] = G.ACTIVE
                 _save(controller, pending)
                 _mark(controller)

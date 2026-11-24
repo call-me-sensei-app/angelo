@@ -25,6 +25,7 @@ Standard library only; no bpy.
 """
 
 import os
+import sys
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -217,11 +218,23 @@ def _exception_line(line, exception):
     return bool(re.fullmatch(r"Nested Exception Record:|Exception (Flags|Parameters)\s*:\s*0x[0-9a-fA-F]{1,16}", line.strip()))
 
 
+def mine(info, uid=None):
+    """True when the file described by ``info`` (an ``os.stat`` result) is this user's alone: owned by them and
+    writable by nobody else. Angelo's crash handler creates its records 0600 whatever the umask
+    (``creator_crash_log.cc``), so a record anyone else may write was not written by it for this person."""
+    if sys.platform == "win32":   # Windows: its temporary folder is the person's own (%TEMP%).
+        return True
+    uid = os.geteuid() if uid is None else uid
+    return info.st_uid == uid and not info.st_mode & 0o022
+
+
 def crash_files(temp_base, now, max_age_days=MAX_AGE_DAYS):
     """Candidate crash logs in the temporary folder, newest first: ``[(path, mtime_ns, size)]``.
 
     Only ``*.crash.txt`` regular files no larger than ``MAX_FILE`` and younger than ``max_age_days``. Whether one is
-    Angelo's is decided by its content (``ParsedLog.owned_by_angelo``): a stock Blender may share the folder.
+    Angelo's is decided by its content (``ParsedLog.owned_by_angelo``): a stock Blender may share the folder. Where the
+    folder can be shared between people (Linux's ``/tmp``), only files that are this user's alone (``mine``): another
+    person's crash is never offered or sent under this person's consent, and nobody else can plant or rewrite one.
     """
     found = []
     try:
@@ -236,6 +249,8 @@ def crash_files(temp_base, now, max_age_days=MAX_AGE_DAYS):
         except OSError:
             continue
         if entry.is_symlink() or not entry.is_file(follow_symlinks=False) or not 0 < info.st_size <= MAX_FILE:
+            continue
+        if hasattr(os, "geteuid") and not mine(info):
             continue
         if now - info.st_mtime > max_age_days * 86400:
             continue

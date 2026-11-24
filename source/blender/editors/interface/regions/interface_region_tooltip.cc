@@ -118,6 +118,9 @@ struct TooltipData {
   uiFontStyle fstyle;
   int wrap_width;
   int toth, lineh;
+  /** Angelo: the control it was opened for, as it was then (`tooltip_free`): only compared, never
+   * read. */
+  AngeloTooltipOwn angelo_own;
 };
 
 BLI_STATIC_ASSERT(int(TIP_LC_MAX) == int(TIP_LC_ALERT) + 1, "invalid lc-max");
@@ -1786,6 +1789,9 @@ ARegion *tooltip_create_from_button_or_extra_icon(
 
   ARegion *region = tooltip_create_with_data(
       C, std::move(data), init_position, is_no_overlap ? &init_rect : nullptr);
+  if (region != nullptr) {
+    static_cast<TooltipData *>(region->regiondata)->angelo_own = ui_angelo_tooltip_own(*but);
+  }
 
   return region;
 }
@@ -2067,6 +2073,13 @@ ARegion *tooltip_create_from_search_item_generic(bContext *C,
 
 void tooltip_free(bContext *C, bScreen *screen, ARegion *region)
 {
+  const TooltipData *data = static_cast<const TooltipData *>(region->regiondata);
+  if (data != nullptr && data->angelo_own.but != nullptr) {
+    /* Angelo: its close restarts what it hid, never the control it describes while it is unchanged. */
+    const AngeloTooltipOwn own = data->angelo_own; /* Copied: the region's data goes with it. */
+    region_temp_remove_tooltip(C, screen, region, own);
+    return;
+  }
   region_temp_remove(C, screen, region);
 }
 

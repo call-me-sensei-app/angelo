@@ -23,7 +23,7 @@ import threading
 import bpy
 from bpy.types import Operator
 
-from . import (grant_guard, managed_policy, preferences_ui, team_connections, team_endpoints, team_lock,
+from . import (grant_guard, managed_policy, policy_notes, preferences_ui, team_connections, team_endpoints, team_lock,
                team_org_policy, team_pages, team_token_store, team_usage_buffer, team_usage_reports, connection_access)
 from .display_text import Text, shown
 from .generative import bind_team_generation
@@ -48,8 +48,6 @@ _chats = None       # Chat sessions last seen: a chat opened re-checks the team'
 
 UNAVAILABLE = n_("Team sign-in is unavailable in this session.")
 MANAGED = n_("Some settings are managed by your organization.")
-MANAGED_PROBLEM = n_("Your organization's Angelo policy has unusable values ({keys}); they were applied in the "
-                     "safest way. Contact your admin.")
 WAITING = n_("Finish signing in in your browser ({console}). Waiting up to 10 minutes.")
 SIGNED_IN_AS = n_("{org} · {email}")
 SEAT = n_("Seat: yes. Team connections use your team's provider keys through Angelo.")
@@ -302,11 +300,13 @@ def _storage(view):
 def draw(layout, ui):
     """The "Angelo team" section of AI Providers. False when the policy hides personal connections."""
     policy = managed_policy.current()
-    if policy.managed:
+    notes = policy_notes.lines(policy)   # Each source's own sentence; the person's file's with no managed policy too.
+    if policy.managed or notes:
         box = layout.box()
-        _wrapped(box, Text(MANAGED), 'LOCKED')
-        if policy.problems:
-            _wrapped(box, Text(MANAGED_PROBLEM, keys=", ".join(policy.problems)), 'ERROR')
+        if policy.managed:
+            _wrapped(box, Text(MANAGED), 'LOCKED')
+        for note in notes:
+            _wrapped(box, note, 'ERROR')
         if not policy.allow_personal_connections:
             _wrapped(box, Text(managed_policy.PERSONAL_OFF))
     layout.separator()

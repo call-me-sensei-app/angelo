@@ -40,6 +40,7 @@ assert not bpy.app.background, "The grant surfaces need a window"
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 import qa_boot  # noqa: E402
 import qa_input  # noqa: E402
+import qa_hit  # noqa: E402  (surface points to window pixels)
 import qa_waits  # noqa: E402
 
 product_env.clear('DISABLE_DEFAULT_CHAT')   # The composer belongs to the default chat.
@@ -199,7 +200,7 @@ def page_row(action, value, label):
 def page_press(hits, action, value=None):
     window, _area, region = prefs_parts()
     rect = next(r for r, a, v in hits if a == action and (value is None or v == value))
-    qa_input.press(window, region.x + rect[0] + rect[2] / 2, region.y + rect[1] + rect[3] / 2)
+    qa_input.press(window, *qa_hit.point(qa_hit.PIXELS, region, rect))   # The page lays out in region pixels.
 
 
 def tick():

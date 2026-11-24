@@ -41,6 +41,7 @@ import translation_cards  # noqa: E402
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 product_env.clear('DISABLE_INTRO')
@@ -300,8 +301,8 @@ def tick():
                 plan = translation_cards.plan()
                 rect = next(rect for rect, action, _ in plan.hits if action == "problem")
                 region = translation_cards.card_host_region()
-                x = region.x + region.width - int(rect[0] + rect[2] / 2)
-                window().event_simulate(type='MOUSEMOVE', value='NOTHING', x=x, y=region.y + int(rect[1] + rect[3] / 2))
+                x, y = qa_hit.ipoint(qa_hit.PIXELS, region, rect)
+                window().event_simulate(type='MOUSEMOVE', value='NOTHING', x=x, y=y)
                 state["phase"] = "card_hover"
                 return .4
             capture(f"{number}-{current['step']}")

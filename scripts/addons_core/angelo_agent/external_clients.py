@@ -51,10 +51,14 @@ DEFAULT_CLIENT = {"claude_code": "claude-code", "codex": "codex", "claude_deskto
 NEVER_FOR_APPS = frozenset(name for name in TOOL_MAP if name.startswith(("angelo_studio_", "angelo_team_",
                                                                          "angelo_flow_", "angelo_workers_"))
                            or name in {"angelo_write_file", "angelo_delete_file", "angelo_read_file", "angelo_list_files",
+                                       "angelo_context_folder_write",   # The person's folder: never an app's to write.
                                        "angelo_memory_update", "angelo_delegate", "angelo_set_workspace_mode",
                                        "angelo_read_reference",
                                        # Turning on the engine link lets an engine connect: the person's call only.
-                                       "angelo_app_feature"})
+                                       "angelo_app_feature",
+                                       # Plan mode's card and Go are the person's own chat's (plan_mode.rst; an
+                                       # External conversation's START is refused too: planning_controls).
+                                       "angelo_plan"})
 # angelo_goal is offered (2.0.1, maintainer: "same benefit, no handicaps"): a goal held from the app's words follows the
 # person's-words rule (goal_mode.rst); its Start under Ask, Resume and the budget stay the person's presses.
 

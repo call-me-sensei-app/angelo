@@ -43,6 +43,8 @@ invert is a property, not a socket.""" % RELEASE
 
 
 SCULPT_SENTENCE = "Sculpt with native angelo_*sculpt* tools, never Python vertex loops or UI gestures."
+# Plan mode (doc/angelo/plan_mode.rst): the one always-sent clause; the deferred tool says the rest.
+PLAN_SENTENCE = "angelo_plan: plan mode, when the person asks to plan or discuss first."
 
 SCULPT_GUIDANCE = """
 angelo_inspect_sculpt returns surface probes and working density; angelo_prepare_sculpt enters Sculpt Mode and can

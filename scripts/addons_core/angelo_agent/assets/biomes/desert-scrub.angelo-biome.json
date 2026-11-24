@@ -1,0 +1,127 @@
+{
+ "schema": "angelo-biome/1",
+ "name": "Desert scrub",
+ "description": "Scattered shrubs and cacti far apart, stones and dry grass on flat and gently sloping ground.",
+ "layers": [
+  {
+   "name": "Cacti",
+   "assets": [
+    {
+     "query": "cactus",
+     "kind": "model"
+    }
+   ],
+   "density": 0.008,
+   "spacing": 2.0,
+   "transform": {
+    "scale": [
+     0.6,
+     1.4
+    ],
+    "align": 0.0,
+    "yaw": true,
+    "tilt": 0.0
+   },
+   "seed": 51,
+   "rules": {
+    "slope": {
+     "min": 0,
+     "max": 25,
+     "soft": 5
+    }
+   }
+  },
+  {
+   "name": "Shrubs",
+   "assets": [
+    {
+     "query": "dry bush",
+     "kind": "model"
+    }
+   ],
+   "density": 0.04,
+   "spacing": 1.5,
+   "transform": {
+    "scale": [
+     0.5,
+     1.2
+    ],
+    "align": 0.0,
+    "yaw": true,
+    "tilt": 0.0
+   },
+   "seed": 52,
+   "rules": {
+    "slope": {
+     "min": 0,
+     "max": 30,
+     "soft": 5
+    },
+    "noise": {
+     "scale": 30,
+     "amount": 0.5
+    }
+   }
+  },
+  {
+   "name": "Stones",
+   "assets": [
+    {
+     "query": "rock",
+     "kind": "model"
+    }
+   ],
+   "density": 0.06,
+   "spacing": 1.0,
+   "transform": {
+    "scale": [
+     0.2,
+     0.8
+    ],
+    "align": 1.0,
+    "yaw": true,
+    "tilt": 0.0
+   },
+   "seed": 53,
+   "rules": {
+    "slope": {
+     "min": 0,
+     "max": 45,
+     "soft": 5
+    }
+   }
+  },
+  {
+   "name": "Dry grass",
+   "assets": [
+    {
+     "query": "dry grass",
+     "kind": "model"
+    }
+   ],
+   "density": 0.25,
+   "spacing": 1.0,
+   "transform": {
+    "scale": [
+     0.5,
+     1.0
+    ],
+    "align": 0.5,
+    "yaw": true,
+    "tilt": 0.0
+   },
+   "seed": 54,
+   "rules": {
+    "slope": {
+     "min": 0,
+     "max": 30,
+     "soft": 5
+    },
+    "noise": {
+     "scale": 10,
+     "amount": 0.6
+    }
+   }
+  }
+ ]
+}

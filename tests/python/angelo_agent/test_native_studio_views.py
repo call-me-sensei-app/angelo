@@ -212,6 +212,19 @@ class StudioViewTests(unittest.TestCase):
         self.assertEqual(self.shows(window), ("IMAGE", "", []))   # Load UI off: the windows stay, fresh.
         self.assertEqual(self.view(mine)["prompt"], "")
 
+    def test_the_latest_model_choice_is_remembered_per_kind_until_a_file_load(self):
+        first, second = self.open_studio(), self.open_studio()
+        studio_views.choose_model(self.view(first.screen.areas[0]), "IMAGE", ("c-1", "gemini-3.1-flash-image"))
+        studio_views.choose_model(self.view(second.screen.areas[0]), "IMAGE", ["c-2", "gpt-image-2.5-flare"])
+        studio_views.choose_model(self.view(second.screen.areas[0]), "3D", ("c-3", "meshy-7"))
+        self.assertEqual(self.view(first.screen.areas[0])["models"]["IMAGE"], ("c-1", "gemini-3.1-flash-image"))
+        self.assertEqual(studio_views.chosen("IMAGE"), ("c-2", "gpt-image-2.5-flare"))   # The latest, as a tuple.
+        self.assertEqual(studio_views.chosen("3D"), ("c-3", "meshy-7"))
+        self.assertIsNone(studio_views.chosen("VIDEO"))
+        for handler in self.handlers.load_pre:
+            handler(None)
+        self.assertIsNone(studio_views.chosen("IMAGE"))   # Studio's own states start fresh; so does this.
+
     def test_a_second_studio_area_in_a_studio_window_has_its_own_state(self):
         window = self.open_studio()
         self.worked_on(window)

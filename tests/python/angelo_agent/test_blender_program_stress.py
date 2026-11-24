@@ -27,7 +27,9 @@ process, with one timing mode:
   operator);
 * ``playback``: ``screen.animation_play`` (Space's operator) starts animation
   playback right after each program's approval and ``animation_cancel`` stops
-  it 0.25 s later.
+  it once the controller's staging probe has held the program for it and the
+  frame has moved (``program_stress_playback``: never on a clock, each
+  playback with a receipt).
 
 The last two reproduce recorded ``interrupted`` failures: keyboard input
 reached the trial window, the frame moved between approval and staging, and
@@ -38,7 +40,8 @@ program is approved and its staging starts in the same UI tick, and a
 simulated key press would only be read after staging had begun (a different
 moment, which the rebind budget of ``program_context`` is not meant to cover).
 The checks then hold the fencing to its contract: every playback made the
-program wait (``playback_waits``) and every frame step was rebound
+program wait (``playback_waits``, and each injection's own receipt, so a miss
+names its cycle, task and call) and every frame step was rebound
 (``frame_rebinds``), with no failure. Run from the
 repository root through the runner (GUI, event simulation)::
 
@@ -95,7 +98,6 @@ CYCLES = int(os.environ.get("ANGELO_STRESS_CYCLES", "100"))
 MODES = ("immediate", "harness", "maintenance", "reset_during_send", "frame_step", "playback")
 SHAPES = {"both": ("recorded", "toolset21"), "recorded": ("recorded",), "toolset21": ("toolset21",)}[
     os.environ.get("ANGELO_STRESS_PLAN_SHAPE", "both")]
-PLAYBACK_SECONDS = .25
 TASK_SET = os.environ.get("ANGELO_STRESS_TASK_SET", "default")
 LONG_TASKS = int(os.environ.get("ANGELO_STRESS_LONG_TASKS", "17"))
 
@@ -105,6 +107,7 @@ from angelo_agent import controller as controller_module, providers, ui  # noqa:
 import eval_live_agent  # noqa: E402
 import eval_live_tasks as live  # noqa: E402
 from program_stress_plans import STOPPED, LongSession  # noqa: E402
+from program_stress_playback import PlaybackInjections  # noqa: E402
 
 # The cube_creation plans of the two failing trials, verbatim.
 CUBE_PLANS = (
@@ -318,6 +321,20 @@ def stop_playback(window):
             bpy.ops.screen.animation_cancel(restore_frame=False)
 
 
+def start_playback(window):
+    with bpy.context.temp_override(window=window):
+        bpy.ops.screen.animation_play()   # What Space runs; playing from now on.
+
+
+def later(function):
+    bpy.app.timers.register(lambda: function() and None, first_interval=0.0)
+
+
+PLAYBACK = PlaybackInjections(lambda: start_playback(STRESS.window()), lambda: stop_playback(STRESS.window()),
+                              lambda: STRESS.window().screen.is_animation_playing,
+                              lambda: STRESS.window().scene.frame_current, later)
+
+
 def inject(call):
     """Disturb the timeline right after a program's approval, as stray keyboard input can."""
     mode = STRESS.mode
@@ -327,21 +344,16 @@ def inject(call):
     window = STRESS.window()
     STRESS.injections[mode] = STRESS.injections.get(mode, 0) + 1
     # Synchronous, inside the approval: the frame has moved (or playback runs) before staging can start.
-    with bpy.context.temp_override(window=window):
-        if mode == "frame_step":
+    if mode == "frame_step":
+        with bpy.context.temp_override(window=window):
             if len(STRESS.injected_calls) % 2:
                 window.scene.frame_set(window.scene.frame_current + 1)
             else:
                 bpy.ops.screen.frame_offset(delta=1)   # What the Right Arrow runs.
-            return
-        bpy.ops.screen.animation_play()   # What Space runs; playing from now on.
-    if not window.screen.is_animation_playing:
+        return
+    # Stopped only after the staging probe held this program (program_stress_playback), never on a timer.
+    if not PLAYBACK.inject(call.id, cycle=STRESS.cycle, shape=STRESS.shape, tool=call.name):
         STRESS.error = "Playback did not start inside the approval"
-
-    def stop():
-        stop_playback(window)
-        return None
-    bpy.app.timers.register(stop, first_interval=PLAYBACK_SECONDS)
 
 
 original_approve = controller_module.Controller.approve_tool
@@ -358,14 +370,25 @@ def approve_tool(self, call, executor, document):
 
 
 controller_module.Controller.approve_tool = approve_tool
+original_waiting = controller_module.Controller._waiting_for_playback
+
+
+def waiting_for_playback(self, call, executor):
+    """The product's own probe, observed: its answer decides; an injected playback stops after a hold."""
+    waiting = original_waiting(self, call, executor)
+    PLAYBACK.observed(call.id, waiting)
+    return waiting
+
+
+controller_module.Controller._waiting_for_playback = waiting_for_playback
 original_complete, original_on_send = Trial.complete, Trial.on_send
 
 
 def complete(trial, status, reason=""):
     interval = original_complete(trial, status, reason)
     record = trial.report["tasks"][-1]
-    window = STRESS.window()
-    stop_playback(window)  # A task never leaves playback running for the next one.
+    PLAYBACK.task_ended(task=record["task"])   # Its receipts named; playback never outlives its task.
+    stop_playback(STRESS.window())
     counts = (record.get("receipt") or {}).get("counts") or {}
     for key in ("frame_rebinds", "staging_restarts", "playback_waits", "tool_failures") + tuple(
             key for key in counts if key.startswith("failure_")):
@@ -433,19 +456,21 @@ def write_and_quit():
         "playback_was_injected": STRESS.injections.get("playback", 0) > 0 or CYCLES < 6,
         # The fencing's contract (program_context): a program approved while playback runs waits for it to stop,
         # and a program whose frame moved between approval and staging is rebound once at the current frame.
-        "every_playback_was_waited_for": STRESS.counts.get("playback_waits", 0) >= STRESS.injections.get("playback", 0),
+        # Each injection's own receipt (program_stress_playback) and the request receipts' count must both cover it.
+        "every_playback_was_waited_for": (not PLAYBACK.misses() and len(PLAYBACK.receipts) == STRESS.injections.get(
+            "playback", 0) and STRESS.counts.get("playback_waits", 0) >= STRESS.injections.get("playback", 0)),
         "every_frame_change_was_rebound": STRESS.counts.get("frame_rebinds", 0) >= sum(STRESS.injections.values()),
     }
     report = {"checks": checks, "success": all(checks.values()), "cycles": CYCLES, "tasks": len(STRESS.tasks),
               "expected_tasks": expected, "failures": STRESS.failures[:50], "failure_count": len(STRESS.failures),
               "by_mode": by_mode, "by_shape": by_shape, "injections": STRESS.injections,
-              "receipt_counts": STRESS.counts, "task_set": TASK_SET,
+              "receipt_counts": STRESS.counts, "playback": PLAYBACK.summary(), "task_set": TASK_SET,
               "seconds": round(time.monotonic() - STRESS.started, 1), "addon_root": str(ADDON_ROOT),
               "driver_error": STRESS.error, "paid_requests": 0}
     (OUT / "program-stress.json").write_text(json.dumps(report, indent=2))
     print("ANGELO_PROGRAM_STRESS", json.dumps({key: report[key] for key in
           ("success", "tasks", "failure_count", "by_mode", "by_shape", "injections", "receipt_counts",
-           "seconds")}), flush=True)
+           "playback", "seconds")}), flush=True)
     bpy.app.timers.register(lambda: bpy.ops.wm.quit_blender() and None, first_interval=.5)
     return None
 

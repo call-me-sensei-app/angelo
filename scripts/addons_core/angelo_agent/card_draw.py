@@ -208,6 +208,10 @@ def _icon(view, name, rect):
         from .skeleton_menu import draw_glyph
         view.shape(x, y, w, h, kit.TEAL_SOFT, r)
         draw_glyph(view, x + 4 * s, y + 4 * s, 32 * s, kit.TEAL)
+    elif name in ("scatter", "look"):   # The + menu tile's glyph (chat_add_menu.draw_glyph), centred in the disc.
+        from .chat_add_menu import draw_glyph
+        view.shape(x, y, w, h, kit.TEAL_SOFT, r)
+        draw_glyph(view, name, cx - 16, cy - 16)
     elif name == "check":
         view.shape(x, y, w, h, kit.TEAL_SOFT, r)
         view.stroke(cx - 9 * s, cy, cx - 3 * s, cy - 7 * s, kit.TEAL, 3.2 * s)

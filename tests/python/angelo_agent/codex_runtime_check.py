@@ -37,7 +37,7 @@ the warm-up and five chats per arm; at most two retries) to OpenAI through one
 connection's dedicated Codex profile, with the product's own checks. A usage
 limit or a sign-in problem stops the run. Usage::
 
-    python3.13 codex_runtime_check.py OUT_DIR [--model gpt-6.1-sol]
+    python3.13 codex_runtime_check.py OUT_DIR [--model gpt-6.2-sol]
         [--authorize-billed-run --connection-id ID --codex-home .../codex-profile/ID]
 """
 
@@ -286,7 +286,7 @@ def extras(chats, fake, result):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("out", type=Path)
-    parser.add_argument("--model", default="gpt-6.1-sol")
+    parser.add_argument("--model", default="gpt-6.2-sol")   # The shipped Sol (2.1.0).
     parser.add_argument("--authorize-billed-run", action="store_true")
     parser.add_argument("--connection-id", default="")
     parser.add_argument("--codex-home", default="")

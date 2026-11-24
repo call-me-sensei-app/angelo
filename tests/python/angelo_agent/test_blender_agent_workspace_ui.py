@@ -45,6 +45,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from program_qa_helpers import spent_budget
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 ui._authentication.start = lambda *args, **kwargs: None
 type(ui._authentication).start = lambda *args, **kwargs: None
@@ -232,7 +233,7 @@ def close_dialog(confirm=True):
         area = next(a for a in window.screen.areas if a.as_pointer() == shown.area)
         region = next(r for r in area.regions if r.type == 'WINDOW')
         rect = next(r for r, action, _value in shown.plan.hits if action == 'accept')
-        return region.x + rect[0], region.y + rect[1], rect[2], rect[3]
+        return qa_hit.rect(qa_hit.PIXELS, region, rect)   # A card lays out in region pixels, mirrored right to left.
 
     def ready():   # The arming's own signal that Accept's shield has passed where it is drawn (card_host_input).
         shown = card_host._active

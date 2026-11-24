@@ -11,7 +11,7 @@ import time
 from itertools import islice
 import bpy
 
-from .tool_specs import READ_ONLY_TOOLS, validate_call
+from .tool_specs import PLAN_NAMES, READ_ONLY_TOOLS, validate_call
 from .live_target import WindowAttribute
 from .studio_spec import STUDIO_NAMES
 from .flow_tool_spec import FLOW_NAMES
@@ -299,7 +299,7 @@ class BlenderExecutor:
             return game_ready_host.execute(self.window, name, arguments)
         if name == "angelo_app_feature":   # A feature's + menu row, after its card (app_feature_host).
             from . import app_feature_host
-            return app_feature_host.execute(self.window, name, arguments)
+            return app_feature_host.execute(self.window, name, arguments, self.studio_context)
         if name.startswith("angelo_engine_link"):   # A link the person turned on (engine_link_tool_host).
             from . import engine_link_tool_host
             return engine_link_tool_host.execute(self.window, name, arguments, self.studio_context)
@@ -326,9 +326,9 @@ class BlenderExecutor:
         if name in RECIPE_NAMES:
             from . import action_recipes
             return action_recipes.execute(self.window,name,arguments)
-        if name in GOAL_NAMES:   # A goal held across turns: its state and the host's measurement (goal_loop).
-            from . import goal_controls
-            return goal_controls.execute(self.studio_context, self.window, arguments)
+        if name in GOAL_NAMES or name in PLAN_NAMES:   # A goal held across turns (goal_loop); plan mode (plan_mode.rst).
+            from . import goal_controls, planning_controls
+            return (goal_controls if name in GOAL_NAMES else planning_controls).execute(self.studio_context, self.window, arguments)
         if name in VIEW_NAMES:
             from . import view_capture
             return view_capture.execute(self.window,arguments,self.observation_store,self.studio_context,True)

@@ -34,6 +34,7 @@
 
 #  include "DNA_userdef_types.h"
 
+#  include "BLI_fileops.hh"
 #  include "BLI_listbase.hh"
 #  include "BLI_vector.hh"
 #  include "BLI_math_vector_c.hh"
@@ -596,6 +597,12 @@ const EnumPropertyItem rna_enum_operator_type_flag_items[] = {
      "before beginning the operation"},
     {OPTYPE_PRESET, "PRESET", 0, "Preset", "Display a preset button with the operators settings"},
     {OPTYPE_INTERNAL, "INTERNAL", 0, "Internal", "Removes the operator from search results"},
+    {OPTYPE_LOCK_BYPASS,
+     "LOCK_BYPASS",
+     0,
+     "Lock Bypass",
+     "Handle events while a job (a render, a bake, a UV pack) locks the interface. Use only for an operator that "
+     "does not touch the data the job uses until it ends"},
     {OPTYPE_MODAL_PRIORITY,
      "MODAL_PRIORITY",
      0,
@@ -1996,6 +2003,31 @@ static std::string rna_operator_description_cb(bContext *C,
 
 static bool rna_Operator_unregister(Main *bmain, StructRNA *type);
 
+/**
+ * Angelo: a confined agent script may not make an operator that runs while a job locks the interface
+ * (#OPTYPE_LOCK_BYPASS); Blender, add-ons and Angelo's own code may (doc/angelo/script_confinement.rst). Checked after
+ * validation and before an operator of the same name is replaced, so a refusal changes nothing.
+ */
+static bool rna_operator_lock_bypass_refused(ReportList *reports,
+                                             const char *error_prefix,
+                                             const char *identifier,
+                                             const int flag)
+{
+  if ((flag & OPTYPE_LOCK_BYPASS) == 0) {
+    return false;
+  }
+  const BLI_FileGate *gate = BLI_fileops_gate_get();
+  if (gate == nullptr || gate->confined == nullptr || !gate->confined()) {
+    return false;
+  }
+  BKE_reportf(reports,
+              RPT_ERROR,
+              "%s '%s': an agent script may not register an operator with bl_options 'LOCK_BYPASS'",
+              error_prefix,
+              identifier);
+  return true;
+}
+
 /* `bpy_operator_wrap.cc` */
 
 extern void BPY_RNA_operator_wrapper(wmOperatorType *ot, void *userdata);
@@ -2040,6 +2072,10 @@ static StructRNA *rna_Operator_register(Main *bmain,
 
   /* validate the python class */
   if (validate(&dummy_operator_ptr, data, have_function) != 0) {
+    return nullptr;
+  }
+
+  if (rna_operator_lock_bypass_refused(reports, error_prefix, identifier, dummy_ot.flag)) {
     return nullptr;
   }
 
@@ -2218,6 +2254,10 @@ static StructRNA *rna_MacroOperator_register(Main *bmain,
     return nullptr;
   }
 
+  if (rna_operator_lock_bypass_refused(reports, error_prefix, identifier, dummy_ot.flag)) {
+    return nullptr;
+  }
+
   if (!WM_operator_py_idname_ok_or_report(reports, identifier, dummy_ot.idname)) {
     return nullptr;
   }
@@ -2316,9 +2356,51 @@ static StructRNA *rna_MacroOperator_refine(PointerRNA *opr)
   return (op->type && op->type->rna_ext.srna) ? op->type->rna_ext.srna : RNA_Macro;
 }
 
+/**
+ * Angelo: an operator type's registration properties (``bl_idname`` .. ``bl_cursor_pending``) are written only while
+ * it registers, into the dummy type validation fills. Afterwards every setter refuses: one assignment through any
+ * instance (``self`` in a modal, an entry of ``WindowManager.operators``) would otherwise change the registered type
+ * for the rest of the session, giving any operator, Blender's own included, #OPTYPE_LOCK_BYPASS past the
+ * registration refusal, clearing a flag an Angelo policy reads, or writing a string past an empty one's single byte
+ * (registration allocates each string at its own length). The flags also read as read-only, so a write raises; a
+ * string stays upstream's silent no-op, for add-ons that set one (a dialog title in ``bl_label``).
+ * doc/angelo/script_confinement.rst.
+ *
+ * The dummy is the only operator type without its properties' struct (#wmOperatorType::srna, made as any type is
+ * appended, C or Python): editable only there, so a type this cannot place counts as registered (fails closed).
+ */
+static bool rna_Operator_type_is_registered(const PointerRNA *ptr)
+{
+  const wmOperator *op = static_cast<const wmOperator *>(ptr->data);
+  return op == nullptr || op->type == nullptr || op->type->srna != nullptr;
+}
+
+static int rna_Operator_registration_editable(const PointerRNA *ptr, const char ** /*r_info*/)
+{
+  /* The flags, once registered: Python reports them read-only. */
+  return rna_Operator_type_is_registered(ptr) ? 0 : PROP_EDITABLE;
+}
+
+static void rna_Operator_bl_options_set(PointerRNA *ptr, int value)
+{
+  if (!rna_Operator_type_is_registered(ptr)) {
+    static_cast<wmOperator *>(ptr->data)->type->flag = value;
+  }
+}
+
+static void rna_Operator_bl_cursor_pending_set(PointerRNA *ptr, int value)
+{
+  if (!rna_Operator_type_is_registered(ptr)) {
+    static_cast<wmOperator *>(ptr->data)->type->cursor_pending = value;
+  }
+}
+
 /* just to work around 'const char *' warning and to ensure this is a python op */
 static void rna_Operator_bl_idname_set(PointerRNA *ptr, const char *value)
 {
+  if (rna_Operator_type_is_registered(ptr)) {
+    return; /* Set when it registered: a silent no-op, as upstream's. */
+  }
   wmOperator *data = static_cast<wmOperator *>(ptr->data);
   char *str = const_cast<char *>(data->type->idname);
   if (!str[0]) {
@@ -2334,6 +2416,9 @@ static void rna_Operator_bl_idname_set(PointerRNA *ptr, const char *value)
 
 static void rna_Operator_bl_label_set(PointerRNA *ptr, const char *value)
 {
+  if (rna_Operator_type_is_registered(ptr)) {
+    return; /* Set when it registered: a silent no-op, as upstream's. */
+  }
   wmOperator *data = static_cast<wmOperator *>(ptr->data);
   char *str = const_cast<char *>(data->type->name);
   if (!str[0]) {
@@ -2352,6 +2437,9 @@ static void rna_Operator_bl_label_set(PointerRNA *ptr, const char *value)
 #  define OPERATOR_STR_MAYBE_NULL_GETSET(attr, attr_maxncpy) \
     static void rna_Operator_bl_##attr##_set(PointerRNA *ptr, const char *value) \
     { \
+      if (rna_Operator_type_is_registered(ptr)) { \
+        return; /* Set when it registered: a silent no-op, as upstream's. */ \
+      } \
       wmOperator *data = (wmOperator *)(ptr->data); \
       char *str = (char *)data->type->attr; \
       if (str && !str[0]) { \
@@ -2540,11 +2628,15 @@ static void rna_def_operator_common(StructRNA *srna)
   RNA_def_property_enum_sdna(prop, nullptr, "type->flag");
   RNA_def_property_flag(prop, PROP_REGISTER_OPTIONAL | PROP_ENUM_FLAG);
   RNA_def_property_enum_items(prop, rna_enum_operator_type_flag_items);
+  RNA_def_property_enum_funcs(prop, nullptr, "rna_Operator_bl_options_set", nullptr);
+  RNA_def_property_editable_func(prop, "rna_Operator_registration_editable");
   RNA_def_property_ui_text(prop, "Options", "Options for this operator type");
 
   prop = RNA_def_property(srna, "bl_cursor_pending", PROP_ENUM, PROP_NONE);
+  RNA_def_property_editable_func(prop, "rna_Operator_registration_editable");
   RNA_def_property_enum_sdna(prop, nullptr, "type->cursor_pending");
   RNA_def_property_enum_items(prop, rna_enum_window_cursor_items);
+  RNA_def_property_enum_funcs(prop, nullptr, "rna_Operator_bl_cursor_pending_set", nullptr);
   RNA_def_property_flag(prop, PROP_REGISTER_OPTIONAL);
   RNA_def_property_ui_text(
       prop,

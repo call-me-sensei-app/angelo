@@ -489,7 +489,7 @@ def approval_details(name, args, target_labels=None):
         return args["code"]
     if name == "angelo_apply_batch":
         return "\n\n".join(approval_message(op["tool"], op["arguments"])["title"] + "\n" + approval_message(op["tool"], op["arguments"])["body"] for op in args["operations"])
-    if name == "angelo_write_file":
+    if name in ("angelo_write_file", "angelo_context_folder_write"):   # Its path inside the folder, never on the disk.
         return args["path"] + "\n\n" + args["content"]
     message = approval_message(name, args)
     return message["title"] + "\n" + message["body"]

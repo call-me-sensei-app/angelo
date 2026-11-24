@@ -41,6 +41,7 @@ import qa_boot  # noqa: E402
 import qa_operator  # noqa: E402
 import qa_canvas_grant  # noqa: E402  (a grant clicked as the person clicks it; a scripted one refused)
 import qa_input  # noqa: E402
+import qa_hit  # noqa: E402  (surface points to window pixels)
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 REPORT = OUT / "fal-trellis-gui.json"
@@ -111,7 +112,8 @@ def press(x, y, kind='LEFTMOUSE'):
     from angelo_agent import studio
     target, area = studio_area()
     r = region()
-    event = SimpleNamespace(type=kind, value='PRESS', mouse_x=r.x + x, mouse_y=r.y + y, mouse_prev_y=r.y + y,
+    x, y = qa_hit.xy(qa_hit.mirrored_about(view().get("mirror")), r, x, y)   # Studio layout, mirrored as drawn.
+    event = SimpleNamespace(type=kind, value='PRESS', mouse_x=x, mouse_y=y, mouse_prev_y=y,
                             unicode="", ctrl=False, oskey=False, alt=False, shift=False)
     handler = qa_operator.stand_in(studio.ANGELO_OT_studio_input, window_pointer=target.as_pointer(), focus_area=None,
                                    dragging=False)

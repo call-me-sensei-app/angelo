@@ -262,6 +262,18 @@ static int crash_write_minimal(int fd, const void *ucontext)
   return frames_num;
 }
 
+/**
+ * A crash record of this user's alone: created afresh (an old record of this user's is removed first, and the
+ * record is never opened through a link or over a file someone else left, which in a shared sticky `/tmp` this user
+ * cannot remove), readable and writable by its owner only, whatever the umask. `crash_log.py` reads only records
+ * that are this user's alone, so a co-user can neither plant one nor rewrite one. Async-signal-safe.
+ */
+static int crash_open_private(const char *filepath)
+{
+  unlink(filepath);
+  return open(filepath, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+}
+
 /** \} */
 
 /* -------------------------------------------------------------------- */
@@ -279,8 +291,14 @@ static void crash_write_full(const char *filepath, int frames_num)
   if (!crash_partial_path(filepath)) {
     return;
   }
-  FILE *fp = BLI_fopen(crash_filepath_partial, "wb");
+  const int partial_fd = crash_open_private(crash_filepath_partial);
+  if (partial_fd == -1) {
+    return;
+  }
+  FILE *fp = fdopen(partial_fd, "wb");
   if (fp == nullptr) {
+    close(partial_fd);
+    unlink(crash_filepath_partial);
     return;
   }
   fputs(crash_header, fp);
@@ -325,7 +343,7 @@ void crash_log_write_posix(int signum, const siginfo_t *info, const void *uconte
   }
 
   BKE_blender_globals_crash_path_get(filepath);
-  const int fd = open(filepath, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+  const int fd = crash_open_private(filepath);
   if (fd == -1) {
     crash_out(STDERR_FILENO, "Unable to save '");
     crash_out(STDERR_FILENO, filepath);

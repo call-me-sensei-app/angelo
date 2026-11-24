@@ -21,6 +21,7 @@
 #include "DNA_sound_types.h"
 #include "DNA_userdef_types.h"
 
+#include "BLI_fileops.hh"
 #include "BLI_math_base.hh"
 #include "BLI_path_utils.hh"
 #include "BLI_string.hh"
@@ -299,10 +300,31 @@ Strip *add_image_strip(Main *bmain, Scene *scene, ListBaseT<Strip> *seqbase, Loa
   return strip;
 }
 
+/**
+ * Angelo: FFmpeg and audaspace open a movie or sound strip's file themselves, past Blender's file operations, so the
+ * confinement's file gate is asked here as those operations would ask it: a confined script's strip never opens a
+ * path the gate refuses (a share, a link into the automounter; doc/angelo/script_confinement.rst). Every caller
+ * reaches it: the Python API, the add-strip operators and C code. Unconfined, the gate answers no at once.
+ */
+static bool strip_file_refused(const char *filepath_abs)
+{
+  if (!BLI_fileops_confine_possible()) {
+    return false;
+  }
+  const BLI_FileGate *gate = BLI_fileops_gate_get();
+  return gate != nullptr && gate->refused(filepath_abs, false);
+}
+
 #ifdef WITH_AUDASPACE
 
 Strip *add_sound_strip(Main *bmain, Scene *scene, ListBaseT<Strip> *seqbase, LoadData *load_data)
 {
+  char filepath_abs[FILE_MAX];
+  STRNCPY(filepath_abs, load_data->path);
+  BLI_path_abs(filepath_abs, BKE_main_blendfile_path(bmain));
+  if (strip_file_refused(filepath_abs)) {
+    return nullptr; /* Even with `allow_invalid_file`: making the sound would open the file. */
+  }
   /* Handles relative paths. */
   bSound *sound = BKE_sound_new_file_exists(bmain, load_data->path, load_data->stream_index);
   SoundInfo info;
@@ -407,7 +429,12 @@ Strip *add_movie_strip(Main *bmain, Scene *scene, ListBaseT<Strip> *seqbase, Loa
   int orig_width = 0;
   int orig_height = 0;
 
-  if (load_data->use_multiview && (load_data->views_format == R_IMF_VIEWS_INDIVIDUAL)) {
+  const bool refused = strip_file_refused(filepath);
+  if (refused && !load_data->allow_invalid_file) {
+    return nullptr;
+  }
+  /* A refused file is never opened: the strip is made as for a missing file, where that is allowed. */
+  if (!refused && load_data->use_multiview && (load_data->views_format == R_IMF_VIEWS_INDIVIDUAL)) {
     char prefix[FILE_MAX];
     const char *ext = nullptr;
     int64_t j = 0;
@@ -419,6 +446,9 @@ Strip *add_movie_strip(Main *bmain, Scene *scene, ListBaseT<Strip> *seqbase, Loa
         char filepath_view[FILE_MAX];
 
         seq_multiview_name(scene, i, prefix, ext, filepath_view, sizeof(filepath_view));
+        if (strip_file_refused(filepath_view)) {
+          continue; /* Each view is its own file, judged as the first. */
+        }
         /* Sequencer takes care of colorspace conversion of the result. The input is the best to be
          * kept unchanged for the performance reasons. */
         anim_arr[j].reset(
@@ -433,7 +463,7 @@ Strip *add_movie_strip(Main *bmain, Scene *scene, ListBaseT<Strip> *seqbase, Loa
     }
   }
 
-  if (is_multiview_loaded == false) {
+  if (is_multiview_loaded == false && !refused) {
     /* Sequencer takes care of colorspace conversion of the result. The input is the best to be
      * kept unchanged for the performance reasons. */
     anim_arr[0].reset(

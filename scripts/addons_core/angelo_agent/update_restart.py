@@ -107,6 +107,9 @@ def _other_instances(ready):
         from . import update_stage_mac
         executable = update_stage_mac.info(ready.install_root).get("CFBundleExecutable", "")
         return update_stage_mac.other_instances(ready.install_root, executable, os.getpid())
+    if ready.family == "linux":
+        from . import update_stage_linux
+        return update_stage_linux.other_instances(bpy.app.binary_path, os.getpid())
     from . import update_stage_win
     return update_stage_win.other_instances(bpy.app.binary_path, os.getpid())
 
@@ -378,7 +381,15 @@ def _executable(ready):
     return Path(bpy.app.binary_path).name
 
 
+def _program(ready):   # Linux: the running executable's path in the install folder (the other-copy check).
+    from . import update_stage_linux
+    return update_stage_linux.relaunch_path(bpy.app.binary_path, ready.install_root) if ready.family == "linux" else ""
+
+
 def _launcher(ready):
+    if ready.family == "linux":   # The release's launcher (or the executable) in the folder: started afterwards.
+        from . import update_stage_linux
+        return update_stage_linux.relaunch_target(bpy.app.binary_path, ready.install_root)
     if ready.family != "windows":
         return ""
     try:
@@ -410,7 +421,7 @@ def handle_results(preparer, state_directory):
     keep = set()
     for version, result in preparer.results():
         work = owned_paths.require_writable(preparer.work(version))   # Under the vouched updates folder (C).
-        if result["status"] == "installed" and version == current:
+        if version == current and (result["status"] == "installed" or result.get("step") == "interrupted"):
             update_flow.remove_previous(work, preparer.support()[1])
             _record(state_directory, "", 0)
             if update_install.needs_reboot(result):   # Still a success; said once, even if the folder outlives this.
@@ -418,6 +429,7 @@ def handle_results(preparer, state_directory):
                 _notice(REBOOT_TITLE, REBOOT_BODY, version=app_version.display(version))
             continue
         (work / update_install.RESULT_FILE).unlink(missing_ok=True)
+        update_flow.forget_note(work, preparer.support()[1])   # Linux: a stop before the swap leaves the app running.
         if app_version.parse(version) > app_version.parse(current):
             keep.add(version)
             if result["status"] == "failed":

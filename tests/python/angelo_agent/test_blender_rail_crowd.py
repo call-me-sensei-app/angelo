@@ -68,6 +68,7 @@ import addon_utils  # noqa: E402
 addon_utils.enable('angelo_agent', default_set=False, persistent=False)
 from angelo_agent import (connect_hero, drawn_view, live_view, live_view_draw, parallel_access,  # noqa: E402
                           parallel_sessions, rail_pictures, session_rail, session_rail_draw, session_rail_input)
+import qa_hit
 
 WORKERS = 16
 DIRECTOR = os.environ.get('ANGELO_CROWD_DIRECTOR') == '1'
@@ -391,9 +392,8 @@ def crowd(now):
             state.setdefault('base_scale', preferences.ui_scale)
             preferences.ui_scale = scale
         elif stage == 'wheel':
-            x, y, w, h = plan().tiles[-1].rect
-            r = region()
-            window.event_simulate(type='WHEELDOWNMOUSE', value='PRESS', x=int(r.x + x + w / 2), y=int(r.y + y + h / 2))
+            x, y = qa_hit.ipoint(qa_hit.RAW, region(), plan().tiles[-1].rect)   # The rail reads region pixels.
+            window.event_simulate(type='WHEELDOWNMOUSE', value='PRESS', x=x, y=y)
         elif stage == 'switch':
             session_rail_input.switch(workers[-1], window)
         redraw()

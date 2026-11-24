@@ -16,11 +16,17 @@ Sources, highest precedence first (a key set by an earlier source wins):
   under ``HKEY_CURRENT_USER``.
 * Linux: ``/etc/angelo/policy.json``.
 * ``ANGELO_POLICY_FILE`` (a JSON file), lowest: for testing a policy without
-  MDM. It can't override any key a managed source sets.
+  MDM. It can't override any key a managed source sets, and since whoever
+  starts Angelo names it (a coding agent's shell included), it may only narrow
+  access (``narrowing``): a switch applies unless set to its widening value;
+  every other key is left out and listed in ``Policy.ignored``, and an unusable
+  value in it applies restrictively and is listed in ``Policy.file_problems``
+  (``with_person_file``), never in the organization's ``Policy.problems``.
 
 Every key is optional; an unset key keeps Angelo's default. A value of the
 wrong type or form is never ignored silently: it is reported in
-``Policy.problems`` and applied in the restrictive direction (an ``Allow…``
+``Policy.problems`` (``Policy.file_problems`` when the person's own file set
+it) and applied in the restrictive direction (an ``Allow…``
 switch reads as off, ``RequireTeamSignIn`` as on, an invalid URL or
 organization stops team sign-in), so a typo can't widen access.
 
@@ -68,6 +74,8 @@ KEYS = {
     "UpdateFeedURL": ("update_feed_url", "feed"),
     "CustomEndpoints": ("custom_endpoints", "endpoints"),
 }
+# A key that applies only beside another: an organization's own model servers run on that organization's seats only.
+REQUIRES = {"CustomEndpoints": ("Organization",)}
 INVALID = "invalid"  # console_url / gateway_url / organization when the managed value can't be used.
 _TRUE, _FALSE = {"1", "true", "yes", "on"}, {"0", "false", "no", "off"}
 _DOMAIN = re.compile(r"(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}")
@@ -98,7 +106,9 @@ class Policy:
     custom_endpoints: tuple | None = None
     keys: frozenset = frozenset()   # Keys a source set.
     sources: tuple = ()             # Where they came from, for the About text.
-    problems: tuple = ()            # Keys whose values were unusable and applied restrictively.
+    problems: tuple = ()            # Managed keys whose values were unusable and applied restrictively.
+    ignored: tuple = ()             # Keys of the person's own file (ANGELO_POLICY_FILE) left out: they only narrow.
+    file_problems: tuple = ()       # Keys of the person's own file whose values were unusable (applied restrictively).
     organization_keys: frozenset = frozenset()  # The organization's app-policy switches that restrict (off, or required).
 
     @property
@@ -233,11 +243,13 @@ def combine(sources):
         problems += invalid
         keys.update(entries)
         fields.update(parsed)
-    if fields.get("custom_endpoints") and fields.get("organization", "") in ("", INVALID):
+    for key, needed in REQUIRES.items():
         # An organization's own model servers run on that organization's seats only: without a usable Organization
         # they would run (and count usage) on whichever team signs in, so they are off and the problem is shown.
-        fields["custom_endpoints"] = ()
-        problems += [] if "CustomEndpoints" in problems else ["CustomEndpoints"]
+        name = KEYS[key][0]   # A needed key is met when a source set it with a usable value, whatever its kind.
+        if fields.get(name) and any(n not in keys or n in problems for n in needed):
+            fields[name] = ()
+            problems += [] if key in problems else [key]
     return replace(Policy(), **fields, keys=frozenset(keys), sources=tuple(labels), problems=tuple(problems))
 
 
@@ -257,7 +269,7 @@ def _read_json(path):
         with open(path, "rb") as handle:
             data = handle.read(MAX_FILE + 1)
         value = json.loads(data) if len(data) <= MAX_FILE else None
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):   # Too deep for the parser: no policy, never an error.
         return None
     return value if isinstance(value, dict) else None
 
@@ -282,7 +294,8 @@ def windows_sources(registry=None):
     """HKLM then HKCU policy values; ``registry`` is ``winreg`` (a fake in tests)."""
     if registry is None:
         import winreg as registry
-    output = []
+    from . import policy_windows
+    output, machine = [], policy_windows.Variables(registry)
     for hive, label in ((registry.HKEY_LOCAL_MACHINE, "HKEY_LOCAL_MACHINE"),
                         (registry.HKEY_CURRENT_USER, "HKEY_CURRENT_USER")):
         try:
@@ -298,8 +311,8 @@ def windows_sources(registry=None):
                 except OSError:
                     break
                 if kind == registry.REG_EXPAND_SZ and isinstance(value, str):
-                    # Group Policy's "expandable string" (e.g. %ProgramData%\roots.pem): Windows expands it.
-                    value = getattr(registry, "ExpandEnvironmentStrings", os.path.expandvars)(value)
+                    # Group Policy's "expandable string" (e.g. %ProgramData%\roots.pem), from the machine alone.
+                    value = machine.expand(value)
                 if kind in {registry.REG_DWORD, registry.REG_SZ, registry.REG_EXPAND_SZ, registry.REG_MULTI_SZ}:
                     values[name] = value
                 index += 1
@@ -326,9 +339,41 @@ def load(platform=None, environ=None, *, mac=mac_sources, windows=windows_source
         sources = [(LINUX_FILE, value)] if value is not None else []
     test_file, _variable = product_env.lookup(TEST_FILE_VARIABLE, environ)
     value = read_json(test_file) if test_file else None
-    if value is not None:
-        sources.append((test_file, value))
-    return combine(sources)
+    return with_person_file(sources, test_file, value)
+
+
+def with_person_file(sources, label, value):
+    """The policy of the managed ``sources`` and the person's own file (``value``, read from ``label``): the file
+    only narrows (``narrowing``), what it couldn't set is ``ignored`` and what was unusable in it ``file_problems``,
+    never the organization's ``problems``; keys a managed source sets are not judged from it at all."""
+    managed = combine(sources)
+    if value is None:
+        return managed
+    kept, ignored = narrowing({k: v for k, v in value.items() if k not in managed.keys})   # Managed keys win anyway.
+    policy = combine(sources + [(label, kept)])
+    file_problems = tuple(k for k in policy.problems if k in kept and k not in managed.problems)
+    return replace(policy, problems=tuple(k for k in policy.problems if k not in file_problems), ignored=ignored,
+                   file_problems=file_problems)
+
+
+NARROW = {"allow": False, "require": True, "disable": True}   # The one value of a kind that only takes access away.
+
+
+def narrowing(entries):
+    """``(the entries that only narrow access, the keys left out)`` of a source the person controls
+    (``ANGELO_POLICY_FILE``): a switch, unless set to its widening value (an unusable one is ``parse``'s to apply
+    restrictively, as from any source); nothing that grants, adds, points elsewhere or names anything (apps, roots,
+    servers, consoles, feeds, organizations, contacts), not even an empty list of servers."""
+    kept, ignored = {}, []
+    for key, value in (entries.items() if isinstance(entries, dict) else ()):
+        if key not in KEYS:
+            continue
+        kind = KEYS[key][1]
+        if kind in NARROW and _boolean(value) is not (not NARROW[kind]):
+            kept[key] = value
+        else:
+            ignored.append(key)
+    return kept, tuple(ignored)
 
 
 _current = None
@@ -354,9 +399,14 @@ def reload():
     return _current
 
 
+# Fields that only say where values came from, or what was left out or unusable: they decide nothing a process may do.
+DISPLAY_FIELDS = frozenset({"keys", "sources", "problems", "organization_keys", "admin_contact", "ignored",
+                            "file_problems"})
+
+
 def effective(policy):
-    """What decides what a process under ``policy`` may do: everything but the admin contact and where it came from."""
-    return replace(policy, admin_contact="", sources=())
+    """What decides what a process under ``policy`` may do: everything but ``DISPLAY_FIELDS``."""
+    return replace(policy, **{name: getattr(Policy(), name) for name in DISPLAY_FIELDS})
 
 
 def current():

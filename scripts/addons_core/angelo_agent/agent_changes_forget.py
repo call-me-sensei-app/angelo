@@ -70,8 +70,10 @@ def forget(folder):
 
 def draw_preferences(layout):
     """The add-on's own preferences (Add-ons ▸ Angelo Agent Chat) and the page-less AI Providers fallback, after
-    Always allow scripts: what the record does (wrapped, never clipped in any language), then the action. The
-    interactive AI Providers canvas page (providers_page_model) has no such section."""
+    Always allow scripts: what the record does (wrapped, never clipped in any language), then the action, whose
+    tooltip says what it does. The interactive AI Providers canvas page has it as a row of Agent permissions
+    (providers_page_model) and the chat bar's + menu under Apps and settings (chat_destinations); a row's line is
+    what the click does (the operator's own description), never the protection it lifts."""
     from .ui_kit import paragraph
     column = layout.column(align=True)
     paragraph(column, iface_(EXPLAINED), icon='INFO')

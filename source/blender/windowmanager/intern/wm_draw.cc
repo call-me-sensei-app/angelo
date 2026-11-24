@@ -28,6 +28,7 @@
 #include "BLI_math_vector_c.hh"
 #include "BLI_math_vector_types.hh"
 #include "BLI_rect.hh"
+#include "BLI_vector.hh"
 #include "BLI_utildefines.hh"
 
 #include "BKE_context.hh"
@@ -79,6 +80,7 @@
 #include "wm_window.hh"
 #include "wm_window_private.hh"
 
+#include "UI_interface_c.hh" /* Angelo: `UI_angelo_note_uncovered`. */
 #include "UI_resources.hh"
 
 #include "IMB_colormanagement.hh"
@@ -1287,12 +1289,74 @@ static void wm_draw_window_onscreen(bContext *C, wmWindow *win, int view, const 
   }
 
   /* Blend in floating regions (menus). */
+#ifdef WITH_PYTHON
+  /* Angelo: every temporary region drawn (a menu, popover, dialog, pie, search box, tooltip) covers
+   * the grant guard's consent regions under it, where it is drawn now; the window's covers are
+   * exactly these, so one freed by any path goes too (`Authority::sync_covers`). */
+  Vector<const void *, 8> cover_keys;
+  Vector<int, 32> cover_rects; /* x, y, width, height of each. */
+  Vector<bool, 8> cover_restart_only;
+  Vector<const void *, 32> shown_regions; /* Every region it shows: a gone one's canvas menu and surfaces go. */
+  for (const ARegion &region : screen->regionbase) {
+    if (region.runtime->visible) {
+      shown_regions.append(&region);
+    }
+  }
+  /* Every area's overlapping region drawn now (a sidebar, toolbar, transparent header, HUD, asset
+   * shelf) restarts what it covered when it hides, shrinks or moves; Blender's routing keeps input
+   * over it from what is beneath (`wm_event_pointer_region`), so it refuses nothing (the review of
+   * f6b01a9..da9ba66, SHOULD 1). */
+  ED_screen_areas_iter (win, screen, area) {
+    for (ARegion &region : area->regionbase) {
+      if (region.runtime->visible) {
+        shown_regions.append(&region);
+      }
+      if (region.overlap && region.runtime->visible && !BLI_rcti_is_empty(&region.winrct)) {
+        const rcti &rect = region.winrct;
+        cover_keys.append(&region);
+        cover_rects.extend({rect.xmin, rect.ymin, BLI_rcti_size_x(&rect) + 1, BLI_rcti_size_y(&rect) + 1});
+        cover_restart_only.append(true);
+      }
+    }
+  }
+  float startup_cover[4];
+  WM_angelo_startup_cover_get(startup_cover);
+  if (startup_cover[3] > 0.0f) { /* The startup cover hides the screen: a cover until it lifts (NIT 3). */
+    static const char startup_cover_key = 0;
+    rcti rect;
+    WM_window_screen_rect_calc(win, &rect);
+    cover_keys.append(&startup_cover_key);
+    cover_rects.extend({rect.xmin, rect.ymin, BLI_rcti_size_x(&rect) + 1, BLI_rcti_size_y(&rect) + 1});
+    cover_restart_only.append(false);
+  }
+#endif
   for (ARegion &region : screen->regionbase) {
     if (!region.runtime->visible) {
       continue;
     }
+#ifdef WITH_PYTHON
+    const rcti rect = ui::UI_angelo_temporary_cover(&region); /* Its opaque part, never its shadow. */
+    cover_keys.append(&region);
+    cover_rects.extend({rect.xmin, rect.ymin, BLI_rcti_size_x(&rect) + 1, BLI_rcti_size_y(&rect) + 1});
+    cover_restart_only.append(false);
+#endif
     wm_draw_region_blend(&region, 0, true);
   }
+#ifdef WITH_PYTHON
+  for (const BPY_AngeloUncovered &gone : BPY_angelo_guard_sync_covers(win,
+                                                                      cover_keys.data(),
+                                                                      cover_rects.data(),
+                                                                      cover_restart_only.data(),
+                                                                      int(cover_keys.size()),
+                                                                      shown_regions.data(),
+                                                                      int(shown_regions.size())))
+  {
+    /* Blender's own buttons it covered start again too (never the region's own: the key is only
+     * compared, as the region may be gone). */
+    const rcti rect = {gone.rect[0], gone.rect[0] + gone.rect[2] - 1, gone.rect[1], gone.rect[1] + gone.rect[3] - 1};
+    ui::UI_angelo_note_uncovered(win, rect, static_cast<const ARegion *>(gone.key));
+  }
+#endif
 
   /* Needs pixel coords in screen. */
   if (wm->runtime->drags.first_) {

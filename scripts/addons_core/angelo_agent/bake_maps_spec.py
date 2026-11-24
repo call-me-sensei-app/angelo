@@ -40,6 +40,15 @@ DATA_SAMPLES, AO_SAMPLES = 8, 64
 DEFAULT_MINUTES = 60
 # The engines' own normal-map conventions: OpenGL (+Y) except Unreal (DirectX, -Y).
 DIRECTX = frozenset({"UNREAL"})
+# The packing each engine Angelo targets (engine_rules.TARGETS) reads from files dropped into its own material
+# editor: Unreal's ORM with a DirectX normal, Unity's mask map, and glTF's occlusion/roughness/metallic order for
+# Godot (StandardMaterial3D's ORM texture) and three.js. The engine links carry a glTF file instead, which holds
+# only glTF's packing (export_baked.GLTF_PACKINGS), so a set sent through a link is baked as GLTF (``packing_for``).
+ENGINE_PACKING = {"GODOT": "GLTF", "UNITY": "UNITY", "UNREAL": "UNREAL", "WEB": "GLTF"}
+LINK_PACKING = "GLTF"
+# The keys a job that chains a bake (Make game-ready) reads from its finished receipt (long_jobs.rst, "Baking as a
+# step"); the receipt itself is the job's own, unchanged.
+STEP_RECEIPT = ("outputs", "maps", "facts", "materials")
 
 
 class BakeMapsError(RefusalError):
@@ -102,6 +111,34 @@ def slot_channels(packing):
     if packing == "SEPARATE":
         return ()
     return tuple(slot[0] for slot in (UNITY_MASK if packing == "UNITY" else ORM_SLOTS) if isinstance(slot, tuple))
+
+
+def packing_for(engine, link=False):
+    """The packing a texture set for ``engine`` is baked with: the engine's own (``ENGINE_PACKING``), or glTF's when
+    the set reaches the engine through an Angelo link (``link``). Raises ValueError for an engine Angelo does not
+    target."""
+    if engine not in ENGINE_PACKING:
+        raise ValueError("engine must be one of: " + ", ".join(sorted(ENGINE_PACKING)))
+    return LINK_PACKING if link else ENGINE_PACKING[engine]
+
+
+def normal_convention(packing):
+    """``DIRECTX`` (green down) for a packing whose engine reads normals that way, else ``OPENGL``."""
+    return "DIRECTX" if packing in DIRECTX else "OPENGL"
+
+
+def engine_step(target, engine, output, sources=None, link=False, resolution=None):
+    """The ``angelo_job_start`` arguments of a bake step another job chains (Make game-ready): ``target``'s texture
+    set for ``engine``, with the baked material, as ``validate_job`` accepts them. The step's result is the
+    job's own receipt (``STEP_RECEIPT``)."""
+    args = {"kind": KIND, "target": target, "output": output, "for_engine": engine, "material": True}
+    if link:
+        args["for_link"] = True
+    if sources:
+        args["sources"] = list(sources)
+    if resolution is not None:
+        args["resolution"] = [resolution, resolution]
+    return args
 
 
 def depth_of(name, request):
@@ -201,6 +238,24 @@ def validate(args, request, handle_check):
     packing = args.get("packing", "SEPARATE")
     if packing not in PACKINGS:
         raise _error("packing must be one of: " + ", ".join(PACKINGS))
+    if "for_link" in args:
+        if type(args["for_link"]) is not bool:
+            raise _error("for_link must be true or false")
+        if "for_engine" not in args:
+            raise _error("for_link needs for_engine (the engine the link sends to)")
+    if "for_engine" in args:
+        engine = args["for_engine"]
+        if engine not in ENGINE_PACKING:
+            raise _error("for_engine must be one of: " + ", ".join(sorted(ENGINE_PACKING)))
+        link = args.get("for_link", False)
+        wanted = packing_for(engine, link)
+        if "packing" in args and packing != wanted:
+            raise _error("for_engine %s%s bakes packing %s, not %s; leave packing out"
+                         % (engine, " with for_link" if link else "", wanted, packing))
+        request["for_engine"] = engine
+        packing = wanted
+        if "for_link" in args:
+            request["for_link"] = link
     request["packing"] = packing
     if "margin" in args:
         margin = args["margin"]
@@ -233,12 +288,15 @@ def validate(args, request, handle_check):
 # each, and one map with BAKE_TEXTURE.
 SCHEMA = {
     "packing": {"type": "string", "enum": list(PACKINGS)},
+    "for_engine": {"type": "string", "enum": sorted(ENGINE_PACKING)},
+    "for_link": {"type": "boolean"},
     "material": {"type": "boolean"},
 }
 CARD_FIELDS = frozenset({"targets", "maps", "margin", "depth"})   # job_spec.validate_job(..., person=True) only.
 FIELDS = frozenset({"target", "sources", "cage", "extrusion", "ray_distance", "output", "resolution", "samples",
                     "format", *SCHEMA})
-DESCRIPTION = "BAKE_MAPS bakes a texture set: every PBR map the materials use, as files in output. "
+DESCRIPTION = ("BAKE_MAPS bakes a texture set: every PBR map the materials use, as files in output. for_engine "
+               "sets that engine's packing (for_link: glTF's, which its link sends). ")
 
 # The validators above read these as registered, read only (read_only.seal; the tools' schemas keep the originals).
-read_only.seal(globals(), 'BASE_NAMES', 'PACKED_NAMES', 'DEFAULT_RESOLUTION', 'FORMATS')
+read_only.seal(globals(), 'BASE_NAMES', 'PACKED_NAMES', 'DEFAULT_RESOLUTION', 'FORMATS', 'ENGINE_PACKING')

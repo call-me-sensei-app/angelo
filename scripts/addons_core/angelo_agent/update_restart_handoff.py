@@ -288,13 +288,19 @@ def launch(restart, offer, ready):
     try:
         native = restart._quit_native()  # Older native builds cannot use an unsafe fallback.
         invocation = secrets.token_hex(16)
-        install_root, mac = ready.install_root, ready.family == "macos"
+        install_root, mac, windows = ready.install_root, ready.family == "macos", ready.family == "windows"
+        kept, note, note_text = (restart.update_card.linux_recovery(install_root, ready.version)
+                                 if ready.family == "linux" else ("", "", ""))
+        if kept:   # Recorded where the installer never writes: cleanup finds them by this, never by their text.
+            restart.update_flow.record_recovery(ready.work, install_root, restart.app_version.current(), kept, note,
+                                                note_text)
         request = restart.update_install.Request(
             family=ready.family, work=Path(ready.work), pid=os.getpid(), version=ready.version,
             executable=restart._executable(ready), open_file=restart.bpy.data.filepath, app=install_root if mac else "",
-            new=ready.payload if mac else "", msi="" if mac else ready.payload, root="" if mac else install_root,
-            launcher=restart._launcher(ready), requirement=restart._requirement(ready) if mac else "",
-            sha256="" if mac else ready.fingerprint, gatekeeper=mac and ready.gatekeeper == "1",
+            new="" if windows else ready.payload, msi=ready.payload if windows else "", root="" if mac else install_root,
+            launcher=restart._launcher(ready), program=restart._program(ready), kept=kept, note=note,
+            note_text=note_text, requirement=restart._requirement(ready) if mac else "",
+            sha256=ready.fingerprint if windows else "", gatekeeper=mac and ready.gatekeeper == "1",
             invocation=invocation)
         record = dict(process=None, native=native, owner=None, invocation=invocation, live=live, ready=ready,
                       offer=offer, stamp=restart._document_stamp(), catalog_generation=restart._catalog_generation(native),

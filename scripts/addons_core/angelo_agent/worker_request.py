@@ -37,10 +37,10 @@ CUT = "\n\nThe oldest message shown is cut for length: %d of its %d characters a
 
 def taken(lead):
     """The texts of the person's own messages in ``lead``'s chat now (``request_rows.own_words``), oldest first."""
-    from .request_rows import IMAGE_ONLY_TEXT, own_words
+    from .request_rows import IMAGE_ONLY_TEXT, own_words, persons_text
     texts = []
     for row in lead.state.get("messages") or ():
-        text = row.get("text") if own_words(row) else None
+        text = persons_text(row) if own_words(row) else None   # A Go on a plan card: the person's notes only.
         if isinstance(text, str) and text.strip() and not (text == IMAGE_ONLY_TEXT and row.get("references")):
             texts.append(text.strip())
     return texts

@@ -4,10 +4,11 @@
 
 EEVEE and Workbench render through OpenGL, and so does ``bpy.ops.render.opengl`` whatever the engine. On a machine
 without a GPU (the Windows release builder runs the windowless suites with ``ANGELO_QA_NO_OPENGL``), such a render
-ends Blender with an access violation after its OpenGL contexts fail. test_blender_render_region_pixels did so on
-build4 (1.0.8, a486d96a9e8) because it was not marked, and test_blender_custom_normals_transform's Workbench render
-did so on build4 (1.0.11, 116c309e9f6) and build3 (1.1) while it passed on the T4. GPU-less machines are out of scope
-for Angelo, so such a suite runs on a GPU machine instead.
+is refused (``WM_gpu_is_available``; test_blender_gpu_unavailable proves it on every machine). Before 2.1.0 it ended
+Blender with an access violation after its OpenGL contexts failed: test_blender_render_region_pixels did so on build4
+(1.0.8, a486d96a9e8) because it was not marked, and test_blender_custom_normals_transform's Workbench render did so on
+build4 (1.0.11, 116c309e9f6) and build3 (1.1) while it passed on the T4. GPU-less machines are out of scope for Angelo,
+so such a suite runs on a GPU machine instead: there it would only show the refusal.
 
 The check reads every windowless suite's source, and the local test modules it imports. A suite that names a GPU-drawn
 engine in code (docstrings and comments do not count) and refers to a render operator (``bpy.ops.render.render`` or
@@ -35,6 +36,8 @@ EXEMPT = {
                                       "runs on Cycles",
     "test_blender_report_untranslated": "sets Workbench only to leave its probe engine; its renders run on that "
                                         "Python engine",
+    "test_blender_gpu_unavailable": "its EEVEE and Workbench renders are refused on purpose: a QA knob makes the GPU "
+                                    "context refuse, so it runs on every machine, GPU-less builders included",
 }
 
 

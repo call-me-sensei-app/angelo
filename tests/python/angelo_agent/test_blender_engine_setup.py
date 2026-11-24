@@ -37,6 +37,7 @@ from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import qa_boot  # noqa: E402
+import qa_hit
 product_env.clear('DISABLE_DEFAULT_CHAT')
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-engine-setup-qa"))
 OUT.mkdir(parents=True, exist_ok=True)
@@ -134,10 +135,8 @@ def menu_row_point(value):
     from angelo_agent import flow_menu
     area = next(a for a in window().screen.areas if a.as_pointer() == flow_menu._open["area"])
     region = next(r for r in area.regions if r.type == 'WINDOW')
-    scale = flow_menu._open["scale"]
     index = next(i for i, row in enumerate(flow_menu._open["rows"]) if row.get("value") == value)
-    rx, ry, rw, rh = flow_menu._open["layout"]["rows"][index]
-    return region.x + (rx + rw / 2) * scale, region.y + (ry + rh / 2) * scale
+    return qa_hit.point(qa_hit.LAYOUT, region, flow_menu._open["layout"]["rows"][index])
 
 
 def card_hit(action):
@@ -146,9 +145,9 @@ def card_hit(action):
     active = card_host._active
     area = next(a for a in window().screen.areas if a.as_pointer() == active.area)
     region = next(r for r in area.regions if r.type == 'WINDOW')
-    for (x, y, w, h), name, _value in active.plan.hits:
+    for rect, name, _value in active.plan.hits:
         if name == action:
-            return region.x + x + w / 2, region.y + y + h / 2
+            return qa_hit.point(qa_hit.PIXELS, region, rect)
     return None
 
 

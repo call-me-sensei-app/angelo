@@ -103,14 +103,17 @@ def app_folders(bpy):
         write_only.extend(directory.directory for directory in bpy.context.preferences.filepaths.script_directories)
     except (AttributeError, TypeError):
         pass
-    # The bytecode cache (``PYTHONPYCACHEPREFIX``, which a release sets): what Python loads for installed modules,
-    # so scripts can't change it, and an installed source's cached bytecode there is accepted (byte for byte, as
-    # beside its source). A confined import's own cache write is refused there and skipped by importlib.
-    if sys.pycache_prefix:
-        write_only.append(sys.pycache_prefix)
     trusted = list(write_only)
     trusted.extend(path for path in sys.path if path and os.path.isabs(path) and path.startswith(
         (sys.prefix, sys.base_prefix, resource("LOCAL"))))
+    # The bytecode cache (``PYTHONPYCACHEPREFIX``, which a release sets): what Python loads for installed modules,
+    # so scripts can't change any of it. Only its mirrors of the installed folders hold installed bytecode, accepted
+    # byte for byte as beside its source; the rest mirrors other sources (a document's folder, a script's), whose
+    # bytecode is not installed code (break-it-confine-reparse SHOULD-5). A confined import's own cache write is
+    # refused there and skipped by importlib.
+    if sys.pycache_prefix:
+        write_only.append(sys.pycache_prefix)
+        trusted.extend(pycache_mirrors(trusted))
     write_only.extend(os_startup())   # Never trusted: what is there is the person's, not installed code.
     # Never trusted either: what Restart to update runs is staged there (the helper script sh/cmd read as they run,
     # the Windows installer, ready.json), so a script that wrote there would choose what the next update runs
@@ -119,23 +122,59 @@ def app_folders(bpy):
     return private, [path for path in write_only if path], families, [path for path in trusted if path]
 
 
+def pycache_mirrors(folders):
+    """Where the bytecode cache (``sys.pycache_prefix``) keeps the bytecode of sources inside ``folders``: each
+    folder's mirror, named by importlib's own rule (``cache_from_source``: the source's absolute folder below the
+    prefix, a Windows drive dropped), for the folder as written and as resolved. Nothing without a prefix."""
+    import importlib.util
+    if not sys.pycache_prefix or sys.implementation.cache_tag is None:
+        return []
+    found = []
+    for folder in folders:
+        if not folder or not os.path.isabs(folder):
+            continue   # Not a folder (an unset resource), or one whose mirror would follow the working folder.
+        for spelling in dict.fromkeys((folder, os.path.realpath(folder))):
+            mirror = os.path.dirname(importlib.util.cache_from_source(os.path.join(spelling, "mirror.py")))
+            if mirror not in found:
+                found.append(mirror)
+    return found
+
+
 def os_startup(environ=None, platform=None, home=None):
     """What the operating system or a shell runs later on its own, so a script that writes there starts a program
     outside its confinement: login items, autostart entries, shell startup files and the user's Python
-    site-packages (``usercustomize`` and ``.pth`` files run in every Python). Read, never changed."""
+    site-packages (``usercustomize`` and ``.pth`` files run in every Python). Also the audio stack's per-user
+    configuration, read when Angelo opens a sound device: an ALSA ``~/.asoundrc`` can load a library or pipe to a
+    command, OpenAL Soft's can redirect the stream to any file, PulseAudio's and PipeWire's can connect out or load
+    modules, JACK's ``~/.jackdrc`` names a server to start (BREAKIT break-it-confine-fixes-b31e34840ca MUST-3), with
+    the other places the same libraries read (alsa-lib's ``$XDG_CONFIG_HOME/alsa/asoundrc``, libpulse's legacy
+    ``~/.pulse``; review-confine-fixes-3cb71ae002d S-4). Read, never changed. The list names the places these
+    libraries read today; an environment variable pointing one elsewhere is set before Angelo starts, by the person.
+    A library's places are the same on every platform outside Windows, resolved the same way (``$XDG_CONFIG_HOME``,
+    else ``~/.config``): OpenAL Soft reads ``$XDG_CONFIG_HOME/alsoft.conf`` on macOS as on Linux (its
+    ``alconfig.cpp``), and macOS once listed only the libraries' home-folder files (iso-mac's macOS run of
+    7181095e954's suite: a write to ``$XDG_CONFIG_HOME/alsoft.conf`` went through)."""
     environ = os.environ if environ is None else environ
     platform = platform or sys.platform
     home = home or os.path.expanduser("~")
     found = [os.path.join(home, name) for name in (".bashrc", ".bash_profile", ".bash_login", ".profile", ".zshrc",
                                                     ".zprofile", ".zshenv", ".zlogin", ".config/fish")]
+    if platform != "win32":
+        config = environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config")
+        found.extend(os.path.join(home, name) for name in (".asoundrc", ".asoundrc.asoundconf", ".alsoftrc",
+                                                           ".jackdrc", ".pulse"))
+        # Each name written out: the grant inventory classifies the names path arguments spell (alsa, pulse, ...).
+        found.extend([os.path.join(config, "alsoft.conf"), os.path.join(config, "pulse"),
+                      os.path.join(config, "pipewire"), os.path.join(config, "alsa")])
     if platform == "darwin":
         found.append(os.path.join(home, "Library", "LaunchAgents"))
+        found.append(os.path.join(home, "Library", "Preferences", "alsoft.conf"))
     elif platform == "win32":
         appdata = environ.get("APPDATA")
         if appdata:
             found.append(os.path.join(appdata, "Microsoft", "Windows", "Start Menu", "Programs", "Startup"))
+            found.append(os.path.join(appdata, "alsoft.ini"))
     else:
-        config = environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config")
         found.extend([os.path.join(config, "autostart"), os.path.join(config, "systemd", "user")])
     try:
         import site
@@ -223,6 +262,9 @@ def unshared_semaphores(confined):
 
     SemLock.__module__, SemLock.__qualname__ = base.__module__, base.__qualname__
     _multiprocessing.SemLock = SemLock
+    guard = script_confinement._guard
+    if guard is not None and hasattr(guard, "note_replaced_module"):
+        guard.note_replaced_module("_multiprocessing")   # A second _multiprocessing would hold the original class.
 
 
 _native_installed = []   # Once per process (the C side refuses a second set of sweeps while confined anyway).
@@ -258,9 +300,11 @@ def install_sweeps(bpy, package=None):
         set_sweep(*script_confinement_sweep.python_sweep(package or __package__, installed_file))
         from .script_confinement_logging import logging_sweep
         set_sweep(*logging_sweep(package or __package__))   # Angelo's loggers and the root logger, as found.
+    from .strict_protection import NAME as STRICT, sync as strict_sync   # On protects (reviews of 93ef5b1, a121c9a).
+    from .strict_flag import enabled as strict_enabled   # C's flag: one atomic load, never RNA (the coordinator's (Q)).
     set_sweep(*script_confinement_sweep.blender_sweep(
         bpy, defer, is_agent_function, grant_guard.WIDENING, getattr(grant_guard, "_widens", None), preferences,
-        package or __package__))
+        package or __package__, protective=(STRICT,), resync=strict_sync, protecting_now=strict_enabled))
 
 
 def trusted_folders(bpy):
@@ -287,16 +331,6 @@ def _installed_file_function(folders):
             return False
         return any_(path.startswith(root) for root in roots)
     return installed_file
-
-
-def refresh(bpy):
-    """Add the private folders made since (each script's ``begin``): a folder once private stays private."""
-    if script_confinement.installed():
-        private, write_only, families, trusted = app_folders(bpy)
-        if script_confinement._guard is not None:
-            script_confinement._guard.add_roots(private, write_only, families, trusted)
-        else:
-            script_confinement._hook["add_roots"](private, write_only, families, trusted)
 
 
 def deferring(original, position=0, keyword=None):

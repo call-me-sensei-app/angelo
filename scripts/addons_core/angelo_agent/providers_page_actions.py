@@ -14,7 +14,8 @@ from .ui_text import is_rtl
 SIMPLE_OPERATORS = {"team_sign_in": ("team_sign_in", 'INVOKE_DEFAULT', None), "team_sign_out": ("team_sign_out", 'INVOKE_DEFAULT', None),
                     "team_cancel": ("team_cancel_sign_in", 'EXEC_DEFAULT', None), "team_refresh": ("team_refresh", 'EXEC_DEFAULT', None),
                     "team_copy_link": ("team_copy_sign_in_link", 'EXEC_DEFAULT', None), **providers_page_endpoints.OPERATORS,
-                    "team_console": ("team_open_console", 'EXEC_DEFAULT', "page"), "enhancer": ("enhancer_settings", 'INVOKE_DEFAULT', None), **fab_ui.PREF_OPERATORS}
+                    "team_console": ("team_open_console", 'EXEC_DEFAULT', "page"), "enhancer": ("enhancer_settings", 'INVOKE_DEFAULT', None), **fab_ui.PREF_OPERATORS,
+                    "forget_agent_changes": ("forget_agent_changes", 'INVOKE_DEFAULT', None)}   # Its folder browser.
 MENU_OPERATORS = {"menu_cancel_signin": ("cancel_signin", "mode"), "menu_reconnect": ("connection_signin", "connection_id"),
                   "menu_load_key": ("connection_load_key", "connection_id"), "menu_check": ("connection_check", "connection_id")}
 
@@ -44,3 +45,17 @@ def sheet_focus(sheet, ui):
     fields = sheet._fields() if sheet is not None and hasattr(sheet, "_fields") else {}
     editing = next((name for name, field in fields.items() if getattr(field, "editing", False)), None)
     return ("field", editing) if editing else ("", None)
+
+
+OWN = ("enable", "script_limits")   # The page's actions that run no operator of Angelo's.
+
+
+def act_own(action):
+    """Enable the add-on, or open the published limits of agent scripts (Always allow scripts' link): only that
+    address, never one a page action carries (script_access.LIMITS_URL)."""
+    import bpy
+    if action == "enable":
+        bpy.ops.preferences.addon_enable(module="angelo_agent")
+    elif action == "script_limits":
+        from . import script_access
+        bpy.ops.wm.url_open(url=script_access.LIMITS_URL)

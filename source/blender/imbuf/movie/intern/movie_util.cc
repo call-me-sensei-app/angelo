@@ -125,6 +125,18 @@ static void ffmpeg_log_callback(void * /*ptr*/, int level, const char *format, v
 #    pragma GCC diagnostic pop
 #  endif
 
+/** The only protocol Blender's own FFmpeg calls use (`ffmpeg_open_input_local`). */
+static constexpr const char *LOCAL_PROTOCOLS = "file";
+
+int ffmpeg_open_input_local(AVFormatContext **format_ctx, const char *filepath)
+{
+  AVDictionary *options = nullptr;
+  av_dict_set(&options, "protocol_whitelist", LOCAL_PROTOCOLS, 0);
+  const int result = avformat_open_input(format_ctx, filepath, nullptr, &options);
+  av_dict_free(&options);
+  return result;
+}
+
 const char *ffmpeg_last_error()
 {
   return ffmpeg_last_error_buffer;
@@ -179,7 +191,7 @@ static int isffmpeg(const char *filepath)
     return 0;
   }
 
-  if (avformat_open_input(&pFormatCtx, filepath, nullptr, nullptr) != 0) {
+  if (ffmpeg_open_input_local(&pFormatCtx, filepath) != 0) {
     return 0;
   }
 

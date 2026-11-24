@@ -172,6 +172,21 @@ own Arabic catalogue is stored pre-shaped, in visual order. Angelo does the same
   loses its last words, on the left. Raw Arabic typed by a person or written by a model
   is shaped and reordered the same way (``canvas_rtl.visual``), in every interface
   language.
+* **Filled-in values are units.** ``ui_text`` fills an Arabic template in reading order
+  and wraps each string value (a share, a path, a file or model name, a person's text;
+  and each untranslated piece of ``ui_text.join``) in an isolate (``rtl_text.isolate``,
+  FIRST STRONG ISOLATE ... POP DIRECTIONAL ISOLATE). ``rtl_text.to_visual`` lays an
+  isolate out on its own, its neutral characters taking the value's first strong
+  direction, and treats it as one character of that direction in the sentence, so
+  ``\\server\share`` or ``/srv/a/b.blend`` keeps its slashes, brackets and dots in
+  place. A value with no letter (digits, punctuation) is laid out as before, and a
+  translated sentence filled into another stays text of the paragraph's direction. No
+  isolate mark is ever drawn. Visual text cannot say where a unit was, so ``to_visual``
+  remembers (``rtl_isolate``) the reading order of the lines it laid out with units: ``to_logical`` gives
+  back the exact sentence, and ``to_logical(..., isolates=True)`` the marked form that
+  wrapping (``rows_to_visual``, ``text_layout.two_lines``), ``elide`` and joins lay out
+  again, reopening a unit cut between two rows in the same direction on the next row.
+  A row with no right-to-left letter at all is still drawn left to right as before.
 * **Mirroring** (``canvas_rtl.py``). In Arabic, the chat (messages, cards, popovers,
   hover and focus states), the welcome screen, the showcase and the notice cards (update
   notice, What's New, crash dialog: ``card_host``) draw between
@@ -321,7 +336,10 @@ How to add a string
 1. Write the English as a whole sentence or a template with named placeholders.
    Choose the route from "How a string reaches the screen": a literal in a Blender
    widget, ``iface_``/``tip_``/``rpt_``/``plural_`` for built text, ``n_`` for a constant
-   drawn later, ``notice`` for a chat row. Text a model reads is never wrapped.
+   drawn later, ``notice`` for a chat row, ``file_text`` for text that leaves the
+   interface as a file's name or contents (reading order, never the visual form; Blender's
+   extractor does not know it, so ``extract_pot`` reads it in every module). Text a model
+   reads is never wrapped.
 2. Run ``python3 scripts/angelo/i18n/cli.py scan`` (no findings), or the host test.
    Deliberately English text in a UI module carries ``# i18n: <reason>`` on its line.
    A new add-on module that draws must be added to ``sources.UI_MODULES`` (or

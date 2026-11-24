@@ -89,12 +89,14 @@ class ContextShared {
   /** GPUContext associated to the system_gpu_context. */
   GPUContext *blender_gpu_context_ = nullptr;
 
-  /* NOTE: This changes the active context. */
-  ContextShared()
+  /* NOTE: This changes the active context. Takes ownership of `system_gpu_context`, which must be
+   * a context #WM_system_gpu_context_create returned (never null). */
+  explicit ContextShared(GHOST_IContext *system_gpu_context)
   {
+    BLI_assert(system_gpu_context != nullptr);
     mutex_ = BLI_ticket_mutex_alloc();
 
-    system_gpu_context_ = WM_system_gpu_context_create();
+    system_gpu_context_ = system_gpu_context;
     WM_system_gpu_context_activate(system_gpu_context_);
     blender_gpu_context_ = GPU_context_create(nullptr, system_gpu_context_);
   }
@@ -165,16 +167,31 @@ static ContextShared *viewport_context = nullptr;
 /** Unique context used by Preview jobs. */
 static ContextShared *preview_context = nullptr;
 
-void DRW_gpu_context_create()
+bool DRW_gpu_context_create()
 {
   BLI_assert(viewport_context == nullptr); /* Ensure it's called once */
 
+  /* The system can refuse a context even when the backend reports support: the OpenGL backend
+   * assumes support, and a machine whose driver offers no OpenGL 4.3 (no GPU, a remote desktop
+   * session, an outdated driver) yields no context. Create both system contexts before wrapping
+   * either, so a refusal leaves nothing half-built and every caller sees "no GPU context". */
+  GHOST_IContext *viewport_system_gpu_context = WM_system_gpu_context_create();
+  if (viewport_system_gpu_context == nullptr) {
+    return false;
+  }
+  GHOST_IContext *preview_system_gpu_context = WM_system_gpu_context_create();
+  if (preview_system_gpu_context == nullptr) {
+    WM_system_gpu_context_dispose(viewport_system_gpu_context);
+    return false;
+  }
+
   DRW_mutexes_init();
 
-  viewport_context = MEM_new<ContextShared>(__func__);
-  preview_context = MEM_new<ContextShared>(__func__);
+  viewport_context = MEM_new<ContextShared>(__func__, viewport_system_gpu_context);
+  preview_context = MEM_new<ContextShared>(__func__, preview_system_gpu_context);
 
   viewport_context->enable();
+  return true;
 }
 
 void DRW_gpu_context_destroy()
@@ -290,6 +307,10 @@ void DRW_render_context_enable(Render *render)
   if (G.background && viewport_context == nullptr) {
     WM_init_gpu_offscreen();
   }
+  if (viewport_context == nullptr) {
+    /* The system refused a GPU context: there is nothing to enable. */
+    return;
+  }
 
   GPU_render_begin();
 
@@ -315,6 +336,11 @@ void DRW_render_context_enable(Render *render)
 
 void DRW_render_context_disable(Render *render)
 {
+  if (viewport_context == nullptr) {
+    /* Matches #DRW_render_context_enable, which enabled nothing. */
+    return;
+  }
+
   if (GPU_use_main_context_workaround()) {
     DRW_gpu_context_disable();
     GPU_render_end();

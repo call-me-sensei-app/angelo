@@ -43,6 +43,12 @@ CONTAINED = {**{("checkpoint_filesystem", name): _ANCHORED
                 for name in ("_open_file", "_replace_file", "_unlink_file", "_write_json", "remove_entry",
                              "publish_new_file", "make_directory", "chmod_file")},
              ("files", "_open_child"): _ANCHORED.replace("the checkpoint store anchored", "the file tools opened"),
+             ("context_folder_working", "remove_empty"): "an EMPTY child folder (os.rmdir) of one entry name in a "
+                                                         "folder the working folder's walk holds open as a "
+                                                         "descriptor, opened without following a link from the "
+                                                         "working folder, whose opened root was judged against the "
+                                                         "chat's working-folder grant in C (ReadOnlyFolder._granted); "
+                                                         "only a folder that write made a moment earlier",
              ("exclusive_rename", "_made_in_place"): "a new folder of one entry name (create_directory's entry_name) "
                                                      "in a folder the caller holds open as a descriptor, anchored by "
                                                      "checkpoint_filesystem._private_directory (whose root C checks)",
@@ -79,6 +85,9 @@ _CARRY_OVER = ("the carry-over from an earlier Blender base: runs once, in the a
 _OWN_DOCUMENT = ("saves the open document to its own path (Blender's: only a save changes it, and a script's save is "
                  "judged by the confinement), at the person's own request")
 ALLOWED = {
+    ("headless_window_lock", "ask"): "macOS's dialog to the person (osascript -e with the fixed DIALOG script, the "
+                                     "translated question and the button names as its arguments): it writes no file "
+                                     "and takes no path from the app or the agent",
     ("headless_window", "HiddenWindow.open"): "appends the hidden app's output to ANGELO_HIDDEN_APP_LOG, a log file the "
                                                "launcher's own environment names (a proof or a support case), never a "
                                                "path from the app or the agent",
@@ -86,6 +95,9 @@ ALLOWED = {
                                        "script region begins, so C answers yes there): each .blend it writes is "
                                        "asked of C in the parent before the batch exists "
                                        "(studio_assets_host.convert_batch, p10c-4-export)",
+    ("update_flow", "forget_note"): "removes only the Linux fallback's recovery note Angelo itself recorded "
+                                    "(recovery.json, written before the hand-over) beside the installed app, and "
+                                    "only once that app holds its release again",
     ("update_flow", "remove_previous"): "removes only <work>/previous.app or .<app>.previous-<n> beside the installed "
                                         "app (named by the installer, checked by name and place, never the app itself "
                                         "nor a link)",

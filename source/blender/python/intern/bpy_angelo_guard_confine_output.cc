@@ -57,7 +57,9 @@ bool leaves_its_folder(const std::string &text)
 
 const char *BPY_angelo_guard_output_path_refusal(const PointerRNA *ptr, PropertyRNA *prop, const char *value)
 {
-  if (ptr == nullptr || value == nullptr || value[0] == '\0' || !confined_now()) {
+  /* No thread confined (an atomic load) first, the type tests next, the thread last: every string an RNA call is given
+   * asks here (the Head 21 read's IC-1, Ruling 17). */
+  if (!BLI_fileops_confine_possible() || ptr == nullptr || value == nullptr || value[0] == '\0') {
     return nullptr;
   }
   if (ptr->type != nullptr &&
@@ -69,7 +71,7 @@ const char *BPY_angelo_guard_output_path_refusal(const PointerRNA *ptr, Property
   if (ELEM(RNA_property_subtype(prop), PROP_FILEPATH, PROP_DIRPATH)) {
     return nullptr; /* A path: tagged as the script's; writers judge what they write from it. */
   }
-  return leaves_its_folder(value) ? WRITE : nullptr;
+  return leaves_its_folder(value) && confined_now() ? WRITE : nullptr;
 }
 
 }  // namespace blender

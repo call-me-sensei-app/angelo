@@ -57,17 +57,65 @@ def file_problem(settings, material):
         return "unreadable"
 
 
+def project_root(path):
+    """The folder a shader's ``#include`` lines may reach: the .blend's folder when the shader is inside it (a
+    project's shared shader folder), else the shader's own folder."""
+    base = os.path.dirname(bpy.data.filepath) if bpy.data.filepath else ""
+    if base:
+        real, folder = os.path.realpath(path), os.path.realpath(base)
+        if real.startswith(folder.rstrip(os.sep) + os.sep):
+            return folder
+    return os.path.dirname(os.path.realpath(path))
+
+
+_EXPANSIONS = {}   # (shader file, root) -> (keys of every file it read, expansion): the poll only stats.
+EXPANSION_KEYS = change_keys.ChangeKeys()   # This detector's own forms (``change_keys``: one per detector).
+
+
+def _stats(paths):
+    """One key per file for as long as its bytes stay the same, and another on any change, a same-size save within
+    the file system clock's tick included (``change_keys``)."""
+    stats = []
+    for path in paths:
+        try:
+            info = os.stat(path)
+            stats.append(change_keys.key(info, path, info.st_mtime_ns, keys=EXPANSION_KEYS, change=False, wait=False))
+        except (OSError, ValueError):
+            stats.append(None)
+    return tuple(stats)
+
+
+def expanded(settings, material):
+    """``spec.expand_includes`` of the material's shader file, or None when ``file_problem`` finds one first. The
+    live preview asks on every poll, so an expansion is kept while none of the files it read changed."""
+    if file_problem(settings, material):
+        return None
+    path = file_path(settings, material)
+    root = project_root(path)
+    cached = _EXPANSIONS.get((path, root))
+    if cached is not None and cached[1]["files"] and cached[0] == _stats(cached[1]["files"]):
+        return cached[1]
+    result = spec.expand_includes(path, root)
+    _EXPANSIONS[(path, root)] = (_stats(result["files"]), result)
+    return result
+
+
+def source_problem(settings, material):
+    """Why the shader can't be used, its includes read too (the export's findings): a code, or None."""
+    problem = file_problem(settings, material)
+    if problem:
+        return problem
+    return expanded(settings, material)["problem"]
+
+
 def read_source(settings, material):
-    """(text, problem): the file's text, or a problem code (``file_problem``'s, or unreadable)."""
+    """(text, problem): the file's text with its includes expanded, or a problem code (``file_problem``'s, an
+    include's, or unreadable)."""
     problem = file_problem(settings, material)
     if problem:
         return None, problem
-    path = file_path(settings, material)
-    try:
-        with open(path, "r", encoding="utf-8") as handle:
-            return handle.read(), None
-    except (OSError, UnicodeError):
-        return None, "unreadable"
+    result = expanded(settings, material)
+    return (result["source"], None) if result["problem"] is None else (None, result["problem"])
 
 
 def _kind_changed(settings, context):
@@ -162,12 +210,17 @@ def signature(materials):
             continue
         stamp = None
         if settings.kind == "FILE":
-            try:   # One key while the file is unchanged, in its clock's tick too (``change_keys``): one swap a save.
-                path = file_path(settings, material)
-                info = os.stat(path)
-                stamp = change_keys.key(info, path, info.st_mtime_ns, keys=KEYS, change=False, wait=False)
-            except (OSError, ValueError):
-                stamp = None
+            # Every file of the expansion: a save of an included file reloads the page like the main file's.
+            result = expanded(settings, material)
+            paths = result["files"] if result is not None and result["files"] else [file_path(settings, material)]
+            stamps = []
+            for path in paths:
+                try:   # One key while a file is unchanged, in its clock's tick too (``change_keys``): one swap a save.
+                    info = os.stat(path)
+                    stamps.append(change_keys.key(info, path, info.st_mtime_ns, keys=KEYS, change=False, wait=False))
+                except (OSError, ValueError):
+                    stamps.append(None)
+            stamp = tuple(stamps)
         parts.append((material.name, settings.kind, settings.path, stamp, tuple(sorted(uniform_values(settings).items()))))
     return tuple(parts)
 
@@ -182,6 +235,7 @@ def register():
 
 
 def unregister():
+    _EXPANSIONS.clear()
     del bpy.types.Material.angelo_web_shader
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)

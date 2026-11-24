@@ -35,11 +35,10 @@ def _function():
     global _call
     if _call is None:
         _call = False
-        try:
-            libc = ctypes.CDLL(None, use_errno=True)
-            name, flag = (("renameatx_np", RENAME_EXCL) if sys.platform == "darwin"
-                          else ("renameat2", RENAME_NOREPLACE) if sys.platform.startswith("linux") else (None, 0))
-            function = getattr(libc, name, None) if name else None
+        name, flag = (("renameatx_np", RENAME_EXCL) if sys.platform == "darwin"
+                      else ("renameat2", RENAME_NOREPLACE) if sys.platform.startswith("linux") else (None, 0))
+        try:   # Windows has no C library to open by None (ctypes raises TypeError): none there.
+            function = getattr(ctypes.CDLL(None, use_errno=True), name, None) if name else None
         except (OSError, AttributeError):
             function = None
         if function is not None:

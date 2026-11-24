@@ -45,6 +45,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_operator, beside 
 import qa_operator  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 ui._authentication.start = lambda *args, **kwargs: None
 addon_utils.enable("angelo_agent", default_set=False, persistent=False)

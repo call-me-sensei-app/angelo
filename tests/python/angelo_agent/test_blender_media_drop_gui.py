@@ -48,6 +48,7 @@ import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 from angelo_agent import studio, studio_assets, studio_assets_host  # noqa: E402
 from angelo_agent.studio_state import StudioLibrary  # noqa: E402
 import qa_input  # noqa: E402
+import qa_hit
 
 REPORT = OUT / "media-drop-gui.json"
 state = {"phase": "boot", "success": False, "checks": {}, "details": {}, "screenshots": []}
@@ -229,8 +230,7 @@ def tile(area, identity):
                None)
     if hit is None:
         return None
-    region = region_of(area)
-    return region.x + hit[0] + hit[2] / 2, region.y + hit[1] + hit[3] / 2
+    return qa_hit.point(qa_hit.mirrored_about(studio.view(area).get("mirror")), region_of(area), hit)
 
 
 def show_kind(area, kind):
@@ -241,7 +241,7 @@ def show_kind(area, kind):
 def point_in_view(view, location):
     region, rv3d = region_of(view), view.spaces.active.region_3d
     xy = view3d_utils.location_3d_to_region_2d(region, rv3d, Vector(location))
-    return region.x + xy.x, region.y + xy.y
+    return qa_hit.xy(qa_hit.RAW, region, xy.x, xy.y)
 
 
 def clearance(view, location):
@@ -276,7 +276,7 @@ def clear_spot(view, margin):
             xy = view3d_utils.location_3d_to_region_2d(region, rv3d, Vector((x, y, 0.5)))
             if xy is None or not (margin < xy.x < region.width - margin and margin < xy.y < region.height - margin):
                 continue
-            wx, wy = region.x + xy.x, region.y + xy.y
+            wx, wy = qa_hit.xy(qa_hit.RAW, region, xy.x, xy.y)
             if any(r.x - margin <= wx <= r.x + r.width + margin and r.y - margin <= wy <= r.y + r.height + margin
                    for r in over):
                 continue
@@ -424,7 +424,7 @@ def run():
     state["phase"] = "outliner"
     rows = region_of(outliner)
     unit = 20 * bpy.context.preferences.system.ui_scale
-    row = lambda index: (rows.x + rows.width / 3, rows.y + rows.height - (index + 0.5) * unit)  # noqa: E731
+    row = lambda index: qa_hit.xy(qa_hit.RAW, rows, rows.width / 3, rows.height - (index + 0.5) * unit)  # noqa: E731
     before = set(bpy.data.objects)
     yield from drag(window, tile(studio_area, ids["cone"]), row(1))   # Row 1: "Collection".
     yield from wait(lambda: set(bpy.data.objects) - before, 10)
@@ -441,7 +441,7 @@ def run():
     before_material = cube.active_material
     # Over the object's name, as Blender's own Outliner drops need (outliner_dropzone_element): the row's third
     # level starts three units in, after the expand arrow and the icon.
-    on_name = (rows.x + 4.2 * unit, row(2)[1])
+    on_name = (qa_hit.xy(qa_hit.RAW, rows, 4.2 * unit, 0)[0], row(2)[1])
     yield from drag(window, tile(studio_area, ids["banner"]), on_name, during=lambda: capture("outliner-image-drag.png"))
     yield from wait(lambda: cube.active_material is not before_material, 10)
     check("image_onto_an_outliner_object_is_its_material", cube.active_material is not None
@@ -500,7 +500,8 @@ def run():
     again = wide and (yield from wait(lambda: tile(studio_area, ids["poster"]), 10))
     if again:
         yield from drag(window, tile(studio_area, ids["poster"]),
-                        (studio_region.x + grid[0] + grid[2] - 40, studio_region.y + grid[1] + 60))
+                        qa_hit.xy(qa_hit.mirrored_about(studio.view(studio_area).get("mirror")), studio_region,
+                                  grid[0] + grid[2] - 40, grid[1] + 60))
     check("a_drop_back_on_the_grid_adds_nothing",
           bool(again) and len(studio.view(studio_area)["references"]) == references)
 

@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <fstream>
 #include <stdint.h>
 #include <stdio.h>
@@ -147,9 +148,47 @@ struct BLI_FileGate {
   /** A confined thread set the property `identifier` of data of the RNA type `struct_type` (a `const StructRNA *`,
    * the data's refined type) in the data-block `owner_session_uid`. */
   void (*script_property_set)(unsigned int owner_session_uid, const void *struct_type, const char *identifier);
+  /** Whether a lookup of `path` (an exists, stat, folder or file test; `follow_last`: its last component followed)
+   * would reach the network for a confined thread: a remote name, a link to a share nobody connected, a folder of
+   * the automounter's maps of any host (break-it-confine-reparse-b7d499c M7). Null: never. */
+  bool (*lookup_refused)(const char *path, bool follow_last);
+  /** Whether a confined thread's move of `from` is refused because it is, or holds at any depth, a link (or is too
+   * large or unreadable to tell): a move would put that link at a new path (break-it-confine-reparse-b7d499c head-7
+   * M6). Null: never. */
+  bool (*move_refused)(const char *from);
+  /** A write is about to change which folders exist or where they are (made, removed, moved): lookups resolved before
+   * are read again. A content write doesn't call it. Null: nothing. */
+  void (*folders_changed)();
 };
 void BLI_fileops_gate_set(const BLI_FileGate *gate);
+/** Whether the gate refuses a lookup of `path` (`BLI_FileGate::lookup_refused`); `errno` is EACCES when it does. */
+bool BLI_fileops_gate_refuses_lookup(const char *path, bool follow_last);
 const BLI_FileGate *BLI_fileops_gate_get();
+
+/**
+ * Angelo: whether any thread may be confined, kept by the confinement in three parts that never offset each other
+ * (an error in one can't cancel another, a thread's own state least of all):
+ * - `BLI_fileops_confine_open`: the threads' own states (bpy_angelo_guard_confine_intern.hh, `ConfineState`): a
+ *   thread in a script region, in a confined thread's job or call, or that ran a script outside a region;
+ * - `BLI_fileops_confine_codes`: agent code objects alive (what a script left, which only the stack test confines
+ *   once its region ended), each counted by its identity when it becomes agent code and given back when it is freed;
+ * - `BLI_fileops_confine_always`: set for good when the counting can't be exact (no code watcher, a tainted file
+ *   name, a count that would go below zero): every path then asks, at 2.0.0's cost.
+ * All zero means the gate's `confined` answers false on every thread.
+ *
+ * A path that asks `confined` per property set, per element or per data-block reads this first: relaxed loads and
+ * a branch instead of the gate's indirect call (a 750k-element `foreach_set` paid 11% more instructions than stock
+ * Blender without it).
+ */
+extern std::atomic<int> BLI_fileops_confine_open;
+extern std::atomic<int> BLI_fileops_confine_codes;
+extern std::atomic<bool> BLI_fileops_confine_always;
+inline bool BLI_fileops_confine_possible()
+{
+  return BLI_fileops_confine_open.load(std::memory_order_relaxed) != 0 ||
+         BLI_fileops_confine_codes.load(std::memory_order_relaxed) != 0 ||
+         BLI_fileops_confine_always.load(std::memory_order_relaxed);
+}
 
 int BLI_delete(const char *path, bool dir, bool recursive) ATTR_NONNULL();
 /**

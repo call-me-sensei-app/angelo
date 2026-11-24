@@ -114,7 +114,16 @@ entry that states the measured size (doc/angelo/agent_integration.rst).
 # Raised 57,330 -> 57,340 with toolset 55 (2.0.0), measured 57,316 -> 57,334 B ON (57,246 -> 57,264 OFF, +18): the
 # deferred name angelo_download (downloads.rst); its schema loads on first use. Agent scripts have no network, so
 # without it the agent cannot bring a file from the web into the project at all.
-PLAN_BUDGET_BYTES = 57340
+# Raised 57,340 -> 57,350 with toolset 59 (2.1.0), measured on the merged tree 57,334 -> 57,348 B ON (57,264 -> 57,278 OFF, +14): the
+# deferred name angelo_plan (plan_mode.rst); its schema loads on first use, when a person asks to plan first.
+# Raised 57,350 -> 57,380 with toolset 60 (2.1.0), measured on the merged tree 57,348 -> 57,372 B ON (57,278 -> 57,302
+# OFF, +24): the deferred name angelo_context_folder (agent_chat.rst, "Folder as context"); its schema loads on first
+# use, only in a chat with a folder attached (the branch measured the same +24 over toolset 58).
+# Raised 57,380 -> 57,410 with toolset 61 (2.1.0), measured 57,372 -> 57,402 B ON (+30): the deferred name
+# angelo_context_folder_write (agent_chat.rst, "Folder as context"); its schema loads on first use, only in a chat with
+# a working folder. Without it the agent can't leave notes or a checklist in the person's folder except by scripts,
+# which have no write access there.
+PLAN_BUDGET_BYTES = 57410
 # Claude's instructions with the plan.
 # Raised 10,680 -> 10,720: the background-job sentence took the instructions 10,617 -> 10,714 B
 # (+97, measured; long_jobs.rst, "Model-visible bytes").
@@ -199,4 +208,19 @@ CLAUDE_INSTRUCTION_BUDGET_BYTES = 15610
 # tokens): angelo_execute_python's sentence stating a script's length limit (script_store.LIMIT_SENTENCE). Without
 # it an agent met the limit only as a refusal after writing the whole script: one wasted script of over 32,768
 # characters and a round (agent_integration.rst, "Toolset 55"). The Claude plan schema is unchanged (57,246 B).
-DECLARED_TOOLS_BUDGET_BYTES = 108740
+# Raised 108,740 -> 108,940 (2.1.0), measured 108,726 -> 108,927 B (+201, cached): BAKE_MAPS's for_engine and
+# for_link in the job tool's schema and description (long_jobs.rst, "Texture sets"): a texture set baked with the
+# packing an engine's own material editor, or an Angelo engine link, reads. MODEL-FACING: a coordinator's gate
+# decides it (toolset bump at merge).
+# Raised 108,940 -> 109,210 with toolset 57 (2.1.0), measured 108,927 -> 109,194 B (+267, cached; 56,439 -> 56,577
+# tokens): angelo_job_start's RETOPOLOGY kind, its faces and symmetry (eight mirror-axis values, as an enum like
+# sculpt's) and one 83 B sentence (retopology.rst). A first draft's sentence was 300 B; what the receipt reports
+# reaches the agent with the receipt. Without the kind, clean quads were a script of QuadriFlow, which refused or
+# failed on 20 of the 42 held-out benchmark runs (agent_integration.rst, "Toolset 57"). MODEL-FACING: a
+# coordinator's gate decides it.
+# Raised 109,210 -> 109,750 with toolset 58 (2.1.0), measured on the merged tree 109,194 -> 109,740 B (+546, cached;
+# 56,577 -> 56,860 tokens; coverage_prefix.py, OFF and --parallel-on alike): angelo_job_start's UV_LAYOUT kind and its
+# layout, the uv_layout operation's parameters by name and type or enum (uv_layout.rst). Typed, a wrong key is refused
+# by the schema check before a round is spent (agent_integration.rst, "Toolset 58"). MODEL-FACING: approved by the
+# coordinator as a new capability, set from the merged tree's measurement.
+DECLARED_TOOLS_BUDGET_BYTES = 109750

@@ -120,6 +120,14 @@ class EveryCodingModel(unittest.TestCase):
                 self.assertIn(level, models[identity]["efforts"])
                 self.assertEqual(default_effort(models[identity]["efforts"], identity), level)
 
+    def test_gemini_4_neon_takes_the_common_default(self):
+        """Neon (2026-11-23) is no exception: it offers high, so a chat with no chosen effort runs it at high."""
+        entry = next(entry for _mode, entry in coding_models() if entry["id"] == "gemini-4-neon")
+        self.assertNotIn("gemini-4-neon", chat_settings.DEFAULT_EFFORT_EXCEPTIONS)
+        self.assertEqual(default_effort(entry["efforts"], entry["id"]), "high")
+        self.assertEqual(codex_turn_options(chat([entry]))["effort"], "high")
+        self.assertEqual(request_effort(chat([entry]), stored_options({}), "codex"), "high")
+
     def test_a_custom_provider_s_launch_starts_at_its_model_s_default(self):
         self.assertTrue(provider_registry.EXTERNAL_CODEX_MODES)
         for mode in sorted(provider_registry.EXTERNAL_CODEX_MODES):

@@ -32,6 +32,8 @@ WRITE_FILE = "write_file"                  # A text file: it always asks (the ma
 UNDECIDED = "undecided"                    # A branch whose decision is not made yet: its own reason comes later.
 SCRIPT_EXCLUDED = "script_excluded"        # A script naming preferences or Angelo's add-on (trusted_scripts).
 SCRIPT_FILE_LOAD = "script_file_load"      # A script naming an operator that replaces the open file (trusted_scripts).
+PREEXISTING = "context_folder_preexisting"  # A working folder's file Angelo didn't create: always asks (2.1.0).
+CONFIG_FILE = "context_folder_config"      # A new data or settings file in the working folder: tools read them.
 
 LINES = {
     OUTSIDE: n_("Approve for me never runs this kind of step on its own, so it asks for your approval."),
@@ -46,6 +48,8 @@ LINES = {
                         "scripts are allowed."),
     SCRIPT_FILE_LOAD: n_("This script would replace the file you have open, so it always asks, even when scripts "
                          "are allowed."),
+    PREEXISTING: n_("This file was in your folder before Angelo wrote it, so changing it always asks."),
+    CONFIG_FILE: n_("Tools you run can read a data or settings file like this one, so creating it always asks."),
 }
 NO_LINE = {NOT_AUTO: "only Auto explains why a card asks; Ask asks for every edit",   # i18n: for developers
            UNDECIDED: "no decision yet, so no reason to state; the card waits for the decision's own"}   # i18n: for developers
@@ -69,6 +73,9 @@ def bounded_reason(controller, call, mode=None):
     from . import grant_authority
     if not grant_authority.chat_in_auto(controller.state.get("id", "")):   # No chat id: no chat C holds in Auto.
         return NOT_AUTO   # Auto only as C holds it for the chat (approval_modes), never its Python state alone.
+    if call.name == "angelo_context_folder_write":   # A new file or Angelo's own; anything else asks (2.1.0).
+        from . import context_folder_write
+        return context_folder_write.auto_reason(controller, call)
     if call.name == "angelo_library_import":
         return None   # One Undo step; a free Fab asset joins the library too, a paid one is refused (maintainer, 2026-11-09).
     if call.name not in BOUNDED_MUTATIONS:

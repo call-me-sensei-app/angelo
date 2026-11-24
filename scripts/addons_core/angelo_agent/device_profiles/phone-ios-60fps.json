@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "id": "phone-ios-60fps",
+  "name": "Phone, iOS, 60 fps",
+  "fps": 60,
+  "basis": "Apple GPU families Apple2 and later (A8 and later chips) read ASTC textures (developer.apple.com/metal/feature-sets). Texture formats are a common choice (ASTC 6x6 colour, 4x4 normal maps), not a vendor rule. Budgets are left unset: a team sets its own in its own profile.",
+  "texture_formats": {
+    "default": "ASTC_6x6",
+    "normal": "ASTC_4x4"
+  },
+  "passes_per_primitive": 1,
+  "budgets": {
+    "triangles": null,
+    "vertices": null,
+    "draw_calls": null,
+    "texture_memory_mb": null,
+    "bones": null,
+    "influences": null,
+    "morph_targets": null,
+    "file_mb": null,
+    "app_mb": null
+  }
+}

@@ -4,7 +4,7 @@
 """The third-party notices of Angelo's agent runtime: every crate and V8 component its binaries contain.
 
 The agent runtime is the patched OpenAI Codex build Angelo bundles (``agent_runtime.json``): ``codex`` and
-``codex-code-mode-host`` on macOS, plus the sandbox helpers on Windows. Upstream publishes no notices for
+``codex-code-mode-host`` on macOS and Linux, plus the sandbox helpers on Windows. Upstream publishes no notices for
 them, so this tool writes ``release/license/agent-runtime/THIRD-PARTY-NOTICES.txt`` from the fork's own
 lock file, at the pinned commit::
 
@@ -192,6 +192,19 @@ def v8_section(v8_folder):
     return lines
 
 
+
+PLATFORM_NAMES = (("macos", "macOS"), ("windows", "Windows"), ("linux", "Linux"))
+
+
+def _programs(runtime):
+    """``codex, codex-code-mode-host on macOS, ... on Windows and ... on Linux``: every pinned platform's files."""
+    named = ["%s on %s" % (", ".join(runtime["platforms"][key]["required"] + runtime["platforms"][key]["optional"]),
+                           label) for key, label in PLATFORM_NAMES if key in runtime["platforms"]]
+    unknown = sorted(set(runtime["platforms"]) - {key for key, _label in PLATFORM_NAMES})
+    if unknown:
+        raise NoticeError("the pin names a platform this header does not: %s" % ", ".join(unknown))
+    return ", ".join(named[:-1]) + " and " + named[-1] if len(named) > 1 else named[0]
+
 def build(fork, cargo):
     runtime = pin()
     with tempfile.TemporaryDirectory(prefix="angelo-runtime-notices-") as folder:
@@ -241,11 +254,9 @@ def build(fork, cargo):
     header = [
         "Third-party notices of Angelo's agent runtime",
         "=" * 45, "",
-        "Angelo bundles a modified build of OpenAI Codex %s (README.txt beside this file): %s on macOS and %s on "
-        "Windows. Besides OpenAI's own code (LICENSE.txt and NOTICE.txt beside this file), those programs contain the "
-        "following third-party software, under the terms reproduced or named below." % (
-            runtime["version"], ", ".join(runtime["platforms"]["macos"]["required"]),
-            ", ".join(runtime["platforms"]["windows"]["required"] + runtime["platforms"]["windows"]["optional"])),
+        "Angelo bundles a modified build of OpenAI Codex %s (README.txt beside this file): %s. Besides OpenAI's own "
+        "code (LICENSE.txt and NOTICE.txt beside this file), those programs contain the following third-party "
+        "software, under the terms reproduced or named below." % (runtime["version"], _programs(runtime)),
         "",
         "Written by scripts/angelo/agent_runtime_notices.py from the fork's Cargo.lock at %s: the run-time "
         "dependencies of those programs for %s." % (

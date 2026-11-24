@@ -15,6 +15,9 @@
 
 #include <atomic>
 #include <string>
+#include <vector>
+
+#include "BLI_fileops.hh"
 
 #include "bpy_angelo_guard_confine_native.hh"
 
@@ -48,11 +51,89 @@ extern const char *const STYLE_MODULE;
 extern const char *const MARK;
 extern const char *const DRIVER;
 
+/** One of this thread's "confined here" states (`depth`, `pending`, `held`), with every change also keeping the
+ * process-wide `BLI_fileops_confine_open` in step: it counts each state that is set on some thread, so it is nonzero
+ * whenever any thread is confined. Hot paths read it before asking `confined_now` (BLI_fileops.hh). The count lives
+ * in the type, so no write to the state can miss it. Constant-initialized and trivially destroyed, so a
+ * `thread_local` one costs a plain read; a thread that ends with its state set leaves its count, which only keeps
+ * the hot paths asking. */
+template<typename T> class ConfineState {
+ public:
+  constexpr ConfineState() = default;
+  ConfineState(const ConfineState &) = delete;
+  ConfineState &operator=(const ConfineState &) = delete;
+  operator T() const
+  {
+    return value_;
+  }
+  ConfineState &operator=(T value)
+  {
+    value_ = value;
+    sync();
+    return *this;
+  }
+  ConfineState &operator+=(T by)
+  {
+    return *this = T(value_ + by);
+  }
+  ConfineState &operator-=(T by)
+  {
+    return *this = T(value_ - by);
+  }
+  T operator++(int)
+  {
+    const T was = value_;
+    *this = T(value_ + 1);
+    return was;
+  }
+  T operator--(int)
+  {
+    const T was = value_;
+    *this = T(value_ - 1);
+    return was;
+  }
+
+ private:
+  T value_{};
+  bool counted_ = false;
+
+  void sync()
+  {
+    const bool now = value_ != T();
+    if (now != counted_) {
+      counted_ = now;
+      BLI_fileops_confine_open.fetch_add(now ? 1 : -1, std::memory_order_relaxed);
+    }
+  }
+};
+
+/* `depth` and `pending` are declared without `constinit` here, and defined with it (bpy_angelo_guard_confine.cc): a
+ * reader in another file then goes through the thread wrapper, a few instructions, where a `constinit` declaration has
+ * Apple's toolchain call `_tlv_get_addr` at every read: the allocator hook (record.cc) reads `depth` at each
+ * allocation a script makes, which cost a generator-heavy script ~7% on macOS (v210-rc bench, 2026-11-22). */
+/** A thread's flag that keeps its share of `hook_event_work` in step with every assignment (as `ConfineState`
+ * keeps the hot-path count): constant-initialized and trivially destroyed; a thread that ends with it set leaves its
+ * count, which only keeps the hook reading its own flag. */
+class CountedFlag {
+ public:
+  constexpr CountedFlag() = default;
+  CountedFlag(const CountedFlag &) = delete;
+  CountedFlag &operator=(const CountedFlag &) = delete;
+  operator bool() const
+  {
+    return value_;
+  }
+  CountedFlag &operator=(bool value);
+
+ private:
+  bool value_ = false;
+};
+
 /** This thread's depth: inside `run_confined`, a trampoline, or a job a confined thread started. */
-extern thread_local int depth;
+extern thread_local ConfineState<int> depth;
 /** A script ran on this thread outside `run_confined` (someone rebound the executor): confined until the next
  * `run_confined` ends, failing closed. */
-extern thread_local bool pending;
+extern thread_local ConfineState<bool> pending;
 /** Re-entrance: the hook's own work raises events too. */
 extern thread_local bool busy;
 /** The confinement's own work at a region's end: still confined, but not journaled. */
@@ -137,6 +218,45 @@ void autorun_trust(void *text);
 /** Whether any agent code has run in this process: until then the hook returns at once. */
 extern std::atomic<bool> armed;
 
+/** For good: every hot path asks from now on, at 2.0.0's cost (BLI_fileops.hh, `BLI_fileops_confine_always`). */
+void confine_ask_always();
+
+/**
+ * Set while the audit event being judged on this thread is a compile or an unmarshal whose input provenance proved is
+ * an installed file's own content (a `.pyc` equal to the installed file, a source equal to the file it is compiled
+ * under, a frozen module's bytes); cleared when `compile` returns and at the next audit event on the thread, so after
+ * an unmarshal it lasts until then (every Python-level way to make a code object raises an event first; C code
+ * making one meanwhile, such as a traceback's empty code, is exempt with it). Code objects made meanwhile are that
+ * file's, not the agent's (`born_confined`). Decided by the bytes, never by the importing objects, which a script can
+ * build (BREAKIT break-it-confine-fixes-b31e34840ca MUST-1).
+ */
+extern thread_local CountedFlag installed_bytes_verified;
+/** The audit hook's per-event work, as one word it reads once per event (Ruling 17: the coordinator's (Q), after the
+ * macOS bench, 2026-11-22): nonzero while Strict script protection is on (`HOOK_WORK_STRICT`, kept by `store_strict`,
+ * added before the flag turns on and taken off after it turns off) or while any thread has `installed_bytes_verified`
+ * set (one each, kept by `CountedFlag`). With it zero, the usual event pays one relaxed load and nothing else: no
+ * Strict read, no thread-local access, no write. The thread that set its mark sees its own count first, so its next
+ * event clears it, as clearing at every event did. */
+extern std::atomic<int> hook_event_work;
+inline constexpr int HOOK_WORK_STRICT = 1 << 20;
+
+/**
+ * Whether `path` names a URL or a protocol rather than a file: a scheme of two or more letters, digits, `+`, `-`, `.`
+ * or `,` before a `:` (`http://`, `tcp:`, `concat:`, `subfile,,...:`; a Windows drive letter is one letter, so `C:\` is
+ * a file). A confined script's path that names one is refused (`NETWORK`), whatever the library: FFmpeg, and any
+ * other reader that takes URLs, would open it natively, where no Python socket event is raised (BREAKIT
+ * reread-r210-1c2c4edaf48 M-1). `file:` is refused too: a script names files by path.
+ */
+bool names_a_url(const char *path);
+
+/** Whether a code object's file name is a trusted file's (an installed path, or `<frozen ...>`). */
+bool trusted_name(PyObject *name);
+
+/** Count `code` and its nested code constants, however deep, that are now named as agent code (MARK, DRIVER), each
+ * once by identity, while they live (bpy_angelo_guard_confine.cc, `counted_codes`). Called after a rename: the
+ * watcher read their names when they were made. GIL. */
+bool count_agent_code_tree(PyObject *code);
+
 /** `_angelo_guard.ScriptConfined` (a PermissionError subclass with `reason` and `what`). */
 extern PyObject *script_confined_type;
 /** `_angelo_guard.Deferred`: a callable run confined (the trampoline). */
@@ -148,7 +268,7 @@ int refuse(const char *reason, const char *what);
 /** Whether `code` is agent code: compiled under MARK or DRIVER, or tainted (made or run while confined). */
 bool agent_code(PyCodeObject *code);
 /** Record `code` and every code object it holds as agent code. */
-void taint(PyObject *code);
+bool taint(PyObject *code);
 /** Record a file name as agent code's (a text or file the confined thread compiled). */
 void taint_name(PyObject *name);
 /** Whether a frame of agent code is on this thread's stack (GIL). */
@@ -260,16 +380,51 @@ int provenance_marshal(const char *event, PyObject *args);
 void sqlite_connected(PyObject *connection);
 /** Inside `_imp.get_frozen_object` for a frozen module's own bytes on this thread (bpy_angelo_guard_confine_wrap.cc). */
 extern thread_local int loading_frozen;
-/** Inside `socket.socketpair` on this thread (its own socket events are allowed). */
+/** Inside `socket.socketpair` on this thread: its own socket events may be allowed (`socketpair_event_allowed`). */
 extern thread_local int making_socketpair;
+/** Whether network event `name` (`args`) is `socket.socketpair`'s own, made while this thread is inside it: only
+ * `socket.__new__`, and `socket.bind` / `socket.connect` to a loopback address, with every Python frame between the
+ * event and the socketpair call the standard library's own `socket.py` code, never agent code (break-it-confine-
+ * reparse 36bcdd2 read MUST-4: the allowance was thread-wide, and a `__del__`, a gc callback or a signal handler run
+ * inside socketpair could open a connection). */
+bool socketpair_event_allowed(const char *name, PyObject *args);
 /** The second set of wrappers (bpy_angelo_guard_confine_wrap_io.cc). */
 int install_wrappers_io();
+/** The stat family's wrappers (bpy_angelo_guard_confine_wrap_lookup.cc): those only the network check needs are
+ * installed only with Strict script protection on (`install_strict_lookups`). */
+int install_wrappers_lookup();
+/** The wrappers only Strict script protection needs (Ruling 17), when it turns on (or already is at install): the
+ * stat family's and `os.DirEntry`'s network check, and the descriptor-ownership layer (wrap_io.cc, made.cc). Each
+ * once; needs the GIL. */
+void install_strict_lookups();
+/** Those wrappers removed again when Strict script protection turns off: every module attribute and reference the
+ * install replaced holds the original again (one walk), so the stat family is CPython's own. Needs the GIL. */
+void remove_strict_lookups();
+/** `os.DirEntry`'s original methods back (bpy_angelo_guard_confine_wrap_lookup_entry.cc). */
+void remove_wrappers_entry();
+/** `os.DirEntry`'s wrappers, installed with the strict lookups (bpy_angelo_guard_confine_wrap_lookup_entry.cc). */
+int install_wrappers_entry();
+/** For the file gate (`BLI_FileGate::lookup_refused`): a confined thread's lookup that would reach the network. */
+bool lookup_refused_by_gate(const char *path, bool follow_last);
 /** Native file entry points and SQLite (bpy_angelo_guard_confine_wrap_native.cc). */
 void install_native_entries();
 /** The pipeline modules' path gates (bpy_angelo_guard_confine_wrap_pipeline.cc). */
 void install_pipeline_entries();
 /** Put `wrapper` where `module_name.name` is `original`, and every other reference to it. */
 void put_in(const char *module_name, const char *name, PyObject *wrapper, PyObject *original);
+/** `module_name.name` is `original` again where it is `wrapper` (the reverse of `put_in`'s own attribute). */
+void put_back(const char *module_name, const char *name, PyObject *wrapper, PyObject *original);
+/** `put_in` for a wrapper only Strict script protection needs (Head 20 read R-4): recorded, so turning the switch off
+ * puts every original back (`remove_strict_installs`). */
+void put_in_strict(const char *module_name, const char *name, PyObject *wrapper, PyObject *original);
+/** A type's method replaced for Strict script protection only, recorded the same way. */
+void set_method_strict(PyTypeObject *type, const char *name, PyObject *method, PyObject *original);
+/** Every recorded Strict-only install undone: attributes, the references `put_in` replaced, type methods. */
+void remove_strict_installs();
+/** Whether `object` is a wrapper Strict script protection installed and has not removed (another may stand over it). */
+bool installed_by_strict(PyObject *object);
+/** The descriptor-ownership layer's descriptor, handle and `_overlapped` wrappers (wrap_io.cc): with the switch. */
+void install_strict_io();
 /** Judge a path argument (str, bytes or PathLike) for a confined thread: -1 with ScriptConfined set when refused. */
 int judge_entry_path(PyObject *value, bool write);
 /** Point every loaded module's reference to `original` (and `__wrapped__`) at `wrapper`. */
@@ -277,10 +432,27 @@ void replace_references(PyObject *original, PyObject *wrapper);
 /** Between these, replacements are collected and the loaded modules walked once for all of them at the end. */
 void replace_references_begin();
 void replace_references_end();
+/** The modules whose functions were replaced (bpy_angelo_guard_confine_wrap_owners.cc): `original`'s module is noted
+ * by every replacement; a confined `_imp.create_builtin`/`create_dynamic` of one is refused. */
+void note_wrapped_owner(PyObject *original);
+/** An install site's module (the one it imported to replace something in): noted, and listed apart from what the
+ * replacements noted (`install_site_modules`), so a test can check the noting against the sites. */
+void note_install_site(const char *module_name);
+std::vector<std::string> install_site_modules();
+bool names_a_wrapped_module(const char *name, bool dynamic);
+std::vector<std::string> wrapped_module_names();
+/** A spec of Angelo's own holding what `spec` answered once (its exact `name`, `origin`, ...), new reference or null;
+ * `r_name` is that name. `steady_spec_prepare` takes the namespace type before any script runs. */
+PyObject *steady_spec(PyObject *spec, std::string &r_name);
+void steady_spec_prepare();
 
 
 /** Shared by the module's files (bpy_angelo_guard_confine.cc and its _run, _roots, _deferred). */
 bool refuse_if_confined(const char *what);
+/** A network share a script was refused: for the person (console, `network_shares_refused()`), never the agent. */
+void person_network_share_refused(const std::string &share);
+/** Whether Python code runs on this thread now (a frame on its stack); false without the GIL. Any thread. */
+bool python_on_stack();
 bool name_is(PyObject *name, const char *text);
 int deferred_type_ready();
 bool add_each(PyObject *items, void (*add)(const std::string &));

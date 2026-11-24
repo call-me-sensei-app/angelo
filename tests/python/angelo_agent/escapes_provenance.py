@@ -29,6 +29,8 @@ import tempfile
 
 import bpy
 
+import child_blender   # A child Angelo runs the suite's code from its own file.
+
 
 def _record():
     return os.path.join(bpy.utils.user_resource('CONFIG'), "angelo_agent_changed.txt")
@@ -91,8 +93,7 @@ def writers(run, check, plain):
 
 
 def _child(code):
-    done = subprocess.run([bpy.app.binary_path, "--background", "--factory-startup", "--python-expr", code],
-                          capture_output=True, text=True, timeout=600)
+    done = child_blender.run(code, capture_output=True, text=True, timeout=600)
     for line in done.stdout.splitlines():
         if line.startswith("CHILD "):
             return json.loads(line[6:])

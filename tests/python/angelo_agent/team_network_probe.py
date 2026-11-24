@@ -171,15 +171,18 @@ def team_environment(mode, gateway_origin, out):
     try:
         for name in [n for n in os.environ if "PROXY" in n.upper() or n.upper().startswith(("ANTHROPIC", "CLAUDE"))]:
             del os.environ[name]
-        os.environ.update(ANGELO_GATEWAY_URL=gateway_origin, ANGELO_POLICY_FILE=str(out / "policy.json"))
-        managed_policy.reset()   # Read the probe's policy file (its gateway certificate) now.
+        os.environ.update(ANGELO_GATEWAY_URL=gateway_origin)
+        # The gateway certificate as a managed source delivers it: the person's own ANGELO_POLICY_FILE can't add
+        # trusted roots (managed_policy, "Sources": it only narrows).
+        managed_policy.reset(managed_policy.combine([("managed (probe)", json.loads((out / "policy.json").read_text()))]))
         env = child_environment(mode, GRANT_KEY)
     finally:
         os.environ.clear()
         os.environ.update(saved)
+        managed_policy.reset()   # The probe's injected policy never outlives this environment.
     home = out / ("profile-" + mode)
     home.mkdir(exist_ok=True)
-    env.update(HOME=str(home), CLAUDE_CONFIG_DIR=str(home), ANGELO_POLICY_FILE=str(out / "policy.json"))
+    env.update(HOME=str(home), CLAUDE_CONFIG_DIR=str(home))
     return env
 
 

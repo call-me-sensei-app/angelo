@@ -965,8 +965,15 @@ static void engine_render_view_layer(Render *re,
      * dependency graph, which is only allowed if there is no grease
      * pencil (pipeline is taking care of that). */
     if (!RE_engine_test_break(engine) && engine->depsgraph != nullptr) {
-      CLOG_INFO(&LOG, "Rendering grease pencil");
-      DRW_render_gpencil(engine, engine->depsgraph);
+      if (WM_gpu_is_available()) {
+        CLOG_INFO(&LOG, "Rendering grease pencil");
+        DRW_render_gpencil(engine, engine->depsgraph);
+      }
+      else {
+        /* Grease pencil draws with the GPU: refuse the render rather than leave it out. */
+        BKE_report(re->reports, RPT_ERROR, WM_gpu_unavailable_message());
+        G.is_break = true;
+      }
     }
   }
 
@@ -1030,12 +1037,17 @@ bool RE_engine_render(Render *re, bool do_all)
   re->display->draw_lock();
 
   if (type->flag & RE_USE_GPU_CONTEXT) {
-    WM_init_gpu_backend();
-    if (!GPU_backend_supported()) {
+    /* The backend can report support while the system gives no GPU context (OpenGL without
+     * 4.3): ask for both. */
+    if (!WM_gpu_is_available()) {
       /* Clear UI drawing locks. */
       re->display->draw_unlock();
-      BKE_report(re->reports, RPT_ERROR, "Cannot initialize the GPU");
-      G.is_break = true;
+      /* A preview renders nothing, quietly: one refusal per previewed asset would flood the log,
+       * and a break would stop more than this preview. */
+      if (!(re->r.scemode & R_BUTS_PREVIEW)) {
+        BKE_report(re->reports, RPT_ERROR, WM_gpu_unavailable_message());
+        G.is_break = true;
+      }
       return true;
     }
   }

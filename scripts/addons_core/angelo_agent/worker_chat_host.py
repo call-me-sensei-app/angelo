@@ -47,6 +47,7 @@ import uuid
 from pathlib import Path
 
 from . import grant_authority, grant_guard  # noqa: E402  (only the person grants: grant_guard)
+from .pump_guard import each
 from . import worker_chat_events as events
 from . import worker_chat_holds as holds, worker_chat_part
 from . import worker_chat_seams as seams
@@ -73,15 +74,13 @@ class WorkerChatHost:
         self.executor_factory = executor_factory
         self.pump_tools = pump_tools
         self.outbox = worker_chat_part.TurnEnds(outbox or events.Outbox(host.endpoint))   # Ends after saves.
-        self.chats, self.paths, self._pending, self._waiting, self._versions = {}, {}, {}, {}, {}
-        self._cursor = 0
-        self._layout, self._save_after, self._signs, self._running = None, 0.0, {}, {}
+        self.chats, self.paths, self._pending, self._waiting, self._versions, self._cursor = {}, {}, {}, {}, {}, 0
+        self._layout, self._save_after, self._signs, self._running, self._facts = None, 0.0, {}, {}, {}
         self.save_due = False   # A script saved the open file as another file (``worker_chat_part``).
         self._type = hosted_class(self.ui.Controller)
         self.on_reverse = None   # The relay's handler of ``{"rseq", "response"}`` frames (runtime_relay, C3/C5).
         self.usage_required = False   # ``worker_main``: usage forwarding installed, so every open must be covered.
         self.arrivals = Arrivals(self)   # Stop and consent at their frame's arrival (``worker_chat_arrival``).
-        self._facts = {}
 
     # The loop ------------------------------------------------------------------------------------------------------
 
@@ -111,23 +110,20 @@ class WorkerChatHost:
 
     def pump(self):
         """The window timer's calls for every hosted chat, then what changed goes to the lead."""
-        chats = list(self.chats.values())
-        for chat in chats:
-            chat.pump_events()
-            self._observe(chat)   # Calls a provider thread admitted meanwhile, before any of them runs.
+        chats = list(self.chats.values())   # Each chat's steps on their own (``each``): one failing never stalls another.
+        for chat in chats:   # Calls a provider thread admitted meanwhile (each start looks again).
+            each("WorkerChatHost.pump", lambda: (chat.pump_events(), self.observe(chat)), chat.redact, chat.state["id"])
         runnable = [chat for chat in chats if not chat.held]
         if runnable:
             self._cursor = self._pump_tools(runnable)
         for chat in chats:
-            self._observe(chat)
-            self._send_signs(chat)
-            self._send_running(chat)
-            self._send_facts(chat)
+            each("WorkerChatHost.pump", lambda: (self.observe(chat), self._send_signs(chat), self._send_running(chat),
+                                                 self._send_facts(chat)), chat.redact, chat.state["id"])
         saved = self.outbox.cut()   # The turn ends that came before this save step go after it (TurnEnds),
         holds.answer_holds(self)
         self._save_part()
         for chat in chats:   # and after this chat applied them: a turn end the lead sees here is over here too.
-            chat.pump_events()
+            each("WorkerChatHost.pump", chat.pump_events, chat.redact, chat.state["id"])
         self.outbox.release(saved)
         from . import runtime_prewarm   # A prewarm no message adopted is released after its idle bound.
         runtime_prewarm.observe(None, None, chats, time.monotonic())
@@ -156,13 +152,18 @@ class WorkerChatHost:
         from .blender_tools import BlenderExecutor
         return BlenderExecutor(self.ui.main_window())
 
-    def _observe(self, chat):
-        session = chat.state["id"]
-        mark = events.fingerprint(chat)
-        if self._pending.get(session) != mark:
-            self._pending[session] = mark
-            self.outbox.put(events.event(session, "pending", {"calls": events.pending_calls(chat, self.consent),
-                                                              "seq": events.pending_version(self._versions, chat)}))
+    def observe(self, chat, starting=None):
+        """Pending calls to the lead when changed (pump), and at a start unless heard as not waiting for the person."""
+        with chat.lock:   # One look at a time per chat, in the order its digests are read (pending_digests).
+            session, (sent, heard) = chat.state["id"], self._pending.get(chat.state["id"], (None, {}))   # None: unsent.
+            if starting is not None and heard.get(starting.id) is False:
+                return   # The lead shows it as running without the person: the pump sends its other changes.
+            if sent != (mark := events.fingerprint(chat)):   # Built and put before recorded: a failure records none.
+                calls = events.pending_calls(chat, self.consent)
+                self.outbox.put(events.event(session, "pending", {
+                    "calls": calls, "seq": events.pending_version(self._versions, chat)}))
+                if self.chats.get(session) is chat:   # Closed meanwhile (``_end``): no record outlives it.
+                    self._pending[session] = (mark, {call["id"]: call["needs_person"] for call in calls})
 
     def _send_signs(self, chat):
         """The live row's signs (``turn_activity.signs`` of its provider) as ages, when they changed (``SIGNS_SECONDS``)."""
@@ -246,9 +247,10 @@ class WorkerChatHost:
         return answer
 
     def resend_cards(self, chat):
-        """After any refusal the chat's cards go to the lead again at the next pump: the lead may have spent a card's
-        one Approve on the refused request (break-it F7)."""
-        self._pending.pop(chat.state["id"], None)
+        """After a refusal the cards go to the lead again at the next pump (F7: it may have spent an Approve). From
+        another thread it waits for a send's record; on the same thread nothing calls it between a send and its record."""
+        with chat.lock:   # Every change of ``_pending`` holds the chat's lock: none lands between a send and its record.
+            self._pending.pop(chat.state["id"], None)
 
     def _open(self, session, request):
         if session in self.chats:   # Open already (an answer the lead never got): its frames carry the new id.
@@ -324,8 +326,7 @@ class WorkerChatHost:
         return chat.prewarmed is not None
 
     def _prewarm(self, chat, request):
-        """The lead's composer is being written in this chat (``worker_mirror_prewarm``): start (or keep) its
-        runtime, or release it when the draft went."""
+        """The lead's composer is being written in this chat (``worker_mirror_prewarm``): start, keep or release it."""
         if request.get("action") == "release":
             from . import runtime_prewarm
             runtime_prewarm.release(chat)
@@ -443,7 +444,8 @@ class WorkerChatHost:
             return was_busy
         finally:
             self.chats.pop(session, None)
-            self._pending.pop(session, None)
+            self.resend_cards(chat)   # Its record goes, under its lock (``observe`` records only while it is hosted).
+            self._versions.pop(session, None)
             self._signs.pop(session, None)
             self._facts.pop(session, None)
             if self.ui._controllers.get(session) is chat:

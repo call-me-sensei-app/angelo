@@ -45,6 +45,7 @@ import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 import qa_plus_menu  # noqa: E402  (the + menu's pages, read from the chat's canvas state)
 import qa_input  # noqa: E402  (the person's real press, which C mints the row's ticket for)
 from angelo_agent import product_env  # noqa: E402
+import qa_hit
 product_env.clear('DISABLE_DEFAULT_CHAT')   # The default startup builds Director (the runner's opt-out skips it).
 
 ui._authentication.start = lambda *args, **kwargs: None

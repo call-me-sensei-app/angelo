@@ -20,29 +20,13 @@ No Blender here; ``capabilities_host`` passes what the build has.
 """
 
 import copy
-from dataclasses import dataclass
+
+from .feature_guide_types import H, U, Guide  # noqa: F401  (Guide, H, U: the guide modules' shared names)
+from .feature_guide_scene import SCENE_GUIDES
 
 DOCUMENT = "features"   # doc/angelo/features.rst: the people's guide to every entry here.
 
 
-@dataclass(frozen=True)
-class Guide:
-    id: str
-    name: str
-    what: str           # What it does, one or two sentences.
-    reach: str          # Where the person finds it, by the labels they see (English; relayed in their language).
-    agent: str          # How the agent turns it on or uses it.
-    menu: tuple = ()    # chat_destinations feature ids that reach it.
-    doc: str = ""       # Its contract: doc/angelo/<doc>.rst.
-    requires: tuple = ()   # Operator idnames that must be registered for the entry to be offered.
-    suggest: str = ""   # When to recommend it unasked.
-    heading: str = ""   # Its section in the people's guide (doc/angelo/features.rst); not sent to the model.
-    examples: tuple = ()   # Calls as the agent makes them: {"tool", "arguments"} or {"operation"} of a program;
-    # test_native_feature_guide validates each with the tool's own validator, so the guide can't teach a refused call.
-
-
-U = "123e4567-e89b-42d3-a456-426614174000"   # Example ids and handles: placeholders the note says to replace.
-H = "scn:" + "a" * 32 + ":1"
 EXAMPLES_NOTE = ("Ids and handles in examples are placeholders: connection_id and model from angelo_studio_catalog, "
                  "attachment and asset ids from the chat and angelo_studio_list, handles from the observation.")
 
@@ -193,55 +177,22 @@ GUIDES = (
                                                                "kind": "texture", "name": "Brick wall"}},),
           menu=("library",), doc="downloads", heading="Files from the web",
           suggest="The person gives a link to a file, or a script would otherwise download something."),
-    Guide("bake_maps", "Bake every map at once",
-          "Bakes all of a material's maps (colour, roughness, normal...) in one job, packed separately or for glTF, "
-          "Unreal or Unity.",
-          "Chat bar + menu > Create > Render > Bake maps…; F3.",
-          "angelo_job_start kind BAKE_MAPS with the object's handle as target and an output folder (deferred job "
-          "tools: its fields come with the lookup).",
-          examples=({"tool": "angelo_job_start", "arguments": {"kind": "BAKE_MAPS", "target": H,
-                                                               "output": "textures/crate"}},),
-          menu=("bake_maps",), doc="long_jobs", heading="Bake every map at once", requires=("angelo.bake_maps",),
-          suggest="The person exports to a game engine or the web and the materials use procedural nodes."),
-    Guide("render_region", "Region render over the last render",
-          "Re-renders only a chosen region over the last finished render, to check a change quickly.",
-          "Chat bar + menu > Create > Render > Render region; Render > Render Region Over Last Render; the region "
-          "pills in the render window.",
-          "angelo_job_start kind RENDER_REGION with region.",
-          examples=({"tool": "angelo_job_start", "arguments": {"kind": "RENDER_REGION",
-                                                               "region": [0.25, 0.25, 0.75, 0.75]}},),
-          menu=("render_region",), doc="render_region", heading="Render a region over the last render", requires=("angelo.render_region",),
-          suggest="A small change needs checking in a slow final render."),
-    Guide("select_through", "Select Through",
-          "Lets box, lasso and circle selection reach hidden elements in solid display, as X-ray does, without "
-          "changing the display (mesh Edit Mode, paint masks, Particle Edit).",
-          "The 3D view header beside X-ray; Director's top bar in Edit Mode; the shading pie (Z); chat bar + menu > "
-          "Inspect > Select Through.",
-          "A setting of the person's view: tell them where it is; the agent's own selections never need it.",
-          menu=("select_through",), doc="select_through", heading="Select Through"),
-    Guide("tension_map", "Tension maps",
-          "Shows where a deforming mesh stretches or squashes, as an overlay and as data a material can use.",
-          "Chat bar + menu > Inspect > Tension map; Add Modifier > Edit > Tension.",
-          "angelo_scene_program modifier_add with type TENSION on the object's handle; the overlay is the person's "
-          "view setting.",
-          examples=({"operation": {"kind": "modifier_add", "target": H, "parameters": {"type": "TENSION"}}},),
-          menu=("tension_map",), doc="tension_map", heading="Tension maps", requires=("angelo.tension_map",),
-          suggest="Rigging or cloth work where stretching matters."),
-    Guide("uv_checker", "UV checker",
-          "Shows a checker pattern on models in the viewport to judge UV stretching and texel density.",
-          "Chat bar + menu > Check > UV checker; Director's top bar; View > Toggle UV Checker.",
-          "The person's view setting: tell them where it is; angelo_view's UV look shows the agent a layout.",
-          menu=("uv_checker",), doc="uv_checker", heading="UV checker", requires=("angelo.uv_checker",),
-          suggest="After unwrapping, or before texturing or baking."),
-    Guide("engine_skeleton", "Rig check for a game engine (Unreal, Unity, Godot)",
-          "Checks whether an armature fits a game engine's humanoid skeleton: Unreal's UE5 Mannequin names and "
-          "whether its IK Retargeter would auto-retarget it, Unity Humanoid, Godot's SkeletonProfileHumanoid. Each "
-          "bone's role is found by layout; each finding has its fix and engine source. Read-only.",
-          "Chat bar + menu > Inspect > Check a rig for a game engine; F3 > Check Rig for Game Engine.",
-          "angelo_skeleton_check {target: UNREAL | UNITY | GODOT, armature, format} (deferred, read-only).",
-          examples=({"tool": "angelo_skeleton_check", "arguments": {"target": "UNREAL"}},),
-          menu=("engine_skeleton",), doc="engine_skeleton", heading="Rig check for a game engine",
-          suggest="Before exporting a rigged character to Unreal, Unity or Godot, or when retargeting fails there."),
+    Guide("markup", "Mark up a picture",
+          "The person draws on a picture (pen, arrows, ellipses, rectangles, text) and pins numbered comments on "
+          "points or regions, then sends it with instructions. The same viewer crops or scales it, as a new picture.",
+          "Click a picture in the chat's message box, or chat bar + menu > Mark up a picture... (the newest picture, "
+          "or the 3D view as it is now).",
+          "angelo_app_feature {feature: MARKUP, action: OPEN, reference_id?} opens the viewer for the person on a "
+          "picture of this chat (its reference_id) or, without one, on the 3D view as it is now, after its card; "
+          "the person draws and sends, the agent never draws. A marked-up picture arrives as two images, marked then "
+          "original, and a block headed 'Pictures the person marked up for you' whose comment numbers are the numbers "
+          "on the pins and whose positions are the original's pixels.",
+          examples=({"tool": "angelo_app_feature", "arguments": {"feature": "MARKUP", "action": "OPEN"}},
+                    {"tool": "angelo_app_feature", "arguments": {"feature": "MARKUP", "action": "OPEN",
+                                                                 "reference_id": U}}),
+          menu=("markup",), doc="attachment_markup", heading="Mark up a picture", requires=("angelo.markup_picture",),
+          suggest="Words alone leave it unclear which part of a picture or the 3D view the person means."),
+    *SCENE_GUIDES,   # Scene, modelling, UV and rigging tools (feature_guide_scene.py), in this place of the order.
     Guide("web_export", "Web export and live browser preview",
           "A web-ready .glb for Three.js with its size budget, and a browser preview that updates after every "
           "change.",
@@ -249,6 +200,29 @@ GUIDES = (
           "angelo_web_check, angelo_web_export, angelo_web_preview (deferred).",
           examples=({"tool": "angelo_web_check", "arguments": {}},),
           menu=("web_export", "web_preview"), doc="web_export", heading="Web export and live browser preview"),
+    Guide("rules", "Rules: standing instructions",
+          "Instructions the person writes once and Angelo follows in every request: for this project (kept in the "
+          "file) or for all projects (kept on this computer). A file's rules from someone else wait for the person's "
+          "review.",
+          "Chat bar + menu > Rules… (footer): This project, All projects, and Scripts (scripts always run in this "
+          "project, with Remove).",
+          "None: rules are only ever the person's own words; the agent never writes or changes them. Suggest Rules… "
+          "when the person repeats the same instruction across requests.",
+          menu=("rules",), doc="agent_chat", requires=("angelo.chat_rules",), heading="Rules",
+          suggest="The person states the same convention again (naming, units, a polycount budget, a style)."),
+    Guide("context_folder", "Folder as context",
+          "Lets Angelo use up to five folders of the person's (a game project, references) in one chat, never seeing "
+          "their paths: it reads them all, and writes text files (notes, checklists, plans) only in the working "
+          "folder; it never deletes, moves or renames, and asks before changing a file that was already there.",
+          "Chat bar + menu > Folder as context… (footer); a card per folder names it and its role, with Make working "
+          "folder and Remove. The first folder attached is the working folder.",
+          "angelo_context_folder {action: LIST | READ | SEARCH | VIEW, folder, path, query} and "
+          "angelo_context_folder_write {action: CREATE | UPDATE, path, content} (both deferred), only in a chat whose "
+          "person attached folders (the observation's context_folders names each, with its role).",
+          examples=({"tool": "angelo_context_folder", "arguments": {"action": "LIST"}},
+                    {"tool": "angelo_context_folder", "arguments": {"action": "SEARCH", "query": "player"}}),
+          menu=("context_folder",), doc="agent_chat", requires=("angelo.context_folder",), heading="Folder as context",
+          suggest="The person mentions files on their computer (a game project, a folder of references)."),
     Guide("generation_flows", "Generation Flows",
           "Node-tree workflows that chain generation steps (image, 3D, upscaling...) and run with one approval.",
           "Chat bar + menu > Create > Generation Flows (New, templates and saved flows).",
@@ -267,6 +241,25 @@ GUIDES = (
                                                           "until its outline matches the attached picture"}},
                     {"tool": "angelo_goal", "arguments": {"action": "STOP", "reason": "NEEDS_INPUT",
                                                           "message": "Which of the two styles in the brief comes first?"}})),
+    Guide("plan", "Plan first: research and compare approaches before building",
+          "The chat becomes read only and plans: the agent researches (the web, the scene, views), asks what it "
+          "needs, and ends with a plan card of up to three approaches, each with steps, risks and an estimate, its "
+          "recommendation and open questions. This chat's agent changes nothing until the person presses Go with this on "
+          "an approach, which switches the chat to the approval setting the card shows and sends that approach.",
+          "Chat bar + menu > Plan first (beside Attach and Goal); or the person says they want to plan first. Edit on "
+          "an approach copies it into the message box to change before Go; the Planning chip's close stops planning.",
+          "When the person asks to plan, research or discuss approaches before building, angelo_plan (deferred) "
+          "START makes the chat read only; PROPOSE ends the planning turn with the plan the person chooses from.",
+          menu=("plan",), doc="plan_mode", heading="Plan mode",
+          examples=({"tool": "angelo_plan", "arguments": {"action": "START"}},
+                    {"tool": "angelo_plan", "arguments": {
+                        "action": "PROPOSE", "summary": "Two ways to make the shelf, by how often it will change.",
+                        "approaches": [{"title": "One mesh with modifiers", "steps": ["Model one board",
+                                                                                   "Array and bevel it"],
+                                        "risks": ["Harder to move single boards"], "estimate": "a few minutes"},
+                                       {"title": "Separate boards", "steps": ["Make each board its own object"],
+                                        "estimate": "about ten minutes"}],
+                        "recommended": 0, "questions": ["Will it be exported to a game engine?"]}})),
     Guide("learn", "Learn: how to do a step yourself",
           "Shows how a person does by hand what Angelo's typed steps did, once the person turns it on for a chat; "
           "it is off by default and then shows nothing. With it on, the steps of the latest request open with a card: "
@@ -335,11 +328,12 @@ def lookup(names, available_operators=None, engines=None):
             entry["examples"] = [item for item in copy.deepcopy(list(guide.examples))
                                  if "tool" not in item or item["tool"] in TOOL_MAP]
             entry["examples_note"] = EXAMPLES_NOTE
+        tool = APP_FEATURE_TOOLS[0]   # Every feature taught through it gets the deferred tool's schema with it.
+        if name == "engine_link" or any(item.get("tool") == tool["name"] for item in guide.examples):
+            entry["tool"] = {"name": tool["name"], "input_schema": tool["inputSchema"]}
         if name == "engine_link":
             if ENGINE_LINK_NAMES <= set(TOOL_MAP):
                 entry["agent"] += " " + ENGINE_LINK_TOOLS_SENTENCE
-            tool = APP_FEATURE_TOOLS[0]
-            entry["tool"] = {"name": tool["name"], "input_schema": tool["inputSchema"]}
             if engines is not None:
                 entry["this_computer"] = engines
         entries.append(entry)

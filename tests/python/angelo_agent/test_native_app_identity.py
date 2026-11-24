@@ -242,6 +242,14 @@ class UiAndSourceTests(unittest.TestCase):
         self.assertNotRegex(script, r"Read-Host|SecureString|-Credential|Authorization|ghp_|https?://[^ ]*@",
                             "the script never handles credentials")
 
+    def test_the_windows_validation_script_reads_the_blender_series_from_the_source(self):
+        """The default-folders check expects the series the build is (BKE_blender_version.h), never a literal: the 5.2
+        literal outlived the 5.3 base and failed every identity run on a correct 5.3 config folder (build3, 2026-11-20)."""
+        script = read("scripts/angelo/windows_validate.ps1")
+        self.assertIn("BKE_blender_version.h", script)
+        self.assertNotRegex(script, r"\\\d+\.\d+\\config", "a Blender series written into the config path")
+        self.assertNotRegex(script, r"\.version\[[01]\] -ne \d", "a Blender series written into the version check")
+
     def test_native_sources_use_the_identity_macros(self):
         cocoa, win, unix = (read(f"intern/ghost/intern/GHOST_SystemPaths{p}") for p in ("Cocoa.mm", "Win32.cc", "Unix.cc"))
         self.assertIn('"%s/" ANGELO_USER_DIR_NAME "/%s"', cocoa)

@@ -8,7 +8,7 @@ native job records the call's exact invocation there, in the grant scope of the 
 Auto decision, and the commit checks it (program_commit_controller). The call's Python flags alone commit nothing."""
 
 from . import approval_modes, grant_authority, grant_guard
-from .chat_settings import options_widen
+from .chat_settings import options_widen, planning, stored_options
 from .controller import Controller
 
 
@@ -35,9 +35,18 @@ def _approving(original):
 
 def _holding_modes(original):
     def set_options(self, **changes):
+        current = self.state.get("options")
+        if planning(current) and not planning(stored_options(stored_options(current) | changes)) \
+                and grant_guard.inside_agent_code():   # Only the person ends plan mode (plan_mode.rst, "Safety").
+            raise grant_guard.Refused()
         if "approval" in changes:   # Auto held in C first (a scope for Auto; Ask and Read only narrow): approval_modes.
             approval_modes.record(self.state["id"], changes["approval"])
-        return original(self, **changes)
+        try:
+            return original(self, **changes)
+        finally:   # Every route into planning, not only START; keyed on the state, so a failed save still cancels.
+            if not planning(current) and planning(self.state.get("options")):
+                from . import planning_controls
+                planning_controls.planning_started(self)
     return _named(set_options, original)
 
 

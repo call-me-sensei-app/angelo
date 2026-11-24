@@ -23,6 +23,8 @@ from unittest import mock
 from datetime import datetime, timezone
 from pathlib import Path
 
+from host_test_policy import environment_skip
+
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parents[2] / "scripts/addons_core"))
@@ -171,6 +173,18 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(system["gpu"]["version"], "")
         self.assertEqual(crash_report.system_info(None, "Darwin", "arm64", "26.3")["os"], "macOS")
 
+    def test_linux_names_the_distribution_and_the_kernel(self):
+        system = crash_report.system_info(None, "Linux", "x86_64", "6.8.0-48-generic",
+                                          os_release={"NAME": "Ubuntu", "VERSION_ID": "24.04", "ID": "ubuntu"})
+        self.assertEqual((system["os"], system["os_version"]), ("Linux", "Ubuntu 24.04 (6.8.0-48)"))
+        long_name = crash_report.system_info(None, "Linux", "x86_64", "6.11.4-301.fc41.x86_64",
+                                             os_release={"NAME": "Fedora Linux", "VERSION_ID": "41"})
+        self.assertEqual(long_name["os_version"], "Fedora Linux 41 (6.11.4-301)")
+        custom = crash_report.system_info(None, "Linux", "x86_64", "6.9.1-alice-laptop", os_release={})
+        self.assertEqual(custom["os_version"], "6.9.1", "a kernel's local version is the builder's free text")
+        self.assertEqual(crash_report.system_info(None, "Linux", "x86_64", "6.8.0", os_release={})["os_version"],
+                         "6.8.0", "no os-release: the kernel alone")
+
     def test_a_huge_log_is_cut_down_to_the_size_limit(self):
         self.assertEqual(crash_report.MAX_BODY, 65536, "the server reads at most 65,536 bytes and answers 413 beyond")
         frames = "".join("%d   Angelo   0x%016x %s + 1\n" % (i % 1000, i + 4096, "s" * 280) for i in range(128))
@@ -205,9 +219,10 @@ class PendingTests(unittest.TestCase):
         self.addCleanup(self.folder.cleanup)
         self.base = Path(self.folder.name)
 
-    def write(self, name, text, age=60, mode=None):
+    def write(self, name, text, age=60, mode=0o600):
         path = self.base / name
         path.write_text(text, encoding="utf-8")
+        os.chmod(path, mode)   # As Angelo's crash handler writes them (creator_crash_log.cc), whatever the umask.
         stamp = time.time() - age
         os.utime(path, (stamp, stamp))
         return path
@@ -243,6 +258,21 @@ class PendingTests(unittest.TestCase):
         (self.base / "link.crash.txt").symlink_to(path)
         self.assertEqual(self.find(state), (None, []))
         self.assertEqual(crash_log.crash_files(self.base / "missing", time.time()), [])
+
+    def test_only_logs_that_are_this_users_alone_are_offered(self):
+        """The handler writes 0600; a log that a group or anyone may write, or another person's, is never offered
+        or sent under this person's consent (the scan that decides, not only the rule)."""
+        if not hasattr(os, "geteuid"):
+            self.skipTest(environment_skip("file owners are POSIX"))
+        path = self.write("angelo.crash.txt", fx.MAC)
+        for mode, offered in ((0o600, True), (0o644, True), (0o664, False), (0o666, False), (0o620, False)):
+            with self.subTest(mode=oct(mode)):
+                os.chmod(path, mode)
+                self.assertEqual(self.find()[0] is not None, offered)
+                self.assertEqual(bool(crash_log.crash_files(self.base, time.time())), offered)
+        os.chmod(path, 0o600)
+        with mock.patch.object(crash_log.os, "geteuid", return_value=os.geteuid() + 1):   # Another person's log.
+            self.assertEqual(crash_log.crash_files(self.base, time.time()), [])
 
     def test_a_new_crash_over_the_same_file_name_is_a_new_question(self):
         path = self.write("angelo.crash.txt", fx.MAC, age=500)

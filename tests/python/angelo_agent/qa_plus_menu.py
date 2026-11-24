@@ -13,8 +13,9 @@ does not scroll.
 
 ``view`` is a chat's canvas state (``chat_view._views[area]``): ``popover`` (kind ``"add"``: ``page``, ``query``,
 ``rows``, ``scroll``, ``layout`` with ``rect`` and ``max_scroll``), ``popup_hits`` [(rect, action, value)] and
-``popup_rect``, all in region pixels, y up. Other popovers (the model list) have no pages: ``step`` treats them as a
-plain list, so a suite uses one click helper for every popup.
+``popup_rect``, all in chat layout units, y up: a click goes where ``qa_hit.point(qa_hit.LAYOUT, ...)`` puts it
+(scaled, mirrored right to left). Other popovers (the model list) have no pages: ``step`` treats them as a plain
+list, so a suite uses one click helper for every popup.
 """
 
 import time
@@ -180,7 +181,7 @@ def inside(rect, box, slack=0.5):
 
 
 def fold(view, region_size):
-    """Every feature in ``chat_destinations.TOP_LEVEL`` in view at once, as the last draw left the menu: a hit with its
+    """Every feature the top level shows (``chat_destinations.shown()``) in view at once, as the last draw left the menu: a hit with its
     entry's action and the feature's id lying wholly inside the popup, the popup wholly inside its region
     (``region_size``: width, height) and its layout's ``max_scroll`` 0 (nothing below a fold), on the top level. A
     record for the suite's JSON; ``ok`` is the verdict. A feature the menu does not list (unregistered, or offered
@@ -190,7 +191,7 @@ def fold(view, region_size):
     geometry = state.get("layout") or {}
     offered = {entry["value"]: entry["action"] for entry in chat_destinations.entries()}
     features, missing, outside = {}, [], []
-    for feature_id in chat_destinations.TOP_LEVEL:
+    for feature_id in chat_destinations.shown():
         action = offered.get(feature_id)
         rect = hit(view, action, feature_id) if action else None
         within = bool(rect and box and inside(rect, box))

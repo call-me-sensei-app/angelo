@@ -33,6 +33,17 @@ int ffmpeg_deinterlace(
  */
 bool ffmpeg_stream_counts_as_video(const AVFormatContext *format_ctx, const AVStream *stream);
 
+/**
+ * Angelo: open a file for FFmpeg to read or write through the `file` protocol only. Blender's bundled FFmpeg is
+ * built with network protocols (http, tcp, udp, rtp, rtmp, ftp), and a path is whatever a document or a script set:
+ * a URL there made a sound, a movie or an encoder connect out, as native traffic no audit event sees (BREAKIT
+ * reread-r210-1c2c4edaf48 M-1). FFmpeg hands the whitelist on to everything a format opens inside the file (a
+ * playlist's segments, a concat list's parts), so those stay local too. Same return value as `avformat_open_input`.
+ * The two writers (movie_write.cc, movie_proxy_indexer.cc) pass the same list to `avio_open2` at their own gated
+ * sites (c_write_sinks).
+ */
+int ffmpeg_open_input_local(AVFormatContext **format_ctx, const char *filepath);
+
 const char *ffmpeg_last_error();
 AVCodecID mov_av_codec_id_get(IMB_Ffmpeg_Codec_ID id);
 AVBufferRef *ffmpeg_hw_device_get(AVHWDeviceType device_type);

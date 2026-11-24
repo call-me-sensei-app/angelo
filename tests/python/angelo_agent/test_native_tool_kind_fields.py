@@ -22,7 +22,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
-from angelo_agent import goal_spec, job_spec  # noqa: E402
+from angelo_agent import goal_spec, job_spec, planning_spec  # noqa: E402
 from angelo_agent.tool_specs import TOOLS, validate_call  # noqa: E402
 
 DISCRIMINATORS = ("kind", "mode", "action", "operation")
@@ -30,6 +30,7 @@ DISCRIMINATORS = ("kind", "mode", "action", "operation")
 KIND_FIELDS = {
     "angelo_goal": ("action", goal_spec.FIELDS, set(goal_spec.SHARED_FIELDS), goal_spec.fields_by_action()),
     "angelo_job_start": ("kind", job_spec.FIELDS, set(job_spec.SHARED_FIELDS), job_spec.fields_by_kind()),
+    "angelo_plan": ("action", planning_spec.FIELDS, set(), planning_spec.fields_by_action()),
 }
 # How the host words "this value doesn't take that field" (job_spec, rig_spec, anim_spec, anim_structure_spec).
 FOREIGN = re.compile(r"does not take|doesn't take|takes no|only applies|applies only")

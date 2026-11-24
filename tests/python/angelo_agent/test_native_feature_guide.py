@@ -27,10 +27,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from angelo_agent import app_feature_spec, chat_destinations as cd, feature_guide  # noqa: E402
 from test_native_chat_destinations import registrations  # noqa: E402
 
-# + menu entries that are no feature of their own: attaching a picture or file to the message, and the two built-in
-# groups (Video, Render) whose members are the features.
+# + menu entries that are no feature of their own: attaching a picture or file to the message, and the built-in
+# groups (Video, Render, Inspect, Model: chat_destinations.GROUPS) whose members are the features.
 # Apps & settings is also a navigation group; its connections/settings are not one agent action.
-NOT_FEATURES = {"attach", "video_tools", "render_tools", "apps_settings"}
+NOT_FEATURES = {"attach", "apps_settings"} | set(cd.GROUPS)
 
 
 def defined_operators():
@@ -157,7 +157,10 @@ class ExampleTests(unittest.TestCase):
         # The rest are the person's view settings or clicks, or families whose own lookup carries their calls.
         without = {"installed_engines", "ai_render", "select_through", "uv_checker", "generation_flows", "base_meshes",
                    "feedback",   # Sending feedback is the person's click on the website's form; the agent has no call.
-                   "learn"}   # The how-to cards are the person's view of steps already made; the agent has no call.
+                   "learn",   # The how-to cards are the person's view of steps already made; the agent has no call.
+                   # 2.1.0: their typed operations come with the wrapped-op runner; until then the person runs them.
+                   "splat_mesh", "collision_hulls",
+                   "rules"}   # Standing rules are only ever the person's own words: the agent can't write them.
         for guide in feature_guide.GUIDES:
             with self.subTest(feature=guide.id):
                 self.assertEqual(bool(guide.examples), guide.id not in without, "add a validated example")

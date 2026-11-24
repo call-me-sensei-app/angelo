@@ -240,9 +240,9 @@ static void rna_def_cachefile_layers(BlenderRNA *brna, PropertyRNA *cprop)
   FunctionRNA *func = RNA_def_function(srna, "new", "rna_CacheFile_layer_new");
   RNA_def_function_flag(func, FUNC_USE_REPORTS | FUNC_USE_CONTEXT);
   RNA_def_function_ui_description(func, "Add a new layer");
-  PropertyRNA *parm = RNA_def_string(
+  PropertyRNA *parm = RNA_def_string_file_path(
       func, "filepath", "File Path", 0, "", "File path to the archive used as a layer");
-  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  RNA_def_parameter_flags(parm, PROP_PATH_SUPPORTS_BLEND_RELATIVE, PARM_REQUIRED);
   /* Return type. */
   parm = RNA_def_pointer(func, "layer", "CacheFileLayer", "", "Newly created layer");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, ParameterFlag(0));

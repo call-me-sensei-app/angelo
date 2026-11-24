@@ -12,8 +12,8 @@
  * - thread starts (`_thread.start_new_thread`, `start_new`, `start_joinable_thread`, threading's own reference),
  *   `atexit.register`, `threading._register_atexit`, `weakref.finalize`, `signal.signal`, `codecs.register`,
  *   `codecs.register_error`: what a confined thread passes runs confined;
- * - `_imp.create_builtin` and `create_dynamic` for a module already loaded: a second module object made from its spec
- *   would hand a script the original functions back;
+ * - `_imp.create_builtin` and `create_dynamic` for a module already loaded, or one whose functions are replaced here
+ *   (loaded or not): a second module object made from its spec would hand a script the original functions back;
  * - `_imp.exec_builtin` and `exec_dynamic`: a multi-phase extension module a confined import created fills its own
  *   namespace there, and the journal keeps that as its definition (a reload executes the existing module, whose
  *   functions stay replaced: not refused).
@@ -25,6 +25,7 @@
 #include <cstring>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -132,6 +133,10 @@ static PyObject *wrapped_open(PyObject * /*self*/, PyObject *args, PyObject *kwa
     }
     if (refusal == Refusal::ToolOutput) {
       refuse(TOOL_OUTPUT, "os.open");
+      return nullptr;
+    }
+    if (refusal == Refusal::Network) {
+      refuse(NETWORK, "os.open");
       return nullptr;
     }
   }
@@ -276,54 +281,85 @@ static PyObject *wrapped_get_frozen_object(PyObject * /*self*/, PyObject *args, 
   return code;
 }
 
-/** The module name `_imp` is asked about (a spec's `name`, or a module's `__name__`), new reference or null. */
-static PyObject *module_name(PyObject *args)
-{
-  if (PyTuple_GET_SIZE(args) < 1) {
-    return nullptr;
-  }
-  PyObject *subject = PyTuple_GET_ITEM(args, 0);
-  PyObject *name = PyObject_GetAttrString(subject, PyModule_Check(subject) ? "__name__" : "name");
-  if (name == nullptr || !PyUnicode_Check(name)) {
-    Py_XDECREF(name);
-    PyErr_Clear();
-    return nullptr;
-  }
-  return name;
-}
-
 /** Every extension or built-in module is made here, however it is imported (`importlib.import_module` raises no
  * `import` event): a module that opens files natively (NATIVE_FILE_MODULES) is refused while confined, and so is a
- * second module object for one already loaded. */
+ * second module object for one already loaded, or for one whose functions Angelo replaced, loaded or not (deleted from
+ * `sys.modules`, or the same extension file under another name): it would carry the originals
+ * (bpy_angelo_guard_confine_wrap_owners.cc). The spec is read once, into one of Angelo's own, so what is checked is
+ * what is made. */
+/** A spec's text field (`name`, `origin`), or empty: read for the family check in any context. */
+static std::string spec_text(PyObject *spec, const char *field)
+{
+  PyObject *value = spec != nullptr ? PyObject_GetAttrString(spec, field) : nullptr;
+  const char *text = value != nullptr && PyUnicode_Check(value) ? PyUnicode_AsUTF8(value) : nullptr;
+  std::string result = text != nullptr ? text : "";
+  Py_XDECREF(value);
+  PyErr_Clear();
+  return result;
+}
+
 static PyObject *guarded_imp(Original which, PyObject *args, PyObject *kwargs)
 {
   if (region_seeded && confined_now()) {
     refuse_seeded_import(); /* An extension's native initialization could call what the script placed. */
     return nullptr;
   }
-  if (confined_now()) {
-    PyObject *name = module_name(args);
-    const char *text = name ? PyUnicode_AsUTF8(name) : nullptr;
-    bool native = false;
-    for (const char *module : NATIVE_FILE_MODULES) {
-      const size_t size = strlen(module);
-      native = native || (text && strncmp(text, module, size) == 0 && (text[size] == '\0' || text[size] == '.'));
+  if (!confined_now() || PyTuple_GET_SIZE(args) < 1) {
+    /* Any context: a module of the sub-interpreter family made under any name (an alias spec raises no `import`
+     * event) has every hot path ask for good (the re-read of f3b1e5f, MUST-1). */
+    if (PyTuple_GET_SIZE(args) >= 1) {
+      PyObject *given = PyTuple_GET_ITEM(args, 0);
+      if (module_is_one_of(spec_text(given, "name"), spec_text(given, "origin"), true, INTERPRETER_MODULES)) {
+        confine_ask_always();
+      }
     }
-    const bool loaded = name && PyDict_Contains(PyImport_GetModuleDict(), name) == 1;
-    Py_XDECREF(name);
-    PyErr_Clear();
+    extension_initializing++;
+    PyObject *made = call_original(which, args, kwargs);
+    extension_initializing--;
+    return made;
+  }
+  std::string text;
+  PyObject *spec = steady_spec(PyTuple_GET_ITEM(args, 0), text);
+  if (spec == nullptr) {
+    refuse(GUARD, "an import whose spec names no module"); /* Fail closed: what would be made can't be told. */
+    return nullptr;
+  }
+  /* By full name, last component or file, from Angelo's own copy of the spec: an alias (`x._dbm`) is the same
+   * extension (the re-read of f3b1e5f, MUST-1). */
+  const std::string origin = spec_text(spec, "origin");
+  if (module_is_one_of(text, origin, true, INTERPRETER_MODULES)) {
+    confine_ask_always();
+  }
+  const bool native = module_is_one_of(text, origin, true, NATIVE_FILE_MODULES);
+  PyObject *key = PyUnicode_FromStringAndSize(text.data(), Py_ssize_t(text.size()));
+  const bool loaded = key && PyDict_Contains(PyImport_GetModuleDict(), key) == 1;
+  Py_XDECREF(key);
+  PyErr_Clear();
+  const bool wrapped = names_a_wrapped_module(text.c_str(), which == CREATE_DYNAMIC);
+  if (native || loaded || wrapped) {
+    Py_DECREF(spec);
     if (native) {
       refuse(NATIVE, "a module that opens files natively");
-      return nullptr;
     }
-    if (loaded) {
+    else {
       refuse(GUARD, "reload");
-      return nullptr;
     }
+    return nullptr;
+  }
+  /* A new tuple (a whole-tuple slice is the caller's own): the steady spec, then the rest as given. */
+  PyObject *steady_args = PyTuple_New(PyTuple_GET_SIZE(args));
+  if (steady_args == nullptr) {
+    Py_DECREF(spec);
+    return nullptr;
+  }
+  PyTuple_SET_ITEM(steady_args, 0, spec); /* Steals. */
+  for (Py_ssize_t i = 1; i < PyTuple_GET_SIZE(args); i++) {
+    PyTuple_SET_ITEM(steady_args, i, Py_NewRef(PyTuple_GET_ITEM(args, i)));
   }
   extension_initializing++;
-  PyObject *made = call_original(which, args, kwargs);
+  PyObject *made = call_original(which, steady_args, kwargs);
   extension_initializing--;
+  Py_DECREF(steady_args);
   return made;
 }
 
@@ -494,7 +530,9 @@ static Replacement replacements[] = {
 /** Every other reference to an original in a loaded module (a `from _thread import start_new_thread`, a
  * `functools.wraps` wrapper's `__wrapped__`: `signal.signal.__wrapped__` is `_signal.signal`) points to its
  * replacement too, so a script finds no original to call. One walk over every loaded module's namespace serves every
- * replacement made at install (`replace_references_begin`/`_end`): the install wraps dozens of entry points, and a
+ * replacement made at install (`replace_references_begin`/`_end`), and every function's defaults and keyword
+ * defaults and every class of Python source (an attribute, its methods' defaults) hold the wrapper too, so no captured
+ * original is left to call (head-16 read): the install wraps dozens of entry points, and a
  * walk per entry point cost a quarter of a second of window start. Nothing is asked for an attribute it may lack: a
  * function's `__wrapped__` is read from its own dict, so no AttributeError is made and thrown away. */
 static int batching = 0;
@@ -511,6 +549,75 @@ static void walk_references(const std::unordered_map<PyObject *, PyObject *> &re
   auto wrapper_of = [&](PyObject *value) -> PyObject * {
     const auto found = replace.find(value);
     return found == replace.end() ? nullptr : found->second;
+  };
+  /* An original a function captured as a default (`def _send(self, buf, write=_write)`, `_close=os.close`: every
+   * multiprocessing.connection.Connection) or a keyword default (head-16 read: calling one skips every wrapper). */
+  auto replace_in_defaults = [&](PyObject *function) {
+    PyFunctionObject *code = (PyFunctionObject *)function;
+    if (code->func_defaults != nullptr && PyTuple_Check(code->func_defaults)) {
+      PyObject *defaults = code->func_defaults;
+      bool changed = false;
+      for (Py_ssize_t i = 0; i < PyTuple_GET_SIZE(defaults) && !changed; i++) {
+        changed = wrapper_of(PyTuple_GET_ITEM(defaults, i)) != nullptr;
+      }
+      if (changed) {
+        if (PyObject *fresh = PyTuple_New(PyTuple_GET_SIZE(defaults))) {
+          for (Py_ssize_t i = 0; i < PyTuple_GET_SIZE(defaults); i++) {
+            PyObject *item = PyTuple_GET_ITEM(defaults, i);
+            PyObject *wrapper = wrapper_of(item);
+            PyTuple_SET_ITEM(fresh, i, Py_NewRef(wrapper ? wrapper : item));
+          }
+          PyFunction_SetDefaults(function, fresh);
+          Py_DECREF(fresh);
+        }
+      }
+    }
+    if (code->func_kwdefaults != nullptr && PyDict_Check(code->func_kwdefaults)) {
+      PyObject *key, *item;
+      Py_ssize_t at = 0;
+      std::vector<std::pair<PyObject *, PyObject *>> found;
+      while (PyDict_Next(code->func_kwdefaults, &at, &key, &item)) {
+        if (PyObject *wrapper = wrapper_of(item)) {
+          found.emplace_back(key, wrapper);
+        }
+      }
+      for (auto &[name, wrapper] : found) {
+        PyDict_SetItem(code->func_kwdefaults, name, wrapper);
+      }
+    }
+    PyErr_Clear();
+  };
+  /* A class of Python source holding an original as an attribute (`_write = os.write`) or in a method's defaults. */
+  std::unordered_set<PyObject *> visited_classes;
+  auto replace_in_class = [&](PyObject *type) {
+    PyObject *names = ((PyTypeObject *)type)->tp_dict;
+    if (names == nullptr) {
+      return;
+    }
+    PyObject *key, *item;
+    Py_ssize_t at = 0;
+    std::vector<std::pair<PyObject *, PyObject *>> found;
+    while (PyDict_Next(names, &at, &key, &item)) {
+      if (PyObject *wrapper = wrapper_of(item)) {
+        found.emplace_back(Py_NewRef(key), Py_NewRef(wrapper));
+      }
+      else if (PyFunction_Check(item)) {
+        replace_in_defaults(item);
+      }
+      else if (Py_IS_TYPE(item, &PyStaticMethod_Type) || Py_IS_TYPE(item, &PyClassMethod_Type)) {
+        PyObject *inner = PyObject_GetAttrString(item, "__func__");
+        if (inner != nullptr && PyFunction_Check(inner)) {
+          replace_in_defaults(inner);
+        }
+        Py_XDECREF(inner);
+      }
+    }
+    for (auto &[name, wrapper] : found) {
+      PyObject_SetAttr(type, name, wrapper); /* A heap type's own: updates its slots too. */
+      Py_DECREF(name);
+      Py_DECREF(wrapper);
+    }
+    PyErr_Clear();
   };
   for (Py_ssize_t i = 0; i < PyList_GET_SIZE(snapshot); i++) {
     PyObject *module = PyList_GET_ITEM(snapshot, i);
@@ -571,6 +678,13 @@ static void walk_references(const std::unordered_map<PyObject *, PyObject *> &re
         if (PyObject *wrapper = wrapped ? wrapper_of(wrapped) : nullptr) {
           PyDict_SetItemString(own, "__wrapped__", wrapper);
         }
+        replace_in_defaults(value);
+      }
+      else if (PyType_Check(value) && PyType_HasFeature((PyTypeObject *)value, Py_TPFLAGS_HEAPTYPE) &&
+               !PyType_HasFeature((PyTypeObject *)value, Py_TPFLAGS_IMMUTABLETYPE) &&
+               visited_classes.insert(value).second)
+      {
+        replace_in_class(value);
       }
     }
     for (auto &[name, replacement] : set_items) {
@@ -613,6 +727,7 @@ void replace_references_end()
 
 void replace_references(PyObject *original, PyObject *wrapper)
 {
+  note_wrapped_owner(original); /* Its module is never made again while confined (guarded_imp). */
   if (batching > 0) {
     batched.emplace_back(Py_NewRef(original), Py_NewRef(wrapper));
     return;
@@ -622,6 +737,7 @@ void replace_references(PyObject *original, PyObject *wrapper)
 
 int install_wrappers()
 {
+  steady_spec_prepare();
   for (Replacement &replacement : replacements) {
     PyObject *home = PyImport_ImportModule(replacement.modules[0]);
     if (home == nullptr) {
@@ -652,6 +768,7 @@ int install_wrappers()
         PyErr_Clear();
         continue;
       }
+      note_install_site(module_name);
       PyObject *held = PyObject_GetAttrString(module, replacement.name);
       PyErr_Clear();
       /* Only where the name still is the original (os.open is posix.open; never a different function). */

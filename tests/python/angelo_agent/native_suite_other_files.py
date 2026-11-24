@@ -25,6 +25,8 @@ EXCLUDED = {
     "bench_uv_checker.py": "The viewport UV checker's draw time: off against main (ABAB) and on against a stock "
                            "checker material; launches builds, run alone on a quiet machine.",
     "bench_uv_checker_draw.py": "The in-app half of bench_uv_checker.py; that driver launches it.",
+    "bench_uv_pack_heldout.py": "Pack Islands' Search against Blender's packer as shipped on the held-out UV meshes "
+                                "(ABAB, rule fixed before its first run); background Blender, run alone.",
     "bench_engine_preflight.py": "Export time with and without the engine preflight on a production-size scene (ABAB), "
                                  "and the engine link's save; run alone on a quiet machine.",
     "bench_result_brief_bytes.py": "Bytes a game-ready result and a parallel worker's first message put in front of "
@@ -45,6 +47,10 @@ EXCLUDED = {
                                  "doc/angelo/releasing.rst); run by the release, in a quiet slot.",
     "update_carry_over_phases.py": "The in-app half of update_carry_over_gate.py; that gate launches it.",
     "update_carry_over_seed.py": "Runs inside the EARLIER app for update_carry_over_gate.py; that gate launches it.",
+    "update_carry_over_contract.py": "The same-base contract update_carry_over_gate.py judges its phases by; that gate "
+                                     "imports it.",
+    "update_carry_over_prefs.py": "Runs inside both apps for update_carry_over_phases.py: the preference values it "
+                                  "compares (strings as digests); that gate's phases import it.",
     "bench_view_shader_wait.py": "GUI views after new materials, the old path against view_warm's wait; run alone.",
     "bench_first_draw.py": "Background or GUI: what the first draw of one object's new materials and of a new world "
                            "costs the main thread, and what the view after them still builds (inventory C5).",
@@ -122,8 +128,12 @@ EXCLUDED = {
     "bench_gpu.py": "The GPU test VMs' Cycles preference; run as a script only by its own probe, in a background Blender.",
     "bench_change_clock.py": "Windows latency of the change-clock settle (capture, Restore, file tools, mirror reads, "
                              "export copies); a VM runs it alone.",
+    "probe_markup_latency.py": "Manual, timed: the picture viewer's open, full-size swap and 4K flatten inside the app "
+                               "(ABAB rounds); a quiet Mac 1 slot runs it.",
     "probe_volume_stamps.py": "Windows, administrator: how NTFS, FAT32 and exFAT (VHDX disks it makes and removes) "
                               "stamp times against the system clock; a VM runs it alone.",
+    "probe_live_page_waits.py": "How often a live session page reads a picture that never becomes whole, on a real "
+                                "clock (real sleeps, 90 s), per volume kind's change-clock verdict; run by hand.",
     "eval_live_agent.py": "BILLED live-agent latency launcher; needs --authorize-billed-runs and a connection.",
     "measure_parts_check.py": "Subscription-billed measurement of the parts check's accuracy (gate on parts_check.READY); "
                               "run by hand in a background Blender with a connection.",
@@ -233,6 +243,8 @@ EXCLUDED = {
 
 # Imported fixture/helper modules and host runners: not entry points.
 HELPERS = frozenset({
+    "linux_elf_fixtures.py",   # Host tests: small valid ELF files for the Linux release checks (elf_info).
+    "codex_config_keys.py",   # Every key of the pinned Codex config schema, classified (codex_config_keys test).
     "angelo_guard_twin.py",   # Host tests: the grant authority's Python twin (suite_isolation installs it).
     "grant_inventory.py",   # The grant inventory's lists and scanners: the host test and its in-app suite.
     "grant_call_sites.py",   # Every grant operator call in the add-on and the scope that reaches it (host test).
@@ -240,6 +252,12 @@ HELPERS = frozenset({
     # The agent-script confinement's attacks (doc/angelo/script_confinement.rst): the child the host test runs, its
     # table of attacks, and how a test admits a run as Angelo's approval would.
     "confinement_attacks.py", "attacks_table.py", "confinement_attacks_admit.py", "escapes_table.py",
+    # test_blender_script_confinement's native-library cases: FFmpeg URLs, sound servers.
+    "confinement_network_cases.py", "confinement_sound_server_cases.py", "confinement_mixed_name_cases.py",
+    "confinement_loader_cases.py", "confinement_link_cases.py", "confinement_lookup_cases.py",
+    "confinement_move_cases.py", "confinement_audit_probe.py",
+    "child_blender.py",   # A child Angelo running a suite's code from its own file (escapes_*).
+    "cpython_audit_table.py", "confinement_descriptor_cases.py",   # Generated from CPython's source (scripts/angelo/generate_cpython_audit_table.py).
     "escapes_later.py",
     "escapes_after.py", "escapes_sinks.py", "escapes_trust.py", "escapes_review.py", "escapes_review2.py",
     "escapes_loading.py", "escapes_provenance.py", "escapes_review3.py",
@@ -266,6 +284,7 @@ HELPERS = frozenset({
     "c_write_sinks.py",   # Every C/C++ call that opens a file for writing, and what decides its path.
     "destructive_sinks.py",   # test_native_destructive_sinks: the sinks exit and cleanup paths reach, by ast.
     "fab_formats_samples.py",   # test_blender_fab_formats: Fab-format samples written by Blender's own exporters.
+    "fab_fake_clock.py",   # The Fab browser host tests' clock (manual window, Windows proof, diagnostics).
     "hosted_worker_chat.py", "hosted_codex_stand_in.py", "hosted_rail_turns.py",
     "pump_blocking.py",   # The worker suites' pump checks: time a UI pump spends blocked, not its wall time.
     "host_waits.py",   # Host tests' waits on a completion signal, capped only against a hang.
@@ -280,6 +299,7 @@ HELPERS = frozenset({
     "concurrent_edit_oracle.py", "concurrent_edit_payload.py", "concurrent_edit_runtime.py",
     "studio_workflows_evidence.py",   # test_blender_studio_workflows' evidence-run steps
     "bake_maps_fixtures.py",   # test_blender_bake_maps_*: block-image materials and the synchronous texture set
+    "heldout_meshes.py",   # The held-out UV meshes: bench_uv_pack_heldout and test_blender_uv_layout's margin picks
     "job_frame_fixtures.py", "hand_fixtures.py", "hand_fixture_scenes.py", "eval_rig_tasks.py",
     "engine_link_compare.py", "engine_link_compare_session.py", "eval_steer.py",
     "rail_main_costs.py",   # test_blender_rail_main_view's cost cases
@@ -293,11 +313,14 @@ HELPERS = frozenset({
     "first_launch_frames_phases.py", "first_launch_frames_probe.py", "cold_bytecode.py", "splash_frames.py",
     "popup_pixels.py",
     "claude_code_errors.py", "claude_protocol_fixtures.py", "eval_agent_tasks.py", "eval_live_tasks.py",
+    "eval_firsthour_tasks.py", "eval_reports.py",   # First-hour cases and the report a case starts from.
+    "eval_closed_checks.py",   # The trial driver's closed-check grading (moved out of eval_live_agent_session).
+    "firsthour_run.py",   # BILLED: one arm of the first-hour cases (eval_live_agent per case) and the table.
     "eval_live_journeys.py", "eval_animation_tasks.py", "eval_node_tasks.py", "eval_operator_tasks.py", "eval_request_log.py",
     "eval_quality_loop.py",  # Shared within-turn iteration directive for prospective one-shot evaluations.
     "eval_returning_user.py", "eval_approval.py", "eval_effort.py", "eval_diagnostics.py", "eval_ask_why.py", "mcp_request_parameters.py",
     "eval_warm_up.py", "bench_warm_up.py", "bench_addon_pin.py", "eval_abnormal_end.py", "eval_trace_export.py",
-    "eval_stream_counts.py", "eval_provider_limits.py", "eval_receipts.py", "eval_survey_tasks.py", "survey_report.py",
+    "eval_stream_counts.py", "eval_provider_limits.py", "eval_codex_logs.py", "codex_log_fixtures.py", "eval_receipts.py", "eval_survey_tasks.py", "survey_report.py",
     # The grading contract (doc/angelo/native_coverage.rst, "Grading contract"): answers, result checks, fixtures.
     "eval_answers.py", "eval_grading.py", "eval_grading_live.py", "survey_checks.py", "survey_checks_motion.py",
     "survey_fixtures.py", "survey_reference_builds.py", "survey_truth.py",
@@ -339,14 +362,21 @@ HELPERS = frozenset({
     "long_kit_flat_north.py", "long_kit_flat_south.py", "long_kit_tempest.py", "long_kit_tempest_brief.py",
     "long_kit_tempest_ship.py", "long_kit_tempest_values.py",
     "long_probe_check.py", "long_probe_margins.py", "long_probe_scaled.py",
-    "program_stress_plans.py",
+    "program_stress_plans.py", "program_stress_playback.py",   # test_blender_program_stress: plans, playbacks.
     "program_teardown_qa.py",
     # test_blender_rail_positions: its geometry rules (pure, host-tested), in-app fixtures, run state and stages.
     "rail_positions_checks.py", "rail_positions_fixture.py", "rail_positions_run.py", "rail_positions_stages.py",
     "prefs_read_back.py",   # A new Angelo's reading of the agent add-on's saved preferences, launched by a GUI suite.
+    "qa_humanoid.py",   # Procedural humanoids and a walk for test_blender_retarget and test_blender_ik_controls.
+    "qa_clip_files.py",   # A clip set read back (glTF animations, clip FBX via the importer) for the clip suites.
     "qa_boot.py", "qa_fixtures.py", "qa_flow_view.py", "qa_frames.py", "qa_input.py", "qa_machine.py", "qa_operator.py",
     "qa_waits.py", "qa_stale_frames.py", "installed_engine_fixture.py",
     "module_namespace.py",   # What an add-on module imports, for tests that run part of it in a namespace they build.
+    "qa_hit.py",   # A surface's coordinates in window pixels: the inverse of each surface's input (GUI).
+    "qa_auth.py",   # A GUI suite owns the sign-in status its connect rows read (test_native_suite_owned_status).
+    "strict_click_probe.py",   # test_blender_strict_person_click's probes: the OS pointer, the covering menu.
+    "splat_mesh_cases.py",   # test_blender_splat_mesh's cases beyond the shapes: grid placements, the gate, budgets.
+    "qa_library_mirror.py",   # An Angelo Library mirror served from a GUI suite's own process (no network).
     "qa_plus_menu.py", "plus_menu_features.py",   # The + menu's fold and next move (GUI); its features read from source (host).
     "format_curve_fixtures.py", "rendered_view_sample_checks.py",
     "read_tools_fakes.py", "read_tools_fixtures.py", "read_tools_stand_ins.py", "rendered_view_case.py",
@@ -436,4 +466,5 @@ HELPERS = frozenset({
     "hair_kit.py", "head_checks.py", "head_designs.py", "head_kit.py", "head_sdf.py",
     "scenario_oneshot_hair_long.py", "scenario_oneshot_hair_short.py", "scenario_oneshot_head_anime.py",
     "scenario_oneshot_head_portrait.py", "scenario_oneshot_head_stylised.py",
+    "wrapped_op_contract.py",   # Host checks for plain-data typed-operation declarations (WRAPPED_OPS).
 })

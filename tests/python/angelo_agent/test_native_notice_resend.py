@@ -13,6 +13,7 @@ refused before anything is sent, and the person's draft is left alone.
 import suite_isolation  # noqa: F401  Standalone provider isolation.
 
 import ast
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -82,16 +83,20 @@ class Stubbed(unittest.TestCase):
                 package.__dict__.pop(name.split(".", 1)[1], None)
 
     def card(self, controller, kind=None, latest=True):
-        rows = controller.state["messages"]
+        """The failed turn's own card: its last row before what its end added (``turn_tail``)."""
+        from angelo_agent import turn_tail
+        row = turn_tail.last_row(controller.state["messages"])
         if kind is None:
-            return self.notices._card(rows[-1], self.key(controller), latest, SimpleNamespace(), controller, set())
-        with mock.patch.object(notice_kinds, "kind", lambda message: kind):
-            return self.notices._card(rows[-1], self.key(controller), latest, SimpleNamespace(), controller, set())
+            return self.notices._card(row, self.key(controller), latest, SimpleNamespace(), controller, set())
+        with mock.patch.object(notice_kinds, "kind", lambda message, by_text=True: kind):
+            return self.notices._card(row, self.key(controller), latest, SimpleNamespace(), controller, set())
 
     @staticmethod
     def key(controller):
+        from angelo_agent import turn_tail
         rows = controller.state["messages"]
-        return (len(rows) - 1, id(rows[-1]))
+        index = turn_tail.last(rows)
+        return (index, id(rows[index]))
 
     @staticmethod
     def actions(card):
@@ -235,12 +240,113 @@ class Refused(Stubbed):
             self.assertNotIn(self.notices.RESEND, self.actions(card), "the same click would be refused again")
 
 
+class OwnCardMarks(Stubbed):
+    """Angelo's own cards with a way out (``chat_notices._OWN``) are drawn with the mark each declares: a folder this
+    chat reads is information (``info``), never an error (Director GUI proof 2026-11-15: the folder card showed the
+    red error mark and border)."""
+
+    def test_every_own_card_shows_its_declared_mark(self):
+        import string
+        from angelo_agent.ui_text import notice
+        for template, (mark, _actions, _stands) in self.notices._OWN.items():
+            fields = {name: "x" for _, name, _, _ in string.Formatter().parse(template) if name}
+            message = {"role": "system", "notice": True, **notice(template, **fields)}
+            with self.subTest(template=template[:40]):
+                self.assertEqual(self.notices._content(message)[1], mark)
+
+
+class EndOfTurnRows(Stubbed):
+    """What a turn's end adds after its error (a card for a share a timer was refused, the account of a step that never
+    ran) never takes the failed turn's Resend or Put back (review of 04c159c S5); a row after its outcome still does."""
+
+    def failed(self, tail):
+        controller = chat()
+        rows = controller.state["messages"]
+        rows[-1] = {"role": "error", "text": "Rate limit exceeded"}   # The provider's limit, after a refused timer.
+        rows.append(tail)
+        controller.turn_outcome = ("failed", False, False, len(rows))   # Recorded after the end's rows.
+        return controller
+
+    def tails(self):
+        from angelo_agent import share_refusal_notice, turn_end
+        from angelo_agent.ui_text import model_notice
+        return (share_refusal_notice.row("\\\\srv\\tex"),
+                {"role": "system", "turn_end": True, **model_notice(turn_end.MODEL_ACCOUNT, turn_end.NOT_RUN)})
+
+    def test_the_error_card_keeps_resend_and_put_back(self):
+        from angelo_agent import drafts
+        for tail in self.tails():
+            with self.subTest(tail=tail["text"][:30]):
+                controller = self.failed(tail)
+                actions = self.actions(self.card(controller))
+                self.assertIn(self.notices.RESEND, actions)
+                self.assertIn(self.notices.PUT_BACK, actions)
+                self.assertIsNotNone(drafts.failed_request(controller, controller.state["messages"][-2]))
+                self.assertEqual(len(self.click(controller)), 1, "one click sends it again")
+
+    def test_the_rails_failed_mark_stays(self):
+        from angelo_agent import session_rail_draw
+        for tail in self.tails():
+            self.assertTrue(session_rail_draw._last_failed(self.failed(tail)))
+
+    def test_a_row_after_the_outcome_still_hides_them(self):
+        from angelo_agent import drafts
+        controller = self.failed(self.tails()[0])
+        controller.state["messages"].append({"role": "system", "notice": True, "text": "Later"})
+        self.assertIsNone(drafts.failed_request(controller))
+
+    def test_no_reader_of_the_latest_failure_reads_the_last_row(self):
+        """Each asks ``turn_tail``: a ``[-1]`` row there would lose the buttons again."""
+        for name in ("drafts", "chat_resend", "chat_blocks", "chat_notices", "session_rail_draw"):
+            source = (ROOT / "scripts/addons_core/angelo_agent" / (name + ".py")).read_text(encoding="utf-8")
+            found = re.search(r"(rows|messages\"\])\[-1\]", source)
+            self.assertIsNone(found, "%s: %s" % (name, found and found.group(0)))
+
+
+class OwnCardKinds(Stubbed):
+    """An own card's kind is its template's, never its words' (review of 04c159c M2): a share or a folder a person or
+    a script named "Billing", "offline" or "sign in again" is still that card, without a provider title or pills."""
+
+    NAMES = ("\\\\fs01\\Billing", "\\\\nas\\offline", "sign in again", "rate limit exceeded", "out of credits")
+
+    def test_every_own_card_keeps_its_kind_and_mark_whatever_its_fields_say(self):
+        import string
+        from angelo_agent.ui_text import notice
+        for template, (mark, _actions, _stands) in self.notices._OWN.items():
+            fields = [name for _, name, _, _ in string.Formatter().parse(template) if name]
+            for role in ("system", "error"):
+                for name in self.NAMES:
+                    message = {"role": role, "notice": True, **notice(template, **{field: name for field in fields})}
+                    with self.subTest(template=template[:40], role=role, name=name):
+                        kind, shown, *_ = self.notices._content(message)
+                        self.assertEqual((kind, shown), ("unknown", mark))
+
+    def test_the_share_and_folder_cards_by_name(self):
+        from angelo_agent import context_folder_host, share_refusal_notice
+        from angelo_agent.ui_text import notice
+        for message in (share_refusal_notice.row("\\\\fs01\\Billing"),
+                        {"role": "system", "notice": True, **notice(context_folder_host.ATTACHED, name="billing")}):
+            with self.subTest(template=message["i18n"][0][:40]):
+                self.assertEqual(self.notices._content(message)[0], "unknown")
+
+    def test_a_providers_error_row_is_still_read_by_its_text(self):
+        self.assertEqual(notice_kinds.kind({"role": "error", "text": "Your credit balance is too low"}), "credits")
+        self.assertEqual(notice_kinds.kind({"text": "Rate limit exceeded"}), "rate", "a bare text (studio_enhance)")
+        self.assertEqual(notice_kinds.kind({"role": "system", "text": "Rate limit exceeded"}), "unknown")
+        self.assertEqual(notice_kinds.kind({"role": "error", "text": "Rate limit exceeded"}, by_text=False), "unknown")
+
+
 class OnlyAClick(unittest.TestCase):
     """Nothing resends by itself: ``send_message`` runs from the person's Enter (``console.execute``) and from
     ``chat_resend.resend``; that runs only from a notice card's pill (``chat_notices.dispatch``, which
     ``chat_view.dispatch_action`` calls for a click). Never from a draw, layout, timer or event pump."""
 
-    CALLERS = {"send_message": {("console.py", "execute"), ("chat_resend.py", "resend")},
+    # The picture viewer's Send (markup_send._deliver): the person's own click there, delivered once its marked
+    # picture is encoded (a timer joins the encode thread); a closed viewer's token stops it, so one click sends once.
+    CALLERS = {"send_message": {("console.py", "execute"), ("chat_resend.py", "resend"),
+                                ("markup_send.py", "_deliver"),
+                                # A plan card's Go (plan_mode.rst): the operator its ticketed press runs.
+                                ("planning_controls.py", "_send")},
                "resend": {("chat_notices.py", "dispatch")}}
 
     def test_only_a_click_or_enter_sends_again(self):

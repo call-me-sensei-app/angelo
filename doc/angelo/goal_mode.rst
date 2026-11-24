@@ -6,8 +6,7 @@
 Goal mode
 #########
 
-Status: built on ``feature/goal-mode`` (main) and ``feature/goal-mode-1010`` (the 1.0.10 backport), revised after its
-design review and the code's break-it review (`Review findings`_); not merged.
+Status: shipped in 1.0.11, revised after its design review and the code's break-it review (`Review findings`_).
 
 A goal is something the person wants worked on *until a condition holds*, across as many agent turns as it takes:
 "keep going until it looks like the reference". Angelo holds the goal, measures it after every turn, and when a turn

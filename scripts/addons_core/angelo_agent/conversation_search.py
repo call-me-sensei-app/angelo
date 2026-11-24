@@ -1,10 +1,11 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Search the Conversations list by title and by what the person asked. Standard library only, main thread.
+"""Search the Conversations list by title, what the person asked and what Angelo replied. Standard library only,
+main thread.
 
 Matching: the query and the text are compared after NFKC normalization and ``casefold`` (so "STRASSE" finds
 "Straße", full-width "ＡＢＣ" finds "abc", and Greek, Cyrillic, Arabic, Devanagari or CJK text matches itself); every
-word of the query must appear, in any order, as part of the chat's shown title or of one of its requests (a word of
+word of the query must appear, in any order, as part of the chat's shown title or of one of its requests or replies (a word of
 a language written without spaces matches anywhere in a line). Marks are never stripped: in Hindi or Thai they are
 letters.
 
@@ -32,10 +33,13 @@ from . import change_clock, document_file_identity, owned_paths, shared_replace
 
 NAME = "conversation-search.json"
 LINE = 240        # Characters kept of one request.
-LIMIT = 2000      # Characters kept per chat.
+LIMIT = 2000      # Characters kept per chat, of requests; as many again of the agent's replies (2.1.0).
 RECHECK_S = 2.0   # A search re-checks the chat files at most this often.
 STEP_S = 0.012    # The popover's read budget per draw while the index is incomplete.
-VERSION = 2
+VERSION = 3   # 3: replies are indexed too (2.1.0); an older index is read again.
+# Windows' CPython reports a path's st_ctime as the creation time, a descriptor's as the change time
+# (angelo_change_clock): there the read binds to the path's stat on device, file, size and modification time only.
+PATH_CTIME_IS_CREATION = os.name == "nt"
 
 
 def fold(text):
@@ -44,10 +48,10 @@ def fold(text):
 
 def requests(document):
     """The person's requests in a chat document (``session_journal.read``): the lines the index keeps."""
-    from .request_rows import IMAGE_ONLY_TEXT, person_request   # The person's own words, never Angelo's rows.
+    from .request_rows import IMAGE_ONLY_TEXT, person_request, persons_text   # The person's own words only.
     rows = document.get("messages") if isinstance(document, dict) else None
-    texts = [" ".join(row["text"].split())[:LINE] for row in rows if person_request(row)
-             and isinstance(row.get("text"), str) and row["text"].strip() and row["text"] != IMAGE_ONLY_TEXT] \
+    texts = [" ".join(persons_text(row).split())[:LINE] for row in rows if person_request(row)
+             and isinstance(persons_text(row), str) and persons_text(row).strip() and row["text"] != IMAGE_ONLY_TEXT] \
         if isinstance(rows, list) else []
     if len(texts) <= 2:
         return texts
@@ -58,6 +62,22 @@ def requests(document):
         chosen.add(index)
         total += len(texts[index])
     return [texts[index] for index in sorted(chosen)]
+
+
+def replies(document):
+    """The agent's replies (``assistant`` rows): each at most ``LINE`` characters, the newest that fit ``LIMIT``, in
+    order. A chat is often remembered by what Angelo said in it ("the one where it explained retopology")."""
+    rows = document.get("messages") if isinstance(document, dict) else None
+    texts = [" ".join(row["text"].split())[:LINE] for row in rows if isinstance(row, dict)
+             and row.get("role") == "assistant" and isinstance(row.get("text"), str) and row["text"].strip()] \
+        if isinstance(rows, list) else []
+    kept, total = [], 0
+    for text in reversed(texts):
+        if total + len(text) > LIMIT:
+            break
+        kept.append(text)
+        total += len(text)
+    return kept[::-1]
 
 
 class SearchIndex:
@@ -192,9 +212,10 @@ class SearchIndex:
                                                     settle=lambda witness: witness)
             # The path can change A -> B -> A around open. Bind the actual
             # descriptor read, not only the two matching path samples.
-            if opened.identity is None or opened.identity[:5] != tuple(signature[:5]):
+            bound = 4 if PATH_CTIME_IS_CREATION else 5
+            if opened.identity is None or opened.identity[:bound] != tuple(signature[:bound]):
                 return
-            lines = requests(document)
+            lines = requests(document) + replies(document)
         except (OSError, ValueError, TypeError, AttributeError, RecursionError, OverflowError, UnicodeError):
             return   # Retry at the next poll; a transient failure is not an empty transcript.
         if signature != self._signature(identity):

@@ -28,7 +28,7 @@ import bpy
 
 from . import guard_work
 from . import bake_maps_material, bake_maps_plan, bake_maps_steps as steps, bake_maps_write, job_bake_targets as targets
-from . import export_baked, edit_tool_hold
+from . import bake_cage, export_baked, edit_tool_hold
 from .bake_maps_queue import WriteQueue
 from .bake_maps_spec import DEFAULT_MARGIN, FORMATS, BakeMapsError, files, set_files, stems
 from .job_runners import Runner, native
@@ -56,6 +56,12 @@ class TextureSetRunner(Runner):
         self.digests = {}   # Target index -> export_baked.digest at the start (``material`` only).
         self.done = self.total = 0
         self.failure, self.stop_requested, self.deadline_at, self.stopped_bake = None, False, None, False
+        # With a baked material: the materials, made once every file is written, then the bake check's pictures
+        # (bake_check_host), one per poll, and each target's facts.
+        self.made, self.checks, self.check_facts, self.receipt = None, [], {}, None
+        # What the request itself asked: admission runs again at start and writes the measured distances into the
+        # request, which must not then read as the person's own (bake_cage.wanted).
+        self.asked = {key: request[key] for key in ("extrusion", "ray_distance") if key in request}
         # One callable, so the timer can be found and removed again; through the one choke point: each next bake
         # waits for the person's operation and its modal is Angelo's own (edit_tool_hold, break-it F2).
         self.chain = edit_tool_hold.guarded(self._chain, waiting=True)   # Its next bake waits.
@@ -70,6 +76,16 @@ class TextureSetRunner(Runner):
             targets.check_target(self.window, target)
             targets.check_sources(self.window, target, self.sources, self.cage)
         bake = scene.render.bake
+        self.cage_auto = None
+        if self.sources and bake_cage.wanted(self.asked, self.cage, bake.cage_extrusion, bake.max_ray_distance):
+            # Blender's defaults (0, 0) never reach a source outside the target: measure them (bake_cage).
+            with bpy.context.temp_override(window=self.window):
+                depsgraph = bpy.context.evaluated_depsgraph_get()
+            from . import bake_cage_host   # mathutils: Blender only.
+            self.cage_auto = bake_cage_host.measure(depsgraph, self.objects[0], self.sources)
+            if "extrusion" in self.cage_auto:
+                request["extrusion"] = self.cage_auto["extrusion"]
+                request["ray_distance"] = self.cage_auto["ray_distance"]
         request.setdefault("extrusion", float(bake.cage_extrusion))
         request.setdefault("ray_distance", float(bake.max_ray_distance))
         if "samples" in request:
@@ -124,6 +140,8 @@ class TextureSetRunner(Runner):
                          ray_distance=round(self.request["ray_distance"], 6))
         if self.cage is not None:
             facts["cage"] = self.cage.name
+        if self.cage_auto is not None:
+            facts["measured_distances"] = self.cage_auto
         if self.request.get("material"):
             facts["material"] = True
         return facts
@@ -242,6 +260,53 @@ class TextureSetRunner(Runner):
         self.writer.hand_over(index, work)
 
     def poll(self):
+        state = self._poll_bakes()
+        return state if state is not None else self._check_step()
+
+    def _succeeded(self):
+        return not (self.stop_requested or self.stopped_bake or self.failure is not None or self.queue
+                    or self.done < self.total or self.writer.error is not None)
+
+    def _check_step(self):
+        """After the files: the baked materials, then one bake-check picture; None once there is nothing left."""
+        if not self.request.get("material") or (self.made is None and not self._succeeded()):
+            return None
+        from . import bake_check_host
+        if self.made is None:
+            self.receipt = self._publish_set()   # The materials read the published files.
+            self.made = self._materials(self.writer.results)
+            for plan, made in zip((self.plans[i] for i, _r in sorted(self.writer.results.items())), self.made):
+                if isinstance(made, str) and made in bpy.data.materials:
+                    self.checks.append((plan.target.name, bake_check_host.Pictures(
+                        plan.target, bpy.data.materials[made], plan.sources)))
+        while self.checks:
+            name, pictures = self.checks[0]
+
+            def run_step(pictures=pictures):
+                with bpy.context.temp_override(window=self._check_window()):   # A timer's context has none.
+                    return pictures.step()
+            facts = bake_check_host.advance(pictures, self.stop_requested, run_step)
+            if facts is None:
+                return {"progress": 1.0 if self.stop_requested else 1.0 - 0.01 / (1 + len(pictures.bakeds))}
+            self.check_facts[name] = facts
+            pictures.close()
+            self.checks.pop(0)
+        return None
+
+    def _check_window(self):
+        """The job's window, or the document's first live one once that closed: a render job starts from a window
+        (Blender's invoke needs one), and a closed secondary window must not fail the check's remaining pictures."""
+        from . import live_windows
+        manager = bpy.context.window_manager
+        try:
+            pointer = self.window.as_pointer() if self.window is not None else 0
+        except ReferenceError:
+            pointer = 0
+        return live_windows.find(manager, pointer) or live_windows.first(manager, temporary=False)
+
+    def _poll_bakes(self):
+        if self.receipt is not None:   # Published (the bake check's phase): nothing more is written to the output.
+            return None
         self._check_output_path()
         units = self.total + WRITE_SHARE * self.total + 1e-9
         self.writer.pump()
@@ -305,6 +370,8 @@ class TextureSetRunner(Runner):
         self.stop_requested = True
         if self.run is not None:
             native().stop(self.scene, self.job_type)
+        for _name, pictures in self.checks:   # A bake check's render job in flight ends too.
+            pictures.cancel()
 
     def _release(self):
         if bpy.app.timers.is_registered(self.chain):
@@ -317,6 +384,9 @@ class TextureSetRunner(Runner):
             self.run = None
         if self.writer is not None:
             self.writer.release_bake()
+        for _name, pictures in self.checks:
+            pictures.close()
+        self.checks = []
         steps.restore_notes(self.notes)
         if self.pool is not None:   # Every future has ended by now (``poll`` waits for them), so this never blocks.
             self.pool.shutdown(wait=False, cancel_futures=True)
@@ -330,27 +400,43 @@ class TextureSetRunner(Runner):
         self._release()
         return super().finish(stopped)
 
-    def _finish(self, stopped):
-        if stopped or self.stop_requested:
-            return self._discard("cancelled", "", NOTHING)
-        if self.failure is not None:
-            return self._discard("failed", str(self.failure)[:300], NOTHING)
-        if self.stopped_bake or self.done < self.total or self.queue:
-            return self._discard("failed", STEP_FAILED, NOTHING)
-        if self.writer.error is not None:
-            return self._discard("failed", "%s (%s)" % (WRITE_FAILED, type(self.writer.error).__name__), NOTHING)
-        results = self.writer.results
+    def _publish_set(self):
+        """Publish the written set; its receipt's outputs and each target's facts."""
         outputs, facts = [], {}
-        for index, (entries, target_facts) in sorted(results.items()):
+        for index, (entries, target_facts) in sorted(self.writer.results.items()):
             name = self.plans[index].target.name
             outputs += [dict(entry, target=name) for entry in entries]
             if target_facts:
-                facts[name] = target_facts
+                facts[name] = dict(target_facts)
         receipt = self._publish_folder({"outputs": outputs, "maps": len(outputs)})
+        return receipt, facts
+
+    def _finish(self, stopped):
+        if self.receipt is None:   # Published by the bake check's phase: then the set is complete and kept.
+            if stopped or self.stop_requested:
+                return self._discard("cancelled", "", NOTHING)
+            if self.failure is not None:
+                return self._discard("failed", str(self.failure)[:300], NOTHING)
+            if self.stopped_bake or self.done < self.total or self.queue:
+                return self._discard("failed", STEP_FAILED, NOTHING)
+            if self.writer.error is not None:
+                return self._discard("failed", "%s (%s)" % (WRITE_FAILED, type(self.writer.error).__name__),
+                                     NOTHING)
+            self.receipt = self._publish_set()
+        receipt, facts = self.receipt
+        results = self.writer.results
+        if self.sources:   # How a high-to-low bake reached its sources, for a job that chains it (STEP_RECEIPT).
+            reached = facts.setdefault(self.objects[0].name, {})
+            reached.update(extrusion=round(self.request["extrusion"], 6),
+                           ray_distance=round(self.request["ray_distance"], 6))
+            if self.cage_auto is not None:
+                reached["measured_distances"] = self.cage_auto
+        for name, check in self.check_facts.items():
+            facts.setdefault(name, {})["bake_check"] = check
         if facts:
             receipt["facts"] = facts
         if self.request.get("material"):
-            receipt["materials"] = self._materials(results)
+            receipt["materials"] = self.made if self.made is not None else self._materials(results)
         return "done", "", receipt
 
     def _materials(self, results):

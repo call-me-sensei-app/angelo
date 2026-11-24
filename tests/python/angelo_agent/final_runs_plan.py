@@ -54,12 +54,18 @@ SUBSCRIPTIONS = ("claude", "chatgpt")
 # isolated_connection), billed with --allow-api-key-connection and no ChatGPT --codex-home. {account: its mode}.
 API_KEY_ACCOUNTS = {"gemini": "gemini_api"}
 MODELS = {"opus": {"model": "claude-opus-5-5", "runtime": "claude", "account": "claude"},
-          "sol": {"model": "gpt-6.1-sol", "runtime": "codex", "account": "chatgpt"},
-          "astra": {"model": "gpt-6-astra", "runtime": "codex", "account": "chatgpt"},
+          # The shipped Astra and Sol: GPT-6.2 from 2.1.0 (coordinator's ruling, 2026-11-18). No cache floors yet:
+          # each platform's first passing gate campaign of record sets them (doc/angelo/final_runs.rst, "A model
+          # with no floors yet", a rule fixed before their gates ran, the same for every model).
+          "sol": {"model": "gpt-6.2-sol", "runtime": "codex", "account": "chatgpt"},
+          "astra": {"model": "gpt-6.2-astra", "runtime": "codex", "account": "chatgpt"},
           # Gemini 4 Carbon on the runtime's Gemini wire (agent_runtime.json wire_apis), at its shipping effort. Its gate
           # of record is the Windows MSI's (maintainer ruling 2026-11-13); a model without "platforms" gates on every one.
-          "carbon": {"model": "gemini-4-carbon", "runtime": "codex", "account": "gemini", "platforms": ("windows",)}}
-GATED = ("sol", "opus", "astra", "carbon")   # Gates of record (run order); head-to-heads: the first three only.
+          "carbon": {"model": "gemini-4-carbon", "runtime": "codex", "account": "gemini", "platforms": ("windows",)},
+          # Gemini 4 Neon: Carbon's account, connection, wire and platform; its gate runs at Neon's own shipping
+          # effort. A 2.1.0 gate of record (maintainer: Sol, Opus and Neon). No cache floors yet, as Astra and Sol.
+          "neon": {"model": "gemini-4-neon", "runtime": "codex", "account": "gemini", "platforms": ("windows",)}}
+GATED = ("sol", "opus", "astra", "carbon", "neon")   # Gate steps (run order); head-to-heads: the first three only.
 PILOT_CASES = ("batch_edits", "duplication", "material_assignment", "node_editing")
 MINIS = ("oneshot-mini-footbridge", "oneshot-mini-footbridge-arched", "oneshot-mini-cube", "oneshot-mini-camera",
          "oneshot-mini-lighting")
@@ -208,15 +214,17 @@ def campaign(platform="macos"):
             + heavy["astra"])
 
 
-def _rates(model):
+def _rates(model, request_prompt=0):
+    """The 1-hour TTL rates of one model request whose prompt is ``request_prompt`` tokens (a price step is per
+    request, so a planned prompt's calls are priced at the tier of their own prompt, never of a sum)."""
     from angelo_agent import model_profiles
-    return model_profiles.rates(model, "1h")
+    return model_profiles.rates(model, "1h", prompt_tokens=request_prompt)
 
 
 def estimate(step):
     """Planned prompts, model requests, tokens, list-price USD and hours of one step."""
     totals = {"prompts": 0, "requests": 0., "input": 0, "cached": 0, "output": 0, "usd": 0., "seconds": 0.}
-    rates = _rates(step["model"])
+    usd = 0.
     for side in step["sides"]:
         wall, prompt_in, cached, output, calls = PER_PROMPT[(step["kind"], side, step["runtime"])]
         scale = SCENE_SCALE.get(step["task_set"], 1.0)
@@ -226,10 +234,11 @@ def estimate(step):
         totals["input"] += int(count * prompt_in * scale)
         totals["cached"] += int(count * cached * scale)
         totals["output"] += int(count * output * scale)
+        rates = _rates(step["model"], prompt_in / max(1, calls))   # A planned prompt's calls, each its own.
+        usd += count * scale * ((prompt_in - cached) * rates["input"] + cached * rates["cache_read"]
+                                + output * rates["output"]) / 1e6
         totals["seconds"] += count * wall * scale + step["trials"] * BOOT_S["pilot" if step["tool"] == "pilot" else side]
-    fresh = totals["input"] - totals["cached"]
-    totals["usd"] = round((fresh * rates["input"] + totals["cached"] * rates["cache_read"]
-                           + totals["output"] * rates["output"]) / 1e6, 2)
+    totals["usd"] = round(usd, 2)
     totals["requests"] = round(totals["requests"])
     totals["hours"] = round(totals["seconds"] / 3600, 2)
     return totals

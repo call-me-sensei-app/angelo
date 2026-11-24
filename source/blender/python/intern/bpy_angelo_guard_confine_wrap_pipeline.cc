@@ -50,6 +50,10 @@ int judge_text(const std::string &path, bool write, const char *what)
   if (path.empty()) {
     return 0;
   }
+  if (names_a_url(path.c_str())) { /* A native reader would open it with no audit event (names_a_url). */
+    pending_refusal = NETWORK;
+    return refuse(NETWORK, what);
+  }
   const char *reason = nullptr;
   switch (folders().judge(path, write)) {
     case Refusal::Private:
@@ -60,6 +64,9 @@ int judge_text(const std::string &path, bool write, const char *what)
       break;
     case Refusal::ToolOutput:
       reason = TOOL_OUTPUT;
+      break;
+    case Refusal::Network:
+      reason = NETWORK;
       break;
     case Refusal::None:
       return 0;
@@ -399,6 +406,9 @@ const char *usd_judge(const char *path, bool write)
   if (active_regions.load(std::memory_order_relaxed) == 0) {
     return nullptr;
   }
+  if (names_a_url(path)) {
+    return NETWORK; /* USD's resolver would fetch it natively (names_a_url). */
+  }
   switch (folders().judge(path, write)) {
     case Refusal::Private:
       return PRIVATE;
@@ -406,6 +416,8 @@ const char *usd_judge(const char *path, bool write)
       return STARTUP;
     case Refusal::ToolOutput:
       return TOOL_OUTPUT;
+    case Refusal::Network:
+      return NETWORK;
     case Refusal::None:
       break;
   }

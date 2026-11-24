@@ -5,7 +5,7 @@ pin lists every capability Angelo writes into a model provider (scripts/angelo/r
 
 A custom provider's ``capabilities.<name>`` is in no app-server schema and Codex ignores a capability it does not
 read, so a stale build would load the team's provider with ``request_compression = "zstd"`` and silently send plain
-JSON. Measured on real binaries (2026-11-16): the pinned fork's 0.166.0 build loads ``unsupported`` and ``zstd`` and
+JSON. Measured on real binaries (2026-11-16, again on the 0.170.0 build 2026-11-18 and the 0.171.0 build 2026-11-20): the pinned fork's build loads ``unsupported`` and ``zstd`` and
 refuses ``angelo-unpinned-value`` ("unknown variant"); stock Codex 0.163.0 loads the unknown value, and the check
 refuses it. Dependency-free: a fake runner stands in for the binary.
 """

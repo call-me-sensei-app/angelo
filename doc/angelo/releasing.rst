@@ -585,6 +585,77 @@ the vendor), check that
 SmartScreen reputation for a new OV certificate builds up with downloads; an EV
 certificate has it at once.
 
+Linux package
+=============
+
+Linux ships as ``Angelo-<version>-linux-x64.tar.xz``, Blender's own Linux
+format, labelled beta on the downloads page. People extract it anywhere they
+can write and run ``angelo`` in the folder; ``angelo -r`` (or Preferences >
+System > Register) adds the desktop entry, the icon, the thumbnailer and the
+``.blend`` association for the user, under Angelo's own names (``angelo``,
+``angelo-thumbnailer``, ``angelo.thumbnailer``, ``angelo-x-blender.xml``), so
+registering or unregistering Angelo never replaces or removes a stock
+Blender's registration.
+
+**Build.** In Blender's Linux release environment (Rocky Linux 8: glibc 2.28,
+gcc-toolset-14, made by upstream's ``linux_rocky8_setup.sh``), on any Linux
+host with podman or docker::
+
+   ANGELO_AGENT_RUNTIME_DIR=/srv/agent-runtime-linux \
+   ANGELO_GPU_TOOLKITS=/srv/gpu-toolkits \
+   ANGELO_LIBDIR=/srv/lib/linux_x64 \
+     scripts/angelo/build_release_linux_container.sh
+
+``build_release_linux.sh`` (what the container runs) refuses a glibc other than
+2.28 or a compiler other than GCC 14. ``ANGELO_GPU_TOOLKITS`` holds the GPU SDKs
+at Blender's pins, laid out as upstream's buildbot config reads them
+(``cuda-<major.minor>`` per pinned CUDA, ``optix-sdk-<v>``, ``rocm-<v>``,
+``dlss-sdk-<v>``); ``linux_gpu_toolkits.py`` reads each version from the SDK's
+own files and ``gpu_sdk_pins.py`` judges it. ``ANGELO_ALLOW_MISSING_GPU=1``
+builds without the GPU kernels for development and CI; the record says so and
+such a build is never a release. The build writes ``angelo-release-build.json``
+(commit, libraries, compiler, glibc, SDK versions, every release feature read
+back from the CMake cache: one that is off fails the configure) and splits the
+debug symbols of every file it compiled into ``debug-symbols/`` (kept with the
+release kit for crash reports, never shipped; the shipped file keeps a
+``.gnu_debuglink`` naming only the symbol file).
+
+**Package.** Three steps, so the release's file manifest is signed between
+them and the signing key never reaches the build machine::
+
+   python3 scripts/angelo/linux_package.py stage --install <build>/install --out STAGE
+   python3 scripts/angelo/sign_linux_release.py manifest --tree STAGE/Angelo-<v>-linux-x64 ... [Credentials]
+   python3 scripts/angelo/linux_package.py pack --stage STAGE --out DIST --debug-symbols <build>/debug-symbols
+   python3 scripts/angelo/linux_package.py check DIST/Angelo-<v>-linux-x64.tar.xz --launch
+
+The Linux release uses ``linux_package.py`` rather than upstream's ``make
+package_archive``: the manifest has to be signed between staging and packing,
+and the tarball has to be the same bytes from the same tree.
+``stage`` copies the portable install into one top folder named after the
+package, leaving out bytecode Python wrote at run time (the build's hash-based
+bytecode stays). From then on the tree is final: the signed manifest lists
+every file, and an update is accepted only when every file matches it.
+``pack`` writes nothing into the tree; it makes the same bytes from the same
+tree on any machine (entries sorted, every time the commit's, root owner with
+no names, modes 0755 or 0644, links kept, fixed ``xz`` settings) and refuses a
+tree whose signed manifest is missing or does not verify (``check-tree``)
+unless ``--unsigned`` (development; the receipt says so). ``--debug-symbols``
+packs the split symbols as ``Angelo-<v>-linux-x64.debug.tar.xz`` beside it, for
+the release kit only. ``check`` refuses a package whose ELF files are not
+x86-64, need a glibc newer than 2.28, ``GLIBC_PRIVATE`` or a libstdc++ newer
+than Rocky 8's (unless bundled), or search a path that does not start with
+``$ORIGIN``; whose links leave the package; that ships run-time bytecode, or
+lacks the licences, the source offer, the update keys, the pinned agent runtime
+and its release marker, or a verifying signed manifest; or that carries a
+builder path. ``--launch`` starts ``angelo --background --factory-startup``.
+
+**Clean distributions.** ``scripts/angelo/linux_ldd_containers.sh <tarball>``
+unpacks the package in fresh Ubuntu 22.04, Ubuntu 24.04 and Fedora containers
+with only a graphical session's base client libraries added (GL/EGL, X11,
+Wayland, xkbcommon, fontconfig, D-Bus), and requires every ELF file to resolve
+every library and the app to start in the background. GPU, display server and
+desktop behaviour are the Linux QA's, on the final candidate only.
+
 Publishing the installers
 =========================
 
@@ -1024,7 +1095,7 @@ lacks a pinned setting. The runtime keeps
 upstream's version string, so a live eval's plan names the runtime file it ran
 and its SHA-256 (``plan.agent_runtime``, ``runtime_identity.py``).
 ``scripts/addons_core/angelo_agent/agent_runtime.json``
-pins it: the Codex version (``0.166.0``), the fork's branch and
+pins it: the Codex version (``0.171.0``), the fork's branch and
 commit, the feature and, per platform, the folder in the installed app and its
 files. Upstream names are kept, because Codex finds its code-mode host next to
 its own executable:
@@ -1036,6 +1107,7 @@ macOS      ``Angelo.app/Contents/Helpers``     ``codex``, ``codex-code-mode-host
 Windows    ``<install folder>\agent-runtime``  ``codex.exe``, ``codex-code-mode-host.exe``; when present,
                                                ``codex-command-runner.exe`` and
                                                ``codex-windows-sandbox-setup.exe``
+Linux      ``<folder>/agent-runtime``          ``codex``, ``codex-code-mode-host`` (x86-64, glibc 2.28)
 =========  ==================================  ==============================================================
 
 **Building it.** In the fork, on the pinned commit, as ``ANGELO.md`` there
@@ -1050,6 +1122,194 @@ with ``cargo build --target x86_64-pc-windows-msvc --release --bin codex
 ``.pdb`` files apart, never bundled. Only ``codex-command-runner.exe`` remains
 OpenAI's unchanged signed release asset of the pinned tag, checked against its
 published SHA-256 and valid signature.
+
+2.1.0 pins fork commit ``c4aede52c264e8b3bd1f8b81fea2263000e9dc2d`` (branch
+``angelo/rust-v0.171.0-2.1.0``, from ``6077550be477``): the fork rebased onto rust-v0.171.0, the
+newest stable Codex (2026-11-19), with every 0.170 patch carried and three added. Two came with the 2.1.0 re-cut:
+a scheduled retry's notice names its wait and what it is for (``retryDelayMs``, ``retryWaitKind``), the first
+server-advised WebSocket retry included (Ruling 34), and every HTTP streaming request bounds each attempt's wait
+for its response to start by the provider's stream idle limit (Ruling 31, the Neon miss). The first is
+``codex app-server --ignore-user-config`` (``app_server_flags`` in the pin), under which the runtime reads neither
+the person's ``$CODEX_HOME/config.toml``, ``.env`` nor global ``AGENTS.md`` and writes nothing into that folder's
+configuration or instructions, while the sign-in kept there and the ``-c`` settings apply (the fork's
+``ANGELO.md``). The pin records that the build accepts the option; it passes nothing by itself. Angelo's launch
+passes each listed argument and refuses to start a runtime whose pin lacks ``--ignore-user-config``; the release
+checks refuse such a pin and a build whose ``codex app-server --help`` lacks one (the paragraphs below). 0.171 moves
+the Rust toolchain to 1.99.1, so every platform's build of this commit is cold. V8
+(152.2.0) and ``webpki-roots`` (1.0.11) are unchanged. 0.171 adds three top-level ``config.toml`` keys
+(``code_mode``, ``responses``, ``rollout_trace``), none of which the runtime reads from the person's file under the
+launch option. On the macOS build (2026-11-20) the agent-runtime release check passes, ``codex app-server --help``
+lists the option, and the recorded endpoint tool layouts are unchanged from 0.170. The notices, regenerated over the
+macOS, Windows and Linux targets, cover 947 crates (894 for macOS and Windows alone). Commits after this one on the fork's branch change only tests and line wrapping. The paragraph below is the
+0.170 pin this one replaces; its first-request cache measurement was taken on the 0.170 build and has not been
+repeated on this one.
+
+2.1.0's candidate before that pinned fork commit ``5335407a9fedcc3bb338be7609ba70daaf747097`` (branch ``angelo/rust-v0.170.0``): the fork
+rebased onto rust-v0.170.0, the first stable Codex whose bundled catalog lists GPT-6.2 Astra and Sol, which a team
+connection, the OpenAI API mode and a custom endpoint read (``gpt_launch.rst``, "Model IDs"). Every patch is carried
+except the per-input provider check, which upstream's own change (#59503) made unnecessary by no longer building
+the configuration on each input. Added: ``turn/start.promptCacheTtl`` (``30m`` or ``12h``), exposing Codex's per-turn
+prompt-cache lifetime (#59480) to the app-server, and ``image()`` ignoring a non-string second argument. Same V8
+152.2.0 assets as 0.166; no external dependency change (the generated notices check every crate against the lock).
+The branch head after that commit adds only test expectations (``core/tests``), which no shipped binary contains. The
+recorded endpoint tool layouts are unchanged from 0.166 (recaptured 2026-11-18).
+The first-request cache was measured against the 0.166 pin on 2026-11-18 (``codex_cache_fork_check.py``, the
+bench ChatGPT subscription, Windows, 4 chats per arm with a warm-up):
+
+* GPT-6.2 Sol, prediction fork: 0.170 cached 27,392 of 27,603 input tokens and 0.166 cached 27,520 of 27,569, on
+  every chat.
+* Fresh threads: 1 of 4 hit on 0.170 and 2 of 4 on 0.166, which is server routing at this sample size.
+* GPT-6.2 Astra on 0.170 (2 chats): its forks cached 27,392 of 27,545.
+* Times to the first event overlap (0.170 fork: 3.4 to 7.0 s; 0.166: 3.1 to 5.4 s, plus one 53.7 s outlier), so no
+  latency claim rests on this.
+* The 0.170 Sol warm-up met "Selected model is at capacity" once; Codex reconnected and finished it.
+
+On Linux, ``scripts/angelo/build_agent_runtime_linux.sh <fork checkout> <folder>``
+builds the pin's Linux programs for its ``rust_target``
+(``x86_64-unknown-linux-gnu``) on a system with the pin's ``glibc_ceiling``
+(2.28: Rocky Linux 8, upstream Blender's Linux build floor), with OpenAI's
+``rusty-v8`` release artifacts for the target checked against the fork's
+``third_party/v8`` checksum manifest, as upstream's own release does, and
+OpenSSL linked statically (the fork's own pinned version, read from its musl
+release script; Rocky 8's ``libssl.so.1.1`` is absent from Ubuntu 22.04+ and
+Fedora: ``codex-http-client`` depends on ``native-tls``, which links OpenSSL on
+Linux, yet references only its error type; requests go through ``reqwest`` with
+rustls and the system's roots, so nothing reads OpenSSL's configuration or CA
+folder, ``/usr/local/ssl``); it keeps each binary's debug info apart
+(``<folder>.debug``, never bundled), strips with ``--strip-unneeded`` and runs
+``release_checks.py agent-runtime <folder> --platform linux``, which reads the
+ELF headers itself (``elf_info.py``) and refuses any binary needing a newer
+glibc or any shared library outside the pin's ``system_libraries`` (glibc's own
+and ``libgcc_s``). Codex's own Linux command sandbox (bubblewrap, which needs unprivileged
+user namespaces that Ubuntu 24.04 restricts) is not bundled, and no command runs
+under it: Angelo turns Codex's shell tool off and declines every approval. Codex
+still runs one capability probe of the system's ``bwrap`` (below). Measured on Ubuntu 24.04
+(AppArmor restricting unprivileged user namespaces, ``bwrap 0.9.0``): bubblewrap
+cannot set up its user namespace there (``codex sandbox linux`` fails), and at
+every app-server start Codex runs a capability probe
+(``bwrap --unshare-user --unshare-net --ro-bind / / /bin/true``) found by PATH
+lookup. Every start of Angelo's own runtime gets one set of rules
+(``runtime_environment.for_agent_runtime``), applied once inside
+``child_process.popen``/``run`` to any program ``is_agent_runtime`` names, so a
+caller cannot skip them: no dynamic-loader variables on any platform, and on
+Linux ``PATH=/usr/sbin:/usr/bin:/sbin:/bin`` (root-owned folders only:
+``SYSTEM_PATH``). ``test_native_runtime_launch_sites`` finds every process
+start in the add-on (``subprocess``, ``os.exec*``/``spawn*``/``posix_spawn*``,
+``asyncio`` subprocesses, under any alias, in every subpackage) and fails one
+that bypasses ``child_process`` unless it is listed with its reason ("never the
+agent runtime: ..."). Only the browser sign-in (``codex login`` without an API
+key) keeps the person's PATH, on purpose: it opens the sign-in page through
+their browser opener (``xdg-open``), whose browser may live in ``/snap/bin`` or
+a Nix profile; ``login status`` and the API-key sign-in start no program and get
+``SYSTEM_PATH``. On NixOS ``SYSTEM_PATH`` holds almost nothing, which is fine for
+Angelo's runtime (it finds its code-mode host beside itself and needs no other
+program); git metadata in turns is then absent. Every platform's launch also
+sets ``features.shell_snapshot=false`` (the snapshot started the person's login
+shell for shell tools Angelo does not offer) and ``notify=[]``: the person's
+Codex ``notify`` program, which runs after every turn with the turn's text
+whatever ``features.hooks`` says, never runs for an Angelo thread. **The
+person's own Codex config never applies to an Angelo thread**, on every
+platform (coordinator rulings of 2026-11-20): the runtime's app-server starts
+with ``--ignore-user-config`` (the fork's flag, as ``codex exec`` has it), so
+``$CODEX_HOME/config.toml``, ``.env`` and the person's ``AGENTS.md`` are not
+loaded, nothing is written there, and the sign-in still comes from
+``CODEX_HOME`` (``auth.json``, or the keyring entry keyed by that folder). Of
+that file Angelo hands on only what Codex's sign-in configuration reads
+(``cli_auth_credentials_store``, ``forced_login_method``,
+``forced_chatgpt_workspace_id``, and the ``[features]`` boolean
+``secret_auth_storage``, the keyring backend: ``runtime_launch.SIGN_IN_KEYS``,
+``SIGN_IN_FEATURES``; derived from the fork's auth code per pin by
+``scripts/angelo/codex_config_inputs.py``, which follows both builders of the
+auth configuration and their callees, prints where else the fork reads each
+input, and stops with an error, never a smaller set, when that code changes
+shape), except what is ruled out (``codex_config_keys.NOT_PASSED_ON``):
+``chatgpt_base_url``, and the HTTP features ``respect_system_proxy``,
+``system_proxy_fallback`` and ``psp``, which the sign-in reads but which
+shape every Codex request, Angelo's model turns too, so
+Angelo's network contract decides (agents follow ``HTTPS_PROXY``/``NO_PROXY``,
+no PAC; ``enterprise_policy.rst``) and the fork's default or an admin layer
+applies. Also an analytics or feedback opt-out (``OPT_OUTS``). Values are TOML
+strings Codex reads back exactly. Codex's state database and logs for Angelo threads live in Angelo's
+private state folder (``codex-state``: ``sqlite_home``, ``log_dir``); a chat
+made before 2.1.0 is still listed and resumes there (its new database fills
+from the rollouts; checked on Linux with Codex 0.166 then 0.171). Every start
+through ``child_process`` (``popen``, ``run``, a ``ChildProcess`` constructed
+directly) and, before a Windows shim's rewrite, ``cli_runtime.runtime_command``
+is decided on every program the OS may run (``agent_runtime.check_start``):
+``executable=`` over ``argv[0]``, bytes decoded, a relative path joined to
+``cwd`` and to the parent's working folder, a bare name looked up on the
+child's own PATH, and on Windows CreateProcess's own rules (``.exe`` appended
+to a path without an extension; a bare name also searched in the parent's
+folders and PATH). When one of them is the runtime, only the command lines
+Angelo builds pass:
+the app-server with the flag first and only ``--listen stdio://`` and ``-c``
+after it, ``login`` (``status``, ``--with-api-key``) with at most the
+credential-store option, ``--version``, and the model-catalog listings
+``runtime_listing.catalog_listing`` builds, the one builder ``endpoint_catalog``
+uses: ``debug models --bundled`` (it loads no configuration), and for each wire
+the pin lists (``wire_apis``, each spelled ``[a-z][a-z0-9_]*``, which the
+release checks also require) ``debug models`` with exactly the throwaway
+provider's three ``-c`` settings on that wire. That one loads the
+configuration and sign-in of ``CODEX_HOME`` and has no
+``--ignore-user-config``, so it starts only when ``CODEX_HOME`` (the exact
+name; any case only on Windows) is one absolute path whose real path is a
+listing folder directly in Angelo's scratch root, never a link or junction.
+One builder, so a listing can never drift from the check; a refused listing is
+never cached as "no catalog", so the next launch says it again rather than
+running without one. Any other root
+options before a subcommand, ``exec``, ``review``, ``resume`` and the terminal
+UI are refused, and so is any wrapper argument (``env``, ``sh -c``), string or
+``shell=True`` command that names the runtime's file or the bundled runtime's
+folder, as configured or resolved; all translated. A spelling that names
+neither (another symlink to the file, a computed path inside a shell string)
+is not recognised: Angelo builds none, and the inventory test lists every start
+that does not go through ``child_process``.
+A pin whose ``app_server_flags`` does not list the flag names a build without
+it: Angelo refuses to start that runtime, never loading the person's config
+instead, and the release gates refuse to ship that pin
+(``release_checks.pin_problems``: ``agent-runtime``, the macOS signing check,
+and ``build_release_windows.ps1`` before it configures the build); ``release_checks`` also asks ``codex app-server --help`` for each
+pinned flag. A release build whose runtime is missing or quarantined refuses
+("Reinstall Angelo") rather than running the person's own Codex. Inside
+Angelo a person's ``openai_base_url`` or ``chatgpt_base_url`` (and FedRAMP
+routing set there) no longer applies: the endpoint is the sign-in's own default,
+and Angelo's custom-endpoint setting is the way to route through a gateway. A
+system-wide or managed layer (``/etc/codex/config.toml``,
+``managed_config.toml``, MDM, cloud requirements) still loads: admin policy,
+whose MCP servers or plugins Angelo does not disable by name. The per-key pins
+stay (OTEL export and logging off, memories off, no ``history.jsonl`` entries,
+approvals to Angelo's client, no project ``.codex`` layer:
+``project_root_markers=[]``) against those layers and for the person's own
+Codex. Under the flag Codex still looks in ``CODEX_HOME`` for the person's
+skills, ``rules/*.rules``, ``hooks.json`` and ``agents/*.toml``; Angelo's pins
+keep each out (host skill discovery skipped, the shell tool, hooks and Codex's
+own agents off), and ``test_native_codex_config_keys`` fails if one is dropped.
+``codex login`` and ``login status`` take no such flag at the pin and still read
+the person's whole ``config.toml``, so a key the pinned build refuses there
+blocks sign-in inside Angelo (a fork ``login --ignore-user-config`` is open).
+**The one exception:** ``ANGELO_AGENT_RUNTIME=off`` in a release build is the
+person's explicit choice of their own Codex, whose own settings then apply; the
+chat says so once (``agent_runtime.OWN_CODEX``). **Known limit (until the fork
+has a thread-store folder):** Angelo's threads (rollouts) are still written to
+``CODEX_HOME/sessions``, beside the person's own Codex sessions, when they share
+the ChatGPT-plan sign-in. Every top-level and ``[features]`` key of the pinned
+fork's ``config.schema.json`` (109 and 233 at 0.171: 28 pinned, 5 passed on, 76
+the fork's default; 24, 1 and 208) is classified in
+``tests/python/angelo_agent/codex_config_keys.py``;
+``test_native_codex_config_keys`` checks both ways (each pinned key is set, each
+key a launch sets is pinned or passed on) and fails when the pin's fork moves
+until the lists are regenerated (``scripts/angelo/codex_config_inputs.py --fork
+<checkout>``) and each new key classified. A full agent turn on 24.04 has
+not been run (it needs a billed sign-in): unproven. Linux has no OS code signing;
+the release's signed file manifest covers these files. The build maps its own
+folders (the fork, the Cargo and rustup homes, the output and the builder's
+home) out of Rust panic locations and C ``__FILE__`` strings
+(``--remap-path-prefix``, ``-ffile-prefix-map``), installs the static OpenSSL
+under the generic ``/usr/local`` prefix (OpenSSL compiles its prefix in), and
+ends with ``release_checks.py builder-paths`` on the result. The ELF check also
+requires the system's program interpreter, ``$ORIGIN``-only search folders and
+every needed symbol version within the pin's ``version_ceilings``. (The macOS
+recipe, ``build_agent_runtime_macos.sh``, still lacks the path remap: open.)
 
 1.1.1 pins fork commit ``caab709d09b56e552daa83c5f640996325affeb0`` (branch
 ``angelo/rust-v0.166.0-gemini-wire``): 1.0.11's commit plus the native Gemini wire (``wire_api = "gemini"``,
@@ -1098,7 +1358,7 @@ Bind the host's platform-specific V8 archive and binding hashes as well. Keep
 ``SHA256SUMS`` and that build provenance beside the output. Put the files in
 one folder and check it::
 
-   python3 scripts/angelo/release_checks.py agent-runtime <folder> [--platform macos|windows]
+   python3 scripts/angelo/release_checks.py agent-runtime <folder> [--platform macos|windows|linux]
 
 It refuses a missing or wrong-platform file (an arm64 Mach-O executable on
 macOS, an x64 PE executable on Windows), a Windows file listed in
@@ -1673,7 +1933,9 @@ included, and no credential. Two parts keep it so.
   (``ANGELO_SHIP_WINDOWS_PDB=ON`` would install it).
   ``publish_installers.py`` (``--dry-run`` included) mounts the disk image
   read-only and scans it, and refuses an MSI without a clean receipt for exactly
-  its bytes.
+  its bytes. On Linux, ``build_release_linux.sh`` scans the install (inside the
+  build container, with the host's real user and home passed in as identity) and
+  ``linux_package.py check`` scans the unpacked tarball (`Linux package`_).
 * **No diagnostic build ships.** The same scan refuses, never allowlisted, the
   marker a build made with CMake ``ANGELO_GUARD_DIAG_NO_INSTALL`` embeds (the
   agent-script guard compiled without its install: such a build refuses every
@@ -1687,8 +1949,17 @@ The only exceptions are in ``scripts/angelo/builder_paths_allow.json``, each
 with its files, its exact match and its reason: third-party files shipped
 unchanged (Blender's precompiled libraries and embedded ``.blend`` data, the
 Python standard library's documentation examples, the upstream agent-runtime
-helpers built on public CI runners). Credentials and the building machine's
-own names are never allowed. The agent runtime Angelo builds itself (``codex``)
+helpers built on public CI runners). An entry can be narrowed further: with
+``"upstream": true`` it excuses a hit only in a file byte-identical to a file of
+the pinned library tree (``--upstream-root LIBDIR``; bytecode counts when its
+source does), and with ``"context"`` only where the text after the hit matches
+(the executable's statically linked upstream libraries). The Linux entries use
+both; the macOS ``lib/macos_arm64`` entry cannot yet, because signing rewrites
+every Mach-O (a signature-aware comparison is planned). Credentials, matched by
+their published formats (for GitHub's fine-grained tokens, the observed one) in
+UTF-8 and UTF-16LE, and the building machine's own names are never allowed, and
+a scan refuses to start with an entry that would cover its own home. Each hit
+names its encoding and byte offset. The agent runtime Angelo builds itself (``codex``)
 needs ``--remap-path-prefix`` for the builder's home, Cargo registry, toolchain
 and checkout (``RUSTFLAGS``; on Windows also the fork's own MSVC
 ``rustflags``, which ``RUSTFLAGS`` replaces).

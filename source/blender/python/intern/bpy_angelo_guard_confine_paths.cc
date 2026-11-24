@@ -18,6 +18,7 @@
 #include "BLI_fileops.hh"
 
 #include "bpy_angelo_guard_confine_paths.hh"
+#include "bpy_angelo_guard_confine_remote.hh"
 
 #ifdef _WIN32
 #  ifndef NOMINMAX
@@ -38,14 +39,8 @@ namespace blender::angelo_guard {
 
 static std::wstring wide(const std::string &text)
 {
-  if (text.empty()) {
-    return {};
-  }
-  const int length = MultiByteToWideChar(CP_UTF8, 0, text.data(), int(text.size()), nullptr, 0);
-  std::wstring result(size_t(std::max(length, 0)), L'\0');
-  if (length > 0) {
-    MultiByteToWideChar(CP_UTF8, 0, text.data(), int(text.size()), result.data(), length);
-  }
+  std::wstring result;
+  utf8_to_wide(text, result); /* Empty when it doesn't decode strictly: nothing resolves or opens it. */
   return result;
 }
 
@@ -83,19 +78,15 @@ static std::optional<std::wstring> final_path(HANDLE handle)
     return std::nullopt;
   }
   buffer.resize(length);
-  return strip_prefix(buffer);
+  std::wstring named = strip_prefix(buffer);
+  return named;
 }
 
 static HANDLE open_any(const std::wstring &path)
 {
-  /* Folders too (backup semantics), following links and junctions; no access to the contents is needed. */
-  return CreateFileW(path.c_str(),
-                     0,
-                     FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                     nullptr,
-                     OPEN_EXISTING,
-                     FILE_FLAG_BACKUP_SEMANTICS,
-                     nullptr);
+  /* Folders too (backup semantics), following links and junctions; no access to the contents is needed. Never a
+   * remote name on a share nobody connected (bpy_angelo_guard_confine_remote.hh). */
+  return HANDLE(open_for_lookup(path, true));
 }
 
 std::optional<std::string> descriptor_path(int descriptor)
@@ -117,6 +108,18 @@ std::optional<std::string> descriptor_path(int descriptor)
   return narrow(*found);
 }
 
+std::optional<std::string> handle_path(const intptr_t handle)
+{
+  if (handle == 0 || handle == -1 || GetFileType(HANDLE(handle)) != FILE_TYPE_DISK) {
+    return std::nullopt; /* No handle, or not a file's (a pipe, a console, a process, an event, an unknown one). */
+  }
+  const std::optional<std::wstring> found = final_path(HANDLE(handle));
+  if (!found) {
+    return std::string(); /* A file whose name can't be told: the caller fails closed. */
+  }
+  return narrow(*found);
+}
+
 std::optional<std::string> resolve(const std::string &path, int /*dir_fd*/)
 {
   /* Windows has no folder descriptors: `dir_fd` is never set there. */
@@ -134,6 +137,17 @@ std::optional<std::string> resolve(const std::string &path, int /*dir_fd*/)
     return std::nullopt;
   }
   full.resize(length);
+  if (dos_device(full)) {
+    /* `nul`, `os.devnull`, `con`: a device, no file and no folder, whose final name the system can't give: itself.
+     * Judged as that name (no root holds it), never failed closed as unresolvable (build3 head 23). */
+    return narrow(full);
+  }
+  if (!lookup_may_open(full)) {
+    /* A remote name on a share nobody connected (a script's `\\host\share\x`, or a relative name under a share
+     * the process runs in): opening any prefix of it would be the connection (review-confine-fixes-3cb71ae002d
+     * MUST-1). Unresolved: every caller fails closed. */
+    return std::nullopt;
+  }
   /* The longest prefix that exists resolves through the system (links, junctions, 8.3 names, case); the rest is
    * appended as written: a new file's folder resolves. */
   std::wstring head = full, tail;
@@ -180,6 +194,11 @@ static std::optional<Identity> identity_of(const std::string &path, bool folders
 static const char SEP = '\\';
 
 #else /* POSIX */
+
+std::optional<std::string> handle_path(const intptr_t /*handle*/)
+{
+  return std::nullopt; /* Windows' raw handles only. */
+}
 
 std::optional<std::string> descriptor_path(int descriptor)
 {
@@ -230,6 +249,7 @@ static std::string join(const std::vector<std::string> &parts)
 
 std::optional<std::string> resolve(const std::string &path, int dir_fd)
 {
+  resolve_reached_network = false;
   std::string absolute = path;
   if (absolute.empty() || absolute[0] != '/') {
     std::string base;
@@ -265,6 +285,14 @@ std::optional<std::string> resolve(const std::string &path, int dir_fd)
     std::vector<std::string> candidate_parts = current;
     candidate_parts.push_back(name);
     const std::string candidate = join(candidate_parts);
+    if (strict_lookups() && names_a_remote_file(candidate)) {
+      /* Under the automounter of every host (a link's target can lead there): even an lstat mounts, so connects to,
+       * the host. Unresolved: every caller fails closed, and the judge says why (the network). With Strict script
+       * protection only (`strict_lookups`: a check per component, Ruling 17); the judge checks the whole name's text
+       * either way. */
+      resolve_reached_network = true;
+      return std::nullopt;
+    }
     struct stat info;
     if (lstat(candidate.c_str(), &info) != 0) {
       current.push_back(name); /* Does not exist: the rest as written. */

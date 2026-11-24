@@ -257,8 +257,13 @@ void FFMPEGReader::init(int stream)
 
 FFMPEGReader::FFMPEGReader(const std::string& filename, int stream) : m_pkgbuf(), m_formatCtx(nullptr), m_codecCtx(nullptr), m_frame(nullptr), m_aviocontext(nullptr)
 {
-	// open file
-	if(avformat_open_input(&m_formatCtx, filename.c_str(), nullptr, nullptr)!=0)
+	// open file, through the file protocol only: a path may be a URL a document or a script set, and the bundled
+	// FFmpeg has network protocols (Angelo: BREAKIT reread-r210-1c2c4edaf48 M-1; nested opens inherit the list)
+	AVDictionary* options = nullptr;
+	av_dict_set(&options, "protocol_whitelist", "file", 0);
+	const int opened = avformat_open_input(&m_formatCtx, filename.c_str(), nullptr, &options);
+	av_dict_free(&options);
+	if(opened != 0)
 		AUD_THROW(FileException, "File couldn't be opened with ffmpeg.");
 
 	try
@@ -293,7 +298,12 @@ FFMPEGReader::FFMPEGReader(std::shared_ptr<Buffer> buffer, int stream) :
 
 	m_formatCtx = avformat_alloc_context();
 	m_formatCtx->pb = m_aviocontext;
-	if(avformat_open_input(&m_formatCtx, "", nullptr, nullptr)!=0)
+	// Angelo: what a format inside the buffer opens (a playlist's segments) stays on the file protocol too.
+	AVDictionary* options = nullptr;
+	av_dict_set(&options, "protocol_whitelist", "file", 0);
+	const int opened = avformat_open_input(&m_formatCtx, "", nullptr, &options);
+	av_dict_free(&options);
+	if(opened != 0)
 	{
 		if(m_aviocontext->buffer)
 			av_free(m_aviocontext->buffer);

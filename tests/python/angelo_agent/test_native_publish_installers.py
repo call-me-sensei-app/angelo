@@ -283,9 +283,31 @@ class LayoutTests(unittest.TestCase):
             with self.assertRaises(layout.LayoutError):
                 layout.installer_name(version, "macos-arm64")
         with self.assertRaises(layout.LayoutError):
-            layout.installer_name("1.0.0", "linux-x64")
+            layout.installer_name("1.0.0", "windows-arm64")
         with self.assertRaises(layout.LayoutError):
             layout.headers("notes.txt")
+
+    def test_linux_tarball_and_its_signature(self):
+        tarball = "Angelo-2.1.0-linux-x64.tar.xz"
+        self.assertEqual(layout.installer_url("2.1.0", "linux-x64"),
+                         "https://downloads.angelo.studio/2.1.0/" + tarball)
+        self.assertEqual(layout.signature_name("2.1.0", "linux-x64"), tarball + ".minisig")
+        self.assertEqual(layout.headers(tarball)["Content-Type"], "application/x-xz")
+        self.assertEqual(layout.headers(tarball + ".minisig")["Content-Type"], "text/plain")
+        self.assertEqual(layout.headers(tarball + ".sha256")["Content-Type"], "text/plain")
+        self.assertTrue(layout.is_signature_of(tarball + ".minisig", "2.1.0", "linux-x64"))
+        self.assertFalse(layout.is_signature_of(tarball + ".minisig", "2.1.1", "linux-x64"))
+        with self.assertRaises(layout.LayoutError):
+            layout.signature_name("2.1.0", "macos-arm64")
+        # A macOS delta also ends in .tar.xz: it is still a delta, never an installer with its own checksum file or
+        # signature.
+        delta = layout.delta_name("2.0.0", "2.1.0", "macos-arm64")
+        self.assertEqual(layout.headers(delta)["Content-Type"], "application/x-xz")
+        for name in (delta + ".sha256", delta + ".minisig", DMG + ".minisig"):
+            with self.subTest(name), self.assertRaises(layout.LayoutError):
+                layout.headers(name)
+        with self.assertRaises(layout.LayoutError):
+            layout.checksum_name(delta)
 
 
 class SignatureTests(unittest.TestCase):
@@ -427,7 +449,7 @@ class RefusalTests(Case):
         self.refused("is a Git LFS pointer", "--msi", str(self.msi), "--msi-signing", "signed")
         code, _ = self.run_tool("--version", "1.0", "--dmg", str(self.dmg))
         self.assertIn("MAJOR.MINOR.PATCH", self.errors)
-        self.refused("give the disk image (--dmg), the MSI (--msi) or both")
+        self.refused("give the disk image (--dmg), the MSI (--msi), the Linux tarball (--tarball) or several")
 
     def test_a_disk_image_must_be_signed_stapled_and_notarized_and_checked_on_macos(self):
         self.refused("can only be checked on macOS", "--dmg", str(self.dmg), host="linux")

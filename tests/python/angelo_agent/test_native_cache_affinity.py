@@ -156,7 +156,7 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(agent_runtime.bundled("win32", str(windows / "Angelo.exe")), exe)
         self.assertEqual(agent_runtime.bundled("win32", "", str(windows / "5.2/scripts/addons_core/angelo_agent/x.py")),
                          exe)
-        self.assertIsNone(agent_runtime.bundled("linux", binary), "No other platform bundles one")
+        self.assertIsNone(agent_runtime.bundled("freebsd14", binary), "No other platform bundles one")
 
     def test_chatgpt_is_offered_without_a_cli_only_where_angelo_carries_the_runtime(self):
         missing = {"codex_subscription": first_run.MISSING_RUNTIME, "claude_subscription": first_run.MISSING_RUNTIME}

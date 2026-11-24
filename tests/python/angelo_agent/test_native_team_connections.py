@@ -322,7 +322,9 @@ class ChildEnvironmentTests(unittest.TestCase):
                     self.assertNotIn(GRANT_KEY, " ".join(command))
                     self.assertTrue(env["CODEX_HOME"].endswith(identity), "an isolated Codex profile")
                     self.assertNotIn("cli_auth_credentials_store", pairs)
-            self.assertEqual(json.loads(pairs_for_codex_team(state)["model"]), "gpt-6.1-sol")
+            team = pairs_for_codex_team(state)
+            self.assertEqual(json.loads(team["model"]), "gpt-6.2-sol")
+            self.assertEqual(team["model_context_window"], "922000")   # Its input budget: compaction precedes it.
 
     def test_every_codex_launch_opens_without_a_date_and_team_routes_keep_zstd(self):
         # The date-free opening and the team route's zstd live in runtime_launch.codex_command, the one launch

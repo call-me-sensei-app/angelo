@@ -17,12 +17,19 @@ Always allow scripts (Auto only). 2.0.1: both cover an External conversation (a 
 code or calls a tool (doc/angelo/external_mcp.rst). Before, every script there asked. The trust is the
 conversation's, in memory: a new conversation, a changed document, a restart or the app's disconnect or new key
 ends it (``_app_identity``). A CLI client's conversation has none of these: it only reads.
+
+A third, the person's own (``reviewed_scripts``; off in 2.1.0, ``reviewed_scripts.OFFERED``): **Always run this exact
+script in this project**, offered on a script's card once the person opened its exact text, records the SHA-256 of
+those bytes for this project in their state folder. The very same bytes then run without asking in any chat of that
+project but Read only and an External conversation; one changed byte asks again. It is checked at admission and again
+at dispatch, so a removal on the Rules page reaches a script already waiting. Never a worker chat's (its document is a
+copy), never for a script ``consent_excluded`` names, never with ``AllowAutoApproval`` off.
 """
 
 import hashlib
 import json
 import os
-from . import always_allow, grant_authority
+from . import always_allow, grant_authority, reviewed_scripts
 from .chat_settings import clean_options
 from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a grant: grant_guard.entry)
 
@@ -188,6 +195,58 @@ class TrustedScripts:
             return "session", app
         return ("always", app) if self.always_allow_scripts else None
 
+    def script_review_project(self):
+        """The project a remembered script belongs to (``reviewed_scripts.project_key``): "" while unsaved."""
+        try:
+            from . import document_identity, ui
+            identity, path, _file = document_identity.open_document(ui)
+        except (ImportError, AttributeError, OSError, ValueError):
+            return ""
+        return reviewed_scripts.project_key(identity, path)
+
+    def _reviewed_script_applies(self, call):
+        """Whether a remembered script may cover ``call`` at all (any script's approval, not yet these bytes)."""
+        from . import managed_policy
+        code = call.arguments.get("code") if isinstance(call.arguments, dict) else None
+        return (reviewed_scripts.OFFERED and call.name == "angelo_execute_python" and isinstance(code, str)
+                and not consent_excluded(call)
+                and not reviewed_scripts.runs_other_code(code)
+                and not getattr(self, "external_client", "") and getattr(self, "remote_executor", None) is None
+                and self.document is not None and not self.document_invalid and not self._closing
+                and clean_options(self.state.get("options"))["approval"] != "READ_ONLY"
+                and managed_policy.current().allow_auto_approval and bool(self.script_review_project()))
+
+    def reviewed_script_allowed(self, call):
+        """Whether the person remembered these exact bytes for this project (checked again at dispatch)."""
+        return (self._reviewed_script_applies(call) and reviewed_scripts.store(self.store.directory).allowed(
+            self.script_review_project(), call.arguments["code"]))
+
+    def offers_remember_script(self, call):
+        """Whether the card offers Always run this exact script in this project: the person opened this exact text
+        (``review_script``), outside a recovery review, where a remembered script could run."""
+        return (call.approval and not call.executing and not call.recovery_review
+                and call.id in self.reviewed_calls and call.reviewed_script == call.invocation_digest
+                and self._reviewed_script_applies(call) and not self.reviewed_script_allowed(call))
+
+    def remember_script(self, call):
+        """The card's Always run this exact script in this project, the person's click: saved first, then the pump
+        runs it through the same identity and consent checks as any later run. False when it does not apply;
+        ``OSError`` when it can't be saved (nothing changes then)."""
+        if self.pending.get(call.id) is not call or not self.offers_remember_script(call) or self.expire_tool(call):
+            return False
+        code = call.arguments["code"]
+        try:   # The text C approved at the person's review, never what the call holds by now (break-it review, A-1).
+            reviewed = grant_authority.value(grant_authority.APPROVED_SCRIPTS,
+                                             grant_authority.call_key(self.state["id"], call.id))
+            if reviewed is None or reviewed != grant_authority.text_digest(code):
+                return False
+        except UnicodeError:
+            return False
+        reviewed_scripts.store(self.store.directory).add(self.script_review_project(), code,
+                                                        call.arguments.get("description", ""))
+        self.version += 1
+        return True
+
     def admission_script_consent(self):
         """The standing consent a call admitted now carries (host-only, never serialized), or None."""
         consents = self.chat_consents()
@@ -203,6 +262,8 @@ class TrustedScripts:
         asks, so a standing consent can't widen itself or cost the person
         their unsaved work (the card says which).
         """
+        if self.reviewed_script_allowed(call):   # The person remembered these exact bytes for this project.
+            return "reviewed_script"
         consent = call.script_consent
         if call.name != "angelo_execute_python" or consent is None or consent_excluded(call) or app_supplied(call):
             return None   # An app's own code never runs under a standing consent (module docstring).
@@ -312,3 +373,4 @@ class TrustedScripts:
 
 _grant_guard.entry_methods(TrustedScripts, "set_trusted_scripts", widens="enabled")
 _grant_guard.entry_methods(TrustedScripts, "review_script")   # The person's review approves that exact text.
+_grant_guard.entry_methods(TrustedScripts, "remember_script")   # The card's Always run this exact script (2.1.0).

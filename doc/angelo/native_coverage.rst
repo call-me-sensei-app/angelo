@@ -293,7 +293,7 @@ Summary
      - 93
    * - Native partial
      - 5
-     - 53
+     - 54
    * - Reviewed Python
      - 70
      - 26
@@ -1455,6 +1455,11 @@ Import and export
      - ``angelo_job_start`` (tool: ``EXPORT_USD``, ``EXPORT_ALEMBIC``)
      - H ``test_native_long_jobs``; N ``test_blender_long_jobs``
      - Compiled out of the development build. In the full build, export runs as a background job to a new workspace file; import stays reviewed Python.
+   * - Quad retopology of a mesh (clean all-quad topology following its shape, sharp and marked edges, symmetry)
+     - Native partial
+     - ``angelo_job_start`` (tool: ``RETOPOLOGY``)
+     - H ``test_native_retopology_job``; G ``retopo_core_test``
+     - Runs Object > Retopology as a background job into a new object; the receipt carries the measured facts. Guide curves and the sketch tools are not offered to the agent yet (``retopology.rst``).
    * - Append or link from another .blend
      - Reviewed Python
      - none
@@ -1626,13 +1631,13 @@ estimates.
      - Current
    * - Claude plan schema (core plus deferred names)
      - 39,519 (about 20,480)
-     - 57,264 (about 29,670)
+     - 57,332 (about 29,710)
    * - Claude appended instructions
      - 8,875
-     - 15,606
+     - 14,805
    * - Codex dynamic tools
      - 134,781 (about 69,840)
-     - 108,726 (about 56,335)
+     - 109,740 (about 56,860)
    * - Codex instructions
      - 13,077
      - 15,774
@@ -2639,6 +2644,20 @@ checkout, not from the app bundle.
   of the bundle; the runner sets ``CFFIXED_USER_HOME`` to the suite's home so
   that state stays isolated. A launch outside the runner still shows the prompt
   once after such a crash.
+* A GUI suite turns a drawn surface's coordinates into window pixels only with
+  ``qa_hit`` (``xy``, ``point``, ``rect`` and their inverses), naming the
+  surface's space: ``LAYOUT`` (the chat canvas and flow menu: scaled by
+  ``chat_view.ui_scale()``, mirrored right to left), ``COMPOSER_TEXT``,
+  ``PIXELS`` (cards, welcome, providers page, flow window), ``RAW`` (3D view
+  projections, Blender's regions, the library and the rail) or
+  ``mirrored_about`` (the Studio). ``qa_input.chat_rect``/``chat_point`` and
+  ``window_click(..., scale=...)`` are ``LAYOUT`` through it. A hand-made
+  ``region.x + rect[0]`` clicks
+  beside the button at any scale but 1 (a display at a DPI other than 96, a
+  Retina screen, Resolution Scale) or right to left;
+  ``test_native_qa_hit.py`` refuses it in every suite and
+  ``test_blender_chat_hit_scale.py`` proves the mapping in the running app.
+  Start Xvfb at ``-dpi 96``.
 * An operator that frees a datablock (removing the last shape key frees the
   Key) leaves its Python wrapper dangling: never dereference it. Guard the
   known paths before running and compare Main by pointer and session UID after

@@ -4,7 +4,7 @@
 
 import blf
 
-from . import canvas_rtl, text_layout
+from . import canvas_rtl, rtl_text, text_layout
 
 def iter_wrap(value, width, size, font, ordered=True, scale=1.0):
     """Yield exact rows so large review layouts can pause between font calls.
@@ -15,7 +15,7 @@ def iter_wrap(value, width, size, font, ordered=True, scale=1.0):
     def measure(part):
         return blf.dimensions(font, part)[0] / scale
 
-    if ordered and canvas_rtl.has_rtl(value):
+    if ordered and (canvas_rtl.has_rtl(value) or rtl_text.strip_isolates(value) != value):   # Marks are never drawn.
         from .rtl_text import iter_rows_to_visual
         yield from ((row, 0) for row in iter_rows_to_visual(
             value, lambda part: (blf.size(font, size * scale), measure(part))[1], width))

@@ -685,6 +685,10 @@ bool BKE_lib_id_make_local(Main *bmain, ID *id, const int flags)
     return false;
   }
 
+  if ((flags & LIB_ID_MAKELOCAL_LINKEDPACKED_KEEP) != 0 && ID_IS_PACKED(id)) {
+    return false;
+  }
+
   const IDTypeInfo *idtype_info = BKE_idtype_get_info_from_id(id);
 
   if (idtype_info == nullptr) {
@@ -1650,7 +1654,7 @@ void BKE_lib_libblock_session_uid_ensure(ID *id)
     /* Angelo: a data-block made or copied while an agent script runs is the script's, and so is every path it
      * holds; one read from a file (an open, append or link) only when that file is script-made
      * (doc/angelo/script_confinement.rst, "Output paths in data"). */
-    if (const BLI_FileGate *gate = BLI_fileops_gate_get()) {
+    if (const BLI_FileGate *gate = BLI_fileops_confine_possible() ? BLI_fileops_gate_get() : nullptr) {
       if (gate->script_id_made != nullptr && gate->confined != nullptr && gate->confined()) {
         gate->script_id_made(id->session_uid, angelo_read_source);
       }

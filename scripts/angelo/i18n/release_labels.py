@@ -114,7 +114,7 @@ def label_shaped(msgid):
 def readable(text):
     """Catalogue text as read: Arabic (shaped, visual order) in reading order, no edge spaces or Thai break hints."""
     text = text.replace("\ufeff", "").replace("\u200b", "").strip()
-    if any("\ufb50" <= ch <= "\ufefe" for ch in text):
+    if any("\ufb50" <= ch <= "\ufdff" or "\ufe70" <= ch <= "\ufefc" for ch in text):   # Arabic presentation forms.
         from angelo_agent import rtl_text
         return rtl_text.to_logical(text)
     return text

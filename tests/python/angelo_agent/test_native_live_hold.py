@@ -64,9 +64,14 @@ class NativeHoldTests(unittest.TestCase):
     def test_a_held_area_runs_none_of_its_handlers(self):
         source = (SOURCE / "windowmanager/intern/wm_event_system.cc").read_text(encoding="utf-8")
         loop = source[source.index("ED_screen_areas_iter (&win, screen, area) {\n          /* After restoring"):]
-        hold = loop.index("WM_angelo_input_held(&win, area)")
-        self.assertLess(hold, loop.index("wm_event_do_handlers_area_regions(C, event, area)"))
-        self.assertIn("!wm_event_always_pass(event) && WM_angelo_input_held(&win, area)", loop)
+        # The hold is the area step Blender's loop shares with the grant guard's input feed
+        # (wm_angelo_pointer_region.cc): an area takes a pointer event only inside it and never while held.
+        gate = "if (wm_event_always_pass(event) || wm_event_area_takes_xy(&win, area, event->xy)) {"
+        self.assertLess(loop.index(gate), loop.index("wm_event_do_handlers_area_regions(C, event, area)"))
+        shared = (SOURCE / "windowmanager/intern/wm_angelo_pointer_region.cc").read_text(encoding="utf-8")
+        takes = shared[shared.index("bool wm_event_area_takes_xy("):]
+        takes = takes[:takes.index("\n}\n")]
+        self.assertIn("return BLI_rcti_isect_pt_v(&area->totrct, xy) && !WM_angelo_input_held(win, area);", takes)
 
     def test_over_a_held_area_the_window_runs_only_allowed_items_and_no_drop(self):
         source = (SOURCE / "windowmanager/intern/wm_event_system.cc").read_text(encoding="utf-8")
@@ -137,7 +142,7 @@ class AddonHoldTests(unittest.TestCase):
         live = source[source.index("    def _live("):source.index("    def _cursor(")]
         self.assertIn("not input_policy.follows_pointer(event.type)", live)
         self.assertIn("event.type not in MODIFIER_KEYS", live)   # P1-3 L1.
-        self.assertIn("_blur_chat(window)", live)                # P1-3 L2.
+        self.assertIn("keyboard_owner.take(window)", live)       # P1-3 L2 (one keyboard owner per window).
 
 
 class ExceptionTests(unittest.TestCase):

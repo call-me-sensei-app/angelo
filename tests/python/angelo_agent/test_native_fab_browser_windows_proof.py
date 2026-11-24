@@ -13,6 +13,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'scripts/addons_core'))
 from angelo_agent import fab_browser_windows_proof as proof
+from fab_fake_clock import use_fake_clock
 
 
 class Browser:
@@ -104,6 +105,7 @@ class WindowsBrowserProofTests(unittest.TestCase):
         patch.dict(sys.modules, modules).start()
         self.native = Native()
         patch.object(proof, '_Native', return_value=self.native).start()
+        use_fake_clock(self, proof)   # The tests' deadlines and prove()'s own 2 s scan read this clock.
 
     def refused(self, function=None):
         with self.assertRaises(proof.WindowsProofUnavailable) as caught:
@@ -298,6 +300,7 @@ class WindowsBrowserProofTests(unittest.TestCase):
 
 class WindowsNativeAdapterTests(unittest.TestCase):
     def native(self):
+        use_fake_clock(self, proof)
         native = proof._Native.__new__(proof._Native)
         native.c, native.w = ctypes, wintypes
         native.callback = lambda function: function

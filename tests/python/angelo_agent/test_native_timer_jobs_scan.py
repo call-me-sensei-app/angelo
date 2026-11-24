@@ -74,18 +74,37 @@ def tracked(value):
 BUILTINS = frozenset(dir(builtins))
 
 
+def names_addon_code(call, modules):
+    """Whether ``call`` can name add-on code: a bare name, a method of ``self`` or ``cls``, or a function of an add-on
+    module imported relatively (``modules``: ``from . import studio_workspaces``). A method of any other object (a
+    file's ``read``, a string's ``count``) or a library module's function (``itertools.count``) shares a name with
+    add-on code only by chance."""
+    func = call.func
+    if isinstance(func, ast.Name):
+        return func.id not in BUILTINS   # A builtin (``list(...)``) never makes a job, whatever add-on code it names.
+    return (isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name)
+            and (func.value.id in ("self", "cls") or func.value.id in modules))
+
+
+def relative_modules(tree):
+    return {alias.asname or alias.name for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.level for alias in node.names}
+
+
 def generator_functions(sources, known=frozenset()):
     """The names of every function in ``sources`` (and ``known``) a call to which makes a job: a generator function,
-    or one that returns a call to one (``studio_workspaces.build`` returns ``_build(...)``)."""
+    or one that returns a call naming one (``studio_workspaces.build`` returns ``_build(...)``; ``names_addon_code``)."""
     names, returns = set(known), []
     for source in sources:
-        for function in (f for f in ast.walk(parse(source)) if isinstance(f, FUNCTIONS)):
+        tree = parse(source)
+        modules = relative_modules(tree)
+        for function in (f for f in ast.walk(tree) if isinstance(f, FUNCTIONS)):
             nodes = list(own_nodes(function))
             if any(isinstance(n, YIELDS) for n in nodes):
                 names.add(function.name)
-            returns += [(function.name, callee(n.value)) for n in nodes   # A builtin (``list(...)``) never makes a
-                        if isinstance(n, ast.Return) and isinstance(n.value, ast.Call)   # job, whatever add-on method
-                        and not (isinstance(n.value.func, ast.Name) and n.value.func.id in BUILTINS)]   # shares its name.
+            returns += [(function.name, callee(n.value)) for n in nodes
+                        if isinstance(n, ast.Return) and isinstance(n.value, ast.Call)
+                        and names_addon_code(n.value, modules)]
     while True:
         more = {name for name, called in returns if called in names} - names
         if not more:
@@ -293,7 +312,7 @@ class SourceTests(unittest.TestCase):
         self.assertTrue(job_calls(ast.parse("work()", mode="eval").body, {"work"}))
 
     def test_the_scans_find_what_they_look_for(self):
-        gens = {"steps"}
+        gens = {"steps", "read"}   # Names of generators elsewhere in the add-on: any may be called read.
         cases = {
             "def f():\n    job = steps()\n    def step():\n        return next(job)\n": [("step", "job", False, False)],
             "def f():\n    job = timer_jobs.track(steps())\n    step = lambda: next(job)\n": [
@@ -317,6 +336,16 @@ class SourceTests(unittest.TestCase):
             "def make():\n    return steps()\n_job = {}\ndef run():\n    _job['g'] = make()\n"
             "def step():\n    return next(_job['g'])\n": [("step", "_job['g']", False, False)],   # A factory.
             "_ids = itertools.count()\ndef new():\n    return next(_ids)\n": [],   # A counter, not a job.
+            # A file's read() shares only its name with an add-on generator called read: _read makes no job, so
+            # neither does count (which returns _read(...)), nor itertools.count() (web_shader_spec._read, 3c52a6c).
+            "def _read(path):\n    with open(path) as handle:\n        return handle.read()\n"
+            "def count(path):\n    return _read(path)\n_ids = itertools.count()\ndef new():\n    return next(_ids)\n": [],
+            # A function of an add-on module the source imports relatively still names add-on code.
+            "from . import studio\ndef make():\n    return studio.steps()\n_job = {}\ndef run():\n    _job['g'] = make()\n"
+            "def step():\n    return next(_job['g'])\n": [("step", "_job['g']", False, False)],
+            "class A:\n    def make(self):\n        return self.steps()\n    def run(self):\n        self.g = 1\n"
+            "_job = {}\ndef run():\n    _job['g'] = make()\ndef step():\n    return next(_job['g'])\n": [
+                ("step", "_job['g']", False, False)],   # A method returning its own class's generator.
         }
         for source, expected in cases.items():
             with self.subTest(source=source):

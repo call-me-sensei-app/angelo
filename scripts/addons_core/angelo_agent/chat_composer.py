@@ -17,7 +17,7 @@ import math
 import re
 import time
 
-from . import canvas_controls, canvas_rtl, chat_goal, chosen_tools, composer_edit, composer_scroll, ui_tokens
+from . import canvas_controls, canvas_rtl, chat_goal, chosen_tools, composer_edit, composer_scroll, planning_card, ui_tokens
 from .ui_text import iface_, n_
 
 DRAFT_LEFT = 28   # The typed text's left edge, in the chat's layout units.
@@ -39,7 +39,8 @@ LABELS = {"attach": n_("Attach files and more"), "voice": n_("Talk with the agen
           "voice_active": n_("End voice"), "send": n_("Send (Enter)"), "stop": n_("Stop"),
           "fast_on": n_("Fast mode is on: quicker replies that may cost more"),
           "fast_off": n_("Fast mode is off. Turn it on for quicker replies that may cost more."),
-          "remove_reference": n_("Remove this attachment"), "remove_chosen": n_("Remove this tool")}
+          "remove_reference": n_("Remove this attachment"), "remove_chosen": n_("Remove this tool"),
+          "open_reference": n_("Mark up this picture")}
 
 
 def kind_label(kind):
@@ -97,13 +98,16 @@ def hint_rows(text, width, size, wrap, font):
     chat too narrow for it within ``HINT_ROWS``: the whole sentences that fit (the first, the fact, at least), then an
     ellipsis; else as much as fits with the ellipsis measured on its row (R5-L-2)."""
     from . import rtl_text
-    logical = rtl_text.to_logical(text) if rtl_text.is_visual(text) else text   # Sentences are read, not drawn.
+    # Sentences are read, not drawn; a filled-in unit keeps its isolate marks, so a cut sentence still lays it out
+    # whole ("(old) Scene…", not "old) Scene)"; ``rtl_text.isolate``).
+    logical = rtl_text.to_logical(text, isolates=True) if rtl_text.is_visual(text) else text
 
     def rows(value):
         return [row.rstrip() for row, _ in wrap(value, hint_width(width), size, font, ordered=True)]
 
     def fits(cut):
-        return len(rows(logical[:cut].rstrip() + "\u2026")) <= HINT_ROWS
+        with rtl_text.probing():   # Only measured.
+            return len(rows(logical[:cut].rstrip() + "\u2026")) <= HINT_ROWS
     shown = rows(text)
     if len(shown) <= HINT_ROWS:
         return shown
@@ -119,7 +123,8 @@ def hint_rows(text, width, size, wrap, font):
     # than the rows above (break-it R4M1-R2-L-1: "Blender " and a long Chinese run kept only "Blender…").
     from .text_layout import line_break
     last = rows(logical[:low].rstrip() + "\u2026")[-1]
-    first_on_last = low - (len(rtl_text.to_logical(last) if rtl_text.is_visual(last) else last) - 1)
+    shown_last = len(rtl_text.to_logical(last) if rtl_text.is_visual(last) else rtl_text.strip_isolates(last)) - 1
+    first_on_last = rtl_text.marked_index(logical, len(rtl_text.strip_isolates(logical[:low])) - shown_last)
     cut = line_break(logical, low) if low else 0
     return rows(logical[:cut if first_on_last < cut <= low else low].rstrip() + "\u2026")
 
@@ -130,7 +135,8 @@ def attachment_rows(controller):
     from . import chat_guard
     chips = len(controller.attachments) + len(getattr(controller, "chosen_tools", ()) or ())
     goal_row = chat_guard.call("The goal chip", chat_goal.chip_shown, controller, default=False)
-    return math.ceil(chips / 2) + (1 if goal_row else 0)
+    plan_row = chat_guard.call("The plan chip", planning_card.chip_shown, controller, default=False)
+    return math.ceil(chips / 2) + (1 if goal_row else 0) + (1 if plan_row else 0)
 
 
 def composer_rows(draft, draft_lines, controller, width, size, wrap, font):
@@ -236,6 +242,10 @@ def draw(state, ui, controller, *, geometry, composer_bottom, composer_height, l
     if chat_goal.chip_shown(controller):
         chat_goal.draw_chip(view, state, controller, 28, composer_bottom + composer_height - 48, width - 56)
         goal_row = 50
+    from . import chat_guard
+    if chat_guard.call("The plan chip", planning_card.chip_shown, controller, default=False):   # plan_mode.rst
+        planning_card.draw_chip(view, state, controller, 28, composer_bottom + composer_height - 48 - goal_row, width - 56)
+        goal_row += 50
     store = getattr(controller, "references", None)
     for index, reference in enumerate(controller.attachments):
         chip_width = (width - 66) / 2
@@ -256,6 +266,9 @@ def draw(state, ui, controller, *, geometry, composer_bottom, composer_height, l
         canvas_controls.label(state, "remove_reference", index, LABELS["remove_reference"])
         if problem:   # After its x, which keeps its own hit.
             state["hits"].append(((x, y, chip_width - 26, 40), canvas_controls.INFO, problem))
+        elif str(reference.get("mime", "")).startswith("image/"):   # A picture opens to be marked up (markup_ui).
+            state["hits"].append(((x, y, chip_width - 26, 40), "open_reference", index))
+            canvas_controls.label(state, "open_reference", index, LABELS["open_reference"])
     chosen = list(getattr(controller, "chosen_tools", ()) or ())
     for offset, choice in enumerate(chosen):   # Tools the person chose: teal chips after the attachments.
         index = len(controller.attachments) + offset
@@ -290,7 +303,9 @@ def draw(state, ui, controller, *, geometry, composer_bottom, composer_height, l
     chip_right = (geometry["mic_x"] if show_mic or hold_send else geometry["send_x"] - 10) - 24
     show_chip = bool(connected or ui.ready_connections())  # With nothing connected, the Connect card replaces it.
     label_approval = {"ASK": n_("Ask for approval"), "READ_ONLY": n_("Read only"), "AUTO_BOUNDED": n_("Approve for me")}[options["approval"]]
-    if controller.trusted_scripts:
+    if options.get("planning"):   # Plan mode is Read only with its own name (plan_mode.rst).
+        label_approval = planning_card.T.APPROVAL_LABEL
+    elif controller.trusted_scripts:
         label_approval = n_("Trusted scripts")
     elif controller.always_allow_scripts:   # Auto with the person's Always allow scripts: say scripts run unasked.
         label_approval = n_("Approve for me · scripts allowed")
@@ -332,7 +347,7 @@ def draw(state, ui, controller, *, geometry, composer_bottom, composer_height, l
     if hold_send:
         view.shape(geometry["mic_x"] - 14, cy - 14, 28, 28, view.TEXT, 14)
         view.icon("arrow", geometry["mic_x"], cy, view.BG)
-        state["hits"].append(((geometry["mic_x"] - 14, cy - 14, 28, 28), "send", None))
+        state["hits"].append(((geometry["mic_x"] - 14, cy - 14, 28, 28), "send", (state.get("rules_sheet") or {}).get("shown")))
     enabled = bool(draft.strip() or controller.attachments or controller.busy)
     sx = geometry["send_x"]
     view.shape(sx - 14, cy - 14, 28, 28, ui_tokens.TEXT if enabled else ui_tokens.CONTROL_OFF, 14)
@@ -340,7 +355,8 @@ def draw(state, ui, controller, *, geometry, composer_bottom, composer_height, l
         view.shape(sx - 4, cy - 4, 8, 8, ui_tokens.CANVAS, 2)
     else:
         view.icon("arrow", sx, cy, ui_tokens.CANVAS if enabled else ui_tokens.MUTED)
-    state["hits"].append(((sx - 14, cy - 14, 28, 28), *(("stop" if controller.busy else "send", None) if enabled else (canvas_controls.DISABLED, canvas_controls.SEND_EMPTY))))
+    send_value = (state.get("rules_sheet") or {}).get("shown")   # While the Rules page is open: the text it saves.
+    state["hits"].append(((sx - 14, cy - 14, 28, 28), *(("stop" if controller.busy else "send", send_value) if enabled else (canvas_controls.DISABLED, canvas_controls.SEND_EMPTY))))
     if enabled:
         action = "stop" if controller.busy else "send"
         canvas_controls.label(state, action, None, LABELS[action])

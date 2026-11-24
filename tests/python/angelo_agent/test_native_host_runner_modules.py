@@ -101,17 +101,37 @@ class FileModulesFixture(unittest.TestCase):
         name = "host_runner_file_%s_%s" % (label, self.package[-32:])
         (self.tests / (name + ".py")).write_text(FILE % {"package": self.package, "helper": self.helper},
                                                  encoding="utf-8")
-        return importlib.import_module(name)
+        return self.import_new(name)
 
     def make(self, text, label):
         name = "host_runner_%s_%s" % (label, self.package[-32:])
         (self.tests / (name + ".py")).write_text(text % {"package": self.package}, encoding="utf-8")
+        return self.import_new(name)
+
+    @staticmethod
+    def import_new(name):
+        """Imports a module whose file was just written. The import system caches each folder's listing and re-reads it
+        only when the folder's modification time changes, which on Windows can stay within one tick of the cached
+        read, so the new file is not seen ("No module named ...", win-1/2/3 since 2026-11-15). Python's documented
+        remedy: invalidate the caches after making a module while running."""
+        importlib.invalidate_caches()
         return importlib.import_module(name)
 
     def run_suite(self, suite):
         result = unittest.TestResult()
         suite.run(result)
         return result
+
+
+class NewFiles(FileModulesFixture):
+    def test_a_file_written_within_the_folders_cached_tick_is_found(self):
+        """The Windows race, made certain: setUp's import read the tests folder's listing; a module written there with
+        the folder's time left as that read saw it is found only because `import_new` invalidates the caches."""
+        stamp = os.stat(self.tests).st_mtime_ns
+        name = "host_runner_late_%s" % self.package[-32:]
+        (self.tests / (name + ".py")).write_text("X = 1\n", encoding="utf-8")
+        os.utime(self.tests, ns=(stamp, stamp))
+        self.assertEqual(self.import_new(name).X, 1)
 
 
 class TheMechanism(FileModulesFixture):

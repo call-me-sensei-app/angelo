@@ -31,10 +31,18 @@ REQUESTS = {
     "BAKE_MAPS": {"kind": "BAKE_MAPS", "target": H, "output": "bakes/set"},
     "BAKE_MAPS high to low": {"kind": "BAKE_MAPS", "target": H, "sources": [H2], "output": "bakes/hi",
                               "packing": "ORM", "material": True, "resolution": [512, 512]},
+    "BAKE_MAPS high to low for an engine": {"kind": "BAKE_MAPS", "target": H, "sources": [H2], "output": "bakes/hi",
+                                            "for_engine": "UNREAL", "material": True, "resolution": [512, 512]},
     "BAKE_PHYSICS": {"kind": "BAKE_PHYSICS"},
     "BAKE_SIMULATION": {"kind": "BAKE_SIMULATION", "target": H},
     "EXPORT_USD": {"kind": "EXPORT_USD", "output": "exports/scene.usdc"},
     "EXPORT_ALEMBIC": {"kind": "EXPORT_ALEMBIC", "output": "exports/scene.abc"},
+    "RETOPOLOGY": {"kind": "RETOPOLOGY", "target": H},
+    "RETOPOLOGY with faces and symmetry": {"kind": "RETOPOLOGY", "target": H, "faces": 8000, "symmetry": "XZ"},
+    "UV_LAYOUT": {"kind": "UV_LAYOUT", "target": H},
+    "UV_LAYOUT every field": {"kind": "UV_LAYOUT", "target": H, "layout": {
+        "texture_size": "4096", "use_density": True, "density": 512.0, "mips": 3, "unwrap": "SMART", "stack": True,
+        "mirrored": True, "group_by": "MATERIAL", "search": 8, "packer": "FAST"}},
 }
 
 

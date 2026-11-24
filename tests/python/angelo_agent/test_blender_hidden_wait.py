@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 import qa_boot  # noqa: E402
 from angelo_agent import product_env  # noqa: E402
+import qa_hit
 
 product_env.clear("DISABLE_DEFAULT_CHAT")
 os.environ["ANGELO_ENABLE_CHAT_LAUNCHER"] = "1"

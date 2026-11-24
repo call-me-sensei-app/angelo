@@ -46,7 +46,7 @@ SCENARIO_APPROVABLE = live.HARNESS_APPROVABLE | {"angelo_execute_python"}
 
 
 def grading_route(task, scenario_active):
-    """How the trial driver grades a task: ``read_only``, ``scenario``, ``checks`` or ``ungraded``.
+    """How the trial driver grades a task: ``read_only``, ``firsthour``, ``scenario``, ``checks`` or ``ungraded``.
 
     A scenario turn keeps its checks in ``scenario_checks`` and has an empty
     ``checks`` list, like a survey request no closed check can grade; only a
@@ -56,6 +56,8 @@ def grading_route(task, scenario_active):
     """
     if task["kind"] == "read_only":
         return "read_only"
+    if task["kind"] == "firsthour":   # The case's own closed checks (eval_firsthour_tasks.grade).
+        return "firsthour"
     if scenario_active:
         return "scenario"
     return "checks" if task["checks"] else "ungraded"

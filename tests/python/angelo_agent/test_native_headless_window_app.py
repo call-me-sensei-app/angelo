@@ -433,5 +433,19 @@ class AppTest(unittest.TestCase):
         self.assertEqual(app._state["ending"], "window_running", "another Angelo holds the state folder")
 
 
+class AppKitCallsTest(unittest.TestCase):
+    def test_every_appkit_function_the_session_calls_exists(self):
+        """The session's tick asked headless_window_appkit.hidden_state, which a later change removed: the
+        AttributeError was swallowed as "still hidden", so a hidden session the person brought up themselves never
+        became their window (release/v2.1.0 7dc609d, found by agent-ux's call check)."""
+        import ast
+        from angelo_agent import headless_window_appkit
+        tree = ast.parse(Path(app.__file__).read_text(encoding="utf-8"))
+        called = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)
+                  and isinstance(node.value, ast.Name) and node.value.id == "headless_window_appkit"}
+        self.assertTrue(called)
+        self.assertEqual([], sorted(name for name in called if not hasattr(headless_window_appkit, name)))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -60,7 +60,7 @@ from itertools import islice
 import json
 import time
 
-from . import change_feed, goal_controls, object_bounds, visibility_facts, worker_facts
+from . import change_feed, goal_controls, object_bounds, planning_controls, visibility_facts, worker_facts
 from .legacy_names import WORKSPACE_DIRECTOR, read_property
 from .scene_read_values import label, revision_omission
 from .revision_budget import left_out
@@ -143,9 +143,9 @@ def _prepare(window, chat_id=None, clock=None, message=""):
     if chat_id is None:
         observation["changes_since_last_turn"] = {"status": "UNTRACKED"}
         return TurnContext(_bounded(observation, stats), stats)
-    report, through = change_feed.report(chat_id, current)
-    observation["changes_since_last_turn"] = report
-    observation.update(worker_facts.observed(chat_id), **goal_controls.observed_id(chat_id))   # State fields; held goal.
+    observation["changes_since_last_turn"], through = change_feed.report(chat_id, current)
+    observation.update(worker_facts.observed(chat_id), **goal_controls.observed_id(chat_id),   # State fields; held goal;
+                       **planning_controls.observed_id(chat_id))   # plan mode, while the chat plans (plan_mode.rst).
     return TurnContext(_bounded(observation, stats), stats, chat_id, current, through)
 
 

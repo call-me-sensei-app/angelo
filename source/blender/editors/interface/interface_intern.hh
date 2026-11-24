@@ -198,11 +198,12 @@ enum class TextDirection : int8_t {
 
 /** Angelo: the clock a button's `angelo_since` is read on (seconds). */
 double ui_angelo_now();
-/** Angelo: `but` is a new control where it is (another one took its slot, or its window went to the
- * back): disarmed, and counted from the next frame that shows it, never from when it was rebuilt. */
+/** Angelo: `but` is a new control where it is (another one took its slot): disarmed, and counted
+ * from the next frame that shows it, never from when it was rebuilt. */
 void ui_angelo_start_again(Button &but);
-/** Angelo: `but`'s window lost focus since it was placed or armed: it starts again, as a consent region
- * does on its window's epoch (`Authority::sync`). Returns whether it is still current. */
+/** Angelo: `but`'s window lost or regained focus since it was placed or armed: disarmed and counted
+ * again from now, still on screen where it was, as a consent region is on its window's epoch
+ * (`Authority::sync`). Returns whether it is still current. */
 bool ui_angelo_follow_focus(Button &but, const wmWindow *win);
 /** Angelo: whether `but` was placed or armed in `win`'s current focus (no deactivate since). */
 bool ui_angelo_focus_current(const Button &but, const wmWindow *win);
@@ -212,6 +213,46 @@ void ui_angelo_note_placed(Button &but,
                            const wmWindow *win,
                            const ARegion *region,
                            const rcti &rect);
+/** Angelo: `but` is hidden or scrolled away this redraw (`block_draw` skips it): not on screen. */
+void ui_angelo_note_hidden(Button &but);
+/** Angelo: a popup, menu or search box over `uncovered` (window pixels) went away or moved: `but`,
+ * if its place meets that rect, was drawn beneath it and is on screen again from now. */
+void ui_angelo_restart_uncovered(Button &but, const wmWindow *win, const rcti &uncovered);
+/** Angelo: a tooltip's own control as it was when the tooltip opened over it (`ui_angelo_tooltip_own`):
+ * the button, its window place and its restart count (`Button::angelo_restarts`). Only compared,
+ * never read: the button may be gone. */
+struct AngeloTooltipOwn {
+  const Button *but = nullptr;
+  rcti place = {0, 0, 0, 0};
+  uint64_t restarts = 0;
+};
+/** Angelo: `but` as its tooltip opens over it (none when it is not placed in a window). */
+AngeloTooltipOwn ui_angelo_tooltip_own(const Button &but);
+/** Angelo: `ui_angelo_restart_uncovered` for every button `win` shows (its editors' regions, its
+ * global areas, its other popups; never `removed`'s own, which is going or moved, nor `own`, a
+ * closing tooltip's own control while it is unchanged). */
+void ui_angelo_note_uncovered(const wmWindow *win,
+                              const rcti &uncovered,
+                              const ARegion *removed,
+                              bool popups = true,
+                              const AngeloTooltipOwn *own = nullptr);
+/** As `ui_angelo_note_uncovered`, in `screen` (the window's active one): the areas' regions, the window's global
+ * areas, and with `popups` the popups drawn before `removed` (all of them when it is no popup of `screen`). */
+void ui_angelo_note_uncovered_in(const wmWindow *win,
+                                 const bScreen *screen,
+                                 const rcti &uncovered,
+                                 const ARegion *removed,
+                                 bool popups,
+                                 const AngeloTooltipOwn *own = nullptr);
+/** Angelo: temporary region `region` of `win` is drawn where it is now (`covering`), or is going: the
+ * grant guard's consent regions under it take no move and no press while it is there, and start
+ * again when it goes or moves (`BPY_angelo_guard_set_cover`). */
+void ui_angelo_note_covering(const wmWindow *win, const ARegion *region, bool covering);
+/** Angelo: a pointer move at `xy` (window pixels) over `but`, drawn at `rect` (region pixels) in
+ * `region` of `win` now (`angelo_note_hover`): it follows the window's focus, notes where it is, and
+ * arms it when the person's real move came ARM seconds after the frame that showed it there. */
+void ui_angelo_note_hover_at(
+    Button &but, const wmWindow *win, const ARegion *region, const rcti &rect, const int xy[2]);
 /** Angelo: whether `a` and `b` are the same control for carrying a grant's arming across redraws:
  * operator (or the one a refusal took), label, operator property values and RNA property. */
 bool ui_angelo_same_control(const Button &a, const Button &b);
@@ -227,6 +268,11 @@ struct Button : NonMovable {
    * `angelo_since` and disarms it, whatever its block space did (a scroll, a re-flow). */
   rcti angelo_place = {0, 0, 0, 0};
   bool angelo_placed = false;
+  /** Angelo: how many times it started again (`ui_angelo_start_again`) or moved on screen: a
+   * tooltip's close keeps its own control's arming only while this is what it was when the
+   * tooltip opened (the review of 3cfdc5f, MAJOR: the active button is kept as the same object
+   * when another control takes its slot). */
+  uint64_t angelo_restarts = 0;
   /** Angelo: the frame it was first drawn in where it is: its arm counts from that frame's swap,
    * not from when it was made (the coordinator's ruling on the 0.3 s arm, (b)). */
   uint64_t angelo_frame = UINT64_MAX;

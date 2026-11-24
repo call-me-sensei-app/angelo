@@ -29,6 +29,7 @@ from pathlib import Path
 from . import external_cli_protocol as protocol, journal_checks, worker_channel
 from . import essential_environment, private_roots, thread_start
 from . import owned_paths  # noqa: E402  (what Angelo made: its cleanups remove only that)
+from . import qa_environment
 from .worker_launch import default_binary, default_script, start_process, worker_command  # noqa: F401
 
 # A worker's environment: what Blender and the OS need, nothing that redirects scripts, state or add-ons. What a child
@@ -45,7 +46,7 @@ WATCH_SECONDS = 0.5   # How often a hosting worker's process is checked while it
 # QA switches a worker honours when the Angelo that starts it has them set (suites only; never set in a release).
 # Test-only names a worker keeps: a QA fault probe, and a test's isolated-profile marker (suite_isolation), so a suite
 # that serves as the worker runs in place, never relaunched under another process id. Absent outside tests.
-QA_ENVIRONMENT = ("ANGELO_QA_GPU_PROBE_CRASH", "ANGELO_TEST_ISOLATED")
+QA_ENVIRONMENT = qa_environment.NAMES
 
 
 class WorkerUnavailable(RuntimeError):
@@ -80,7 +81,10 @@ class RequestRefused(ValueError):
 def worker_environment(environ, private, platform=None):
     kept = essential_environment.environment(KEEP_ENVIRONMENT, environ, platform)   # The OS's own, then the display.
     kept.update({name: value for name, value in environ.items() if name.startswith("LC_")})
-    kept.update({name: environ[name] for name in QA_ENVIRONMENT if name in environ})
+    # The switches as Angelo started (qa_environment), never as os.environ holds them now; a caller's own mapping
+    # (a test's) is read as given.
+    kept.update({name: value for name, value in qa_environment.STARTED if name in QA_ENVIRONMENT}
+                if environ is os.environ else {name: environ[name] for name in QA_ENVIRONMENT if name in environ})
     kept.update(journal_checks.carried(environ))   # A suite's journal checks cover the worker's owed saves too.
     # The test slot's non-secret owner survives a worker's separate session so
     # bounded QA cleanup can identify it even after an intermediate parent exits.
@@ -94,6 +98,8 @@ def worker_environment(environ, private, platform=None):
     kept.update(ANGELO_HEADLESS="1", ANGELO_STATE_DIR=str(Path(private) / STATE),
                 ANGELO_CONNECTIONS_DIR=str(Path(private) / "connections"), ANGELO_DISABLE_DEFAULT_CHAT="1",
                 ANGELO_DISABLE_LOCAL_CLI="1", ANGELO_DISABLE_KEYCHAIN="1")
+    from . import strict_flag   # It loads no preferences: Strict script protection as this Angelo has it.
+    kept.update(strict_flag.carried())
     return kept
 
 
@@ -233,7 +239,10 @@ class WorkerProcess:
         try:
             command = worker_command(default_binary(), default_script(), part, listener.child_argument(),
                                      self.private)
-            options = dict(env=worker_environment(self.environ, self.private, self.platform),
+            from . import strict_flag   # One reading, recorded first (strict_flag.matches) and passed on.
+            launch = strict_flag.carried()
+            self.strict = launch[strict_flag.ENVIRONMENT] == "1"
+            options = dict(env=dict(worker_environment(self.environ, self.private, self.platform), **launch),
                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=error)
             if self.platform != "win32":
                 options.update(pass_fds=listener.pass_fds(), close_fds=True, start_new_session=True)

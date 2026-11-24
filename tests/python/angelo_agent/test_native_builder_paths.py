@@ -216,6 +216,177 @@ class AllowTests(Bundle):
                 self.assertNotIn("*", entry["match"].replace("(?:", ""), "a match names exact accounts, no wildcard")
         builder_paths.load_allow()
 
+    def test_every_allow_entry_is_pinned(self):
+        """A ratchet: any change to what the allowlist excuses (files, match, context, upstream check) needs this test
+        edited in the same reviewed change."""
+        data = json.loads(builder_paths.ALLOW_FILE.read_text())
+        found = sorted((entry["match"], tuple(sorted(entry["files"])), entry.get("context"),
+                        bool(entry.get("upstream"))) for entry in data["allow"])
+        self.assertEqual(found, [
+            ('(?:[A-Za-z]:)?/Users/jonas',
+             ('*Contents/MacOS/Angelo', '*Contents/Resources/*/python/*', '*Contents/Resources/lib/*'),
+             None, False),
+            ('/Users/(?:trentm|foo)|/home/(?:guido|guido\\.foobar\\.txt|trentm|user|alex|david|d'
+             'efault|to|distutils|foo|fooz)|[A-Za-z]:(?:\\\\\\\\|\\\\|/)Users(?:\\\\\\\\|\\\\|/)(?:trentm|'
+             'Vinay|foo|MyUser)',
+             ('*/python/Lib/*', '*/python/lib/*', '*Contents/Resources/*/python/lib/python3.*/*'),
+             None, False),
+            ('/Users/runner|(?i:[A-Za-z]:(?:\\\\\\\\|\\\\|/)Users(?:\\\\\\\\|\\\\|/)(?:runner|runneradmin|'
+             'runner~[0-9]+))',
+             ('*Contents/Helpers/codex-code-mode-host',
+              '*codex-code-mode-host.exe',
+              '*codex-command-runner.exe',
+              '*codex-windows-sandbox-setup.exe'),
+             None, False),
+            ('/home/blender',
+             ('[0-9].[0-9]/python/*', 'lib/*'),
+             None, True),
+            ('/home/blender',
+             ('blender',),
+             '/git/build_linux/deps_x64/', False),
+            ('[A-Za-z]:(?:\\\\\\\\|\\\\|/)Users(?:\\\\\\\\|\\\\|/)(?:admin|Usuario)',
+             ('*Angelo.exe', '*Contents/MacOS/Angelo', '*angelo.exe', 'blender'),
+             None, False),
+        ])
+
+
+class GitHubTokenTests(Bundle):
+    """Every GitHub token form is a hit: each classic prefix, long refresh tokens, fine-grained tokens of any longer
+    first segment, inside URLs, with no terminator after them (a string pool in a binary), and in UTF-16LE. A
+    program's own token-prefix constant followed by other constants is not a token (its shape is wrong), and no
+    allow entry can excuse a credential."""
+
+    @staticmethod
+    def body(length, seed="aB3dE5gH7jK9mN1pQ2rS4tU6vW8xY0z"):
+        return (seed * (length // len(seed) + 1))[:length]
+
+    def cases(self):
+        fine = "github_pat_%s_%s" % (self.body(22), self.body(59, "Zy8Xw6Vu4Ts2Rq0Po9Nm7Lk5Ji3Hg1"))
+        positives = {"classic-%s" % prefix: "token=%s_%s\n" % (prefix, self.body(36))
+                     for prefix in ("ghp", "gho", "ghs", "ghu", "ghr")}
+        positives.update({
+            "refresh-76": "ghr_%s\n" % self.body(76),
+            "fine-grained": "x %s y" % fine,
+            "fine-grained-url": "https://x-access-token:%s@github.com/o/r.git" % fine,
+            "classic-url": "https://x-access-token:ghs_%s@github.com/o/r.git" % self.body(36),
+            "fine-grained-unterminated": fine + "GITHUB_TOKENGH_ENTERPRISE_TOKEN",
+            "classic-unterminated": "ghp_%sOPENAI_BASE_URL" % self.body(36),
+            "fine-grained-longer-first": "github_pat_%s_%s" % (self.body(23), self.body(59)),
+        })
+        negatives = {
+            # Longer than any token body (a pattern keyed on length alone, such as gitleaks' {82,}, would hit it).
+            "codex-constant": "uploads.github.comgithub_pat_" + "GITHUB_TOKENGH_ENTERPRISE_TOKENGITHUB_ENTERPRISE_TOKEN"
+                              "OPENAI_BASE_URLANTHROPIC_API_KEYGOOGLE_API_KEY" * 3,
+            "prefix-table": "prefixes: ghp_ gho_ ghs_ ghu_ ghr_ github_pat_ (GitHub token kinds)",
+        }
+        return positives, negatives
+
+    def test_every_token_form_is_a_hit_and_prefix_constants_are_not(self):
+        positives, negatives = self.cases()
+        for name, text in list(positives.items()) + list(negatives.items()):
+            self.put(name, text.encode())
+        self.put("wide-classic", ("x ghp_%s y" % self.body(36)).encode("utf-16-le"))
+        self.put("wide-fine-grained", ("x github_pat_%s_%s y" % (self.body(22), self.body(59))).encode("utf-16-le"))
+        everything = [(["*"], re.compile(".*"), "everything")]   # a credential is never excused
+        hits = self.scan(everything)["hits"]
+        for name in list(positives) + ["wide-classic", "wide-fine-grained"]:
+            with self.subTest(case=name):
+                self.assertIn(name, hits)
+                self.assertTrue(any(kind.startswith("GitHub") for kind in hits[name]), hits[name])
+        for name in negatives:
+            with self.subTest(case=name):
+                self.assertNotIn(name, hits)
+
+
+class HitLocationTests(Bundle):
+    """A refused release must be traceable to its bytes: every hit names its encoding and its byte offset in the file
+    (a UTF-16LE credential is invisible to grep for its narrow form)."""
+
+    def test_each_hit_names_its_encoding_and_offset(self):
+        token = "ghp_" + "aB3dE5gH7jK9" * 3
+        narrow = b"\x00" * 17 + token.encode()
+        wide_even = b"\x00" * 40 + ("LegalCopyright " + token).encode("utf-16-le")
+        wide_odd = b"\x01" * 41 + ("LegalCopyright " + token).encode("utf-16-le")
+        for name, data in (("narrow.bin", narrow), ("wide.dll", wide_even), ("wide-odd.dll", wide_odd)):
+            self.put(name, data)
+        report = self.scan([])
+        expected = {"narrow.bin": ("UTF-8", 17), "wide.dll": ("UTF-16LE", 40 + 2 * len("LegalCopyright ")),
+                    "wide-odd.dll": ("UTF-16LE", 41 + 2 * len("LegalCopyright "))}
+        for name, (encoding, offset) in expected.items():
+            with self.subTest(file=name):
+                self.assertIn(["GitHub token", encoding, offset], report["locations"][name])
+                data = (self.root / name).read_bytes()
+                width, codec = (2, "utf-16-le") if encoding == "UTF-16LE" else (1, "utf-8")
+                self.assertEqual(data[offset:offset + width * len(token)].decode(codec), token)
+        lines = "\n".join(builder_paths.summary(report))
+        self.assertIn("UTF-16LE at byte %d" % expected["wide-odd.dll"][1], lines)
+
+
+class LinuxUpstreamTests(Bundle):
+    """The Linux package ships Blender's precompiled Linux libraries unchanged. Their build machine's /home/blender is
+    excused only in a file byte-identical to the pinned library tree (or bytecode of such a source), and in the
+    executable only where upstream's FFmpeg/libvpx configure lines put it; nowhere else, and no other home."""
+
+    LIB = b"\x7fELF /home/blender/git/build_linux/deps_x64/Release/usd/lib"
+
+    def upstream(self):
+        tree = self.root.parent / "lib_linux_x64"
+        (tree / "usd/lib").mkdir(parents=True)
+        (tree / "usd/lib/libusd_ms.so").write_bytes(self.LIB)
+        (tree / "python/lib/python3.13").mkdir(parents=True)
+        (tree / "python/lib/python3.13/_sysconfigdata.py").write_bytes(b"PREFIX = '/home/blender/git/python'\n")
+        return builder_paths.upstream_digests([tree])
+
+    def test_upstream_files_pass_only_when_byte_identical_to_the_pinned_tree(self):
+        self.put("lib/libusd_ms.so", self.LIB)
+        self.put("lib/blender_cpu_check", b"/home/blender/.cargo/registry/x")          # ours, compiled by the build
+        self.put("lib/libusd_changed.so", self.LIB + b" rebuilt")
+        self.put("5.3/python/lib/python3.13/_sysconfigdata.py", b"PREFIX = '/home/blender/git/python'\n")
+        report = builder_paths.scan(self.root, IDENTITY, builder_paths.load_allow(), folders=[],
+                                    upstream=self.upstream())
+        self.assertEqual(set(report["hits"]), {"lib/blender_cpu_check", "lib/libusd_changed.so"})
+        reasons = {reason: files for reason, files in report["allowed_files"].items() if "byte-identical" in reason}
+        self.assertEqual(sorted(next(iter(reasons.values()))), ["5.3/python/lib/python3.13/_sysconfigdata.py",
+                                                                "lib/libusd_ms.so"])
+
+    def test_without_the_pinned_tree_upstream_entries_excuse_nothing(self):
+        self.put("lib/libusd_ms.so", self.LIB)
+        self.assertIn("lib/libusd_ms.so", builder_paths.scan(self.root, IDENTITY, builder_paths.load_allow(),
+                                                             folders=[])["hits"])
+
+    def test_bytecode_counts_as_upstream_when_its_source_is(self):
+        import py_compile
+        source = self.put("5.3/python/lib/python3.13/_sysconfigdata.py", b"PREFIX = '/home/blender/git/python'\n")
+        py_compile.compile(str(source), cfile=str(source.parent / "__pycache__/_sysconfigdata.cpython-313.pyc"),
+                           dfile="_sysconfigdata.py", doraise=True)
+        report = builder_paths.scan(self.root, IDENTITY, builder_paths.load_allow(), folders=[],
+                                    upstream=self.upstream())
+        self.assertEqual(report["hits"], {})
+
+    def test_the_executable_passes_only_upstream_configure_lines(self):
+        allow = builder_paths.load_allow()
+        self.put("blender", b"--prefix=/home/blender/git/build_linux/deps_x64/Release/vpx "
+                 b"C:\\Users\\admin\\AppData\\Local\\Temp\\copybuffer.blend")
+        self.put("blender-thumbnailer", b"/home/blender/git/build_linux/deps_x64/Release/x")
+        self.put("5.3/scripts/addons_core/angelo_agent/native.so", b"/home/blender/git/build_linux/deps_x64/x")
+        self.put("lib/libmine.so", b"/home/pat-example/src/x")
+        self.assertEqual(set(builder_paths.scan(self.root, IDENTITY, allow, folders=[])["hits"]),
+                         {"blender-thumbnailer", "5.3/scripts/addons_core/angelo_agent/native.so", "lib/libmine.so"})
+        # A path of ours, if our builder were named "blender":
+        self.put("blender", b"/home/blender/src/angelo/source/creator/creator.cc")
+        self.assertIn("blender", builder_paths.scan(self.root, IDENTITY, allow, folders=[])["hits"])
+
+    def test_a_builder_named_blender_is_never_excused(self):
+        """Builder folders and names are identity hits, which no allow entry can excuse; and a scan refuses an
+        allowlist that would cover the scanning machine's own home before it starts."""
+        self.put("lib/libusd_ms.so", self.LIB)
+        report = builder_paths.scan(self.root, IDENTITY, builder_paths.load_allow(), folders=["/home/blender"],
+                                    upstream=self.upstream())
+        self.assertIn("builder folder", report["hits"]["lib/libusd_ms.so"])
+        self.assertTrue(builder_paths.allow_problems(builder_paths.load_allow(), ["blender"], []))
+        self.assertEqual(builder_paths.allow_problems(builder_paths.load_allow(), ["pat-example"], []), [])
+        self.assertEqual(builder_paths.main([str(self.root), "--identity", "blender"]), 2)
+
 
 class WindowsFirstRunTests(Bundle):
     """The first Windows release scan: what an install wrote, and the upstream files Angelo ships unchanged."""
@@ -384,6 +555,21 @@ class BuildConfigurationTests(unittest.TestCase):
         publish = (ROOT / "scripts/angelo/publish_installers.py").read_text()
         self.assertIn("builder_paths.scan_disk_image", publish)
         self.assertIn("builder_paths.receipt_problem", publish)
+        linux = (ROOT / "scripts/angelo/build_release_linux.sh").read_text()
+        self.assertIn('release_checks.py" builder-paths "$INSTALL"', linux)
+        self.assertIn('--identity-path "$LIBDIR" "${HOST_IDENTITY[@]}"', linux)
+        self.assertIn('--identity-path "$SOURCE" --identity-path "$BUILD"', linux)
+        self.assertIn('--upstream-root "$LIBDIR"', linux)
+        container = (ROOT / "scripts/angelo/build_release_linux_container.sh").read_text()
+        self.assertIn('ANGELO_HOST_USER="$(id -un)"', container)
+        sys.path.insert(0, str(ROOT / "scripts/angelo"))
+        import linux_package_checks
+        with tempfile.TemporaryDirectory() as folder:
+            Path(folder, "lib").mkdir()
+            Path(folder, "lib/libx.so").write_bytes(b"/home/pat-example/src/x")
+            self.assertTrue(linux_package_checks.builder_path_problems(folder))
+        checks = (ROOT / "scripts/angelo/linux_package_checks.py").read_text()
+        self.assertIn('"builder_paths": builder_path_problems(', checks)
 
 
 if __name__ == "__main__":

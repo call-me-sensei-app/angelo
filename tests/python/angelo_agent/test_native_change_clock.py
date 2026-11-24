@@ -44,6 +44,12 @@ SECOND = 10_000_000
 TIMES = {"st_mtime_ns", "st_ctime_ns", "st_mtime", "st_ctime", "st_birthtime", "st_birthtime_ns", "st_change_time"}
 # Each Angelo function that reads a stat time without the helper, and why it needs none (the audit of 2026-11-04).
 NEEDS_NONE = {
+    "addons_core/angelo_agent/context_folder_working.py:file_signature":
+        "builds the signature tuple only; the witness a write is bound to is settled where it is taken "
+        "(WorkingFolder.signature) and kept (write_note's after), and a fresh stat is compared with that settled one",
+    "addons_core/angelo_agent/context_folder_working.py:WorkingFolder._sweep":
+        "compares a temporary file's age with a ten-minute bound to remove one a stopped write left: a coarse clock "
+        "moves that by a tick, never past the bound",
     "addons_core/angelo_agent/external_access.py:_record":
         "keys a cache of the app registry by its file's inode, size and time; clients.json is written whole by an "
         "atomic replace (a new file), never rewritten in place within a clock tick",
@@ -118,6 +124,8 @@ NEEDS_NONE = {
     "addons_core/angelo_agent/studio_assets.py:_file_state": "generation outputs are written once; the scan settles",
     "addons_core/angelo_agent/studio_assets.py:remove_stale_temporaries": "an age for leftover temporary files",
     "addons_core/angelo_agent/update_stage_mac.py:fingerprint": "macOS only: APFS stamps fine-grained times",
+    "addons_core/angelo_agent/update_stage_linux.py:fingerprint":
+        "Linux only: ext4, btrfs and xfs stamp nanosecond times; any change refuses the stage",
     "addons_core/angelo_agent/web_tone.py:_known":
         "the read-only installed colour configuration's digest; web_tone.py is pinned to its measured table "
         "(make_web_tone_known.py, in Blender's Python, writes both)",
@@ -835,12 +843,17 @@ SETTLED_IN = {
     "addons_core/angelo_agent/snapshot_git.py:_hash_file":
         ("before", {"after": "compared with before, the settled witness, after the read"}),
     "addons_core/angelo_agent/snapshot_git.py:project_commit_time": ("info", {}),
+    "addons_core/angelo_agent/session_page_pending.py:_mark": ("status", {}),
+    "addons_core/angelo_agent/session_page_pending.py:_held_still":
+        ("status", {"again": "read again after the read and compared with the settled stamps taken at open: whether "
+                             "the same file held still through it"}),
     "addons_core/angelo_agent/studio_agent.py:fingerprint": ("path.stat()", {}),
     "addons_core/angelo_agent/studio_agent.py:StudioAgent._export":
         ("opened", {"finished": "compared with opened, the settled witness, after the copy"}),
     "addons_core/angelo_agent/studio_assets_host.py:_signature.stamp": ("info", {}),
     "addons_core/angelo_agent/team_library_save.py:check_source": ("path.stat()", {}),
     "addons_core/angelo_agent/web_shader.py:signature": ("info", {}),
+    "addons_core/angelo_agent/web_shader.py:_stats": ("info", {}),   # The #include expansion cache's keys.
     "addons_core/angelo_agent/web_world_key.py:_file": ("stat", {}),
     "addons_core/angelo_agent/worker_merge.py:precondition": ("os.stat(path)", {}),
     "modules/angelo_render_device/device.py:_read": ("found", {}),

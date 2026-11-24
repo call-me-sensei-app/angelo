@@ -22,6 +22,7 @@ set(SRC
   bpy_angelo_desktop.cc
   bpy_angelo_jobs.cc
   bpy_angelo_jobs_caches.cc
+  bpy_angelo_jobs_guard.cc
   bpy_angelo_jobs_work.cc
   bpy_angelo_update_quit.cc
   bpy_angelo_live.cc
@@ -55,7 +56,10 @@ set(SRC
   bpy_angelo_autorun_trust.cc
   bpy_angelo_guard_authority.cc
   bpy_angelo_guard_confine.cc
+  bpy_angelo_guard_strict.cc
   bpy_angelo_guard_confine_attr.cc
+  bpy_angelo_guard_confine_automount.cc
+  bpy_angelo_guard_confine_automount_system.cc
   bpy_angelo_guard_confine_deferred.cc
   bpy_angelo_guard_confine_environ.cc
   bpy_angelo_guard_confine_changes.cc
@@ -63,6 +67,8 @@ set(SRC
   bpy_angelo_guard_confine_hook.cc
   bpy_angelo_guard_confine_journal.cc
   bpy_angelo_guard_confine_journal_planted.cc
+  bpy_angelo_guard_confine_links.cc
+  bpy_angelo_guard_confine_tree.cc
   bpy_angelo_guard_confine_leftovers.cc
   bpy_angelo_guard_confine_beside.cc
   bpy_angelo_guard_confine_ops.cc
@@ -73,6 +79,7 @@ set(SRC
   bpy_angelo_guard_confine_modules.cc
   bpy_angelo_guard_confine_origins.cc
   bpy_angelo_guard_confine_steering.cc
+  bpy_angelo_guard_confine_reparse.cc
   bpy_angelo_guard_confine_tagged.cc
   bpy_angelo_guard_confine_trace_hooks.cc
   bpy_angelo_guard_confine_winpath.cc
@@ -90,6 +97,7 @@ set(SRC
   bpy_angelo_guard_confine_signals.cc
   bpy_angelo_guard_confine_provenance.cc
   bpy_angelo_guard_confine_record.cc
+  bpy_angelo_guard_confine_remote.cc
   bpy_angelo_guard_confine_region.cc
   bpy_angelo_guard_confine_resume.cc
   bpy_angelo_guard_confine_roots.cc
@@ -98,7 +106,11 @@ set(SRC
   bpy_angelo_guard_confine_types.cc
   bpy_angelo_guard_confine_wrap.cc
   bpy_angelo_guard_confine_wrap_io.cc
+  bpy_angelo_guard_confine_wrap_lookup.cc
+  bpy_angelo_guard_confine_wrap_lookup_entry.cc
   bpy_angelo_guard_confine_wrap_native.cc
+  bpy_angelo_guard_confine_wrap_owners.cc
+  bpy_angelo_guard_confine_made.cc
   bpy_angelo_guard_confine_wrap_pipeline.cc
   bpy_angelo_guard_confine_work.cc
   bpy_angelo_guard_sha256.cc
@@ -160,6 +172,7 @@ set(SRC
   bpy_angelo_desktop.hh
   bpy_angelo_jobs.hh
   bpy_angelo_jobs_caches.hh
+  bpy_angelo_jobs_guard.hh
   bpy_angelo_jobs_work.hh
   bpy_angelo_update_quit.hh
   bpy_angelo_live.hh
@@ -189,13 +202,18 @@ set(SRC
   bpy_angelo_guard.hh
   bpy_angelo_guard_authority.hh
   bpy_angelo_guard_confine.hh
+  bpy_angelo_guard_confine_automount.hh
   bpy_angelo_guard_confine_changes.hh
   bpy_angelo_guard_confine_intern.hh
+  bpy_angelo_guard_strict.hh
   bpy_angelo_guard_confine_journal.hh
+  bpy_angelo_guard_confine_links.hh
+  bpy_angelo_guard_confine_tree.hh
   bpy_angelo_guard_confine_native.hh
   bpy_angelo_guard_confine_paths.hh
   bpy_angelo_guard_confine_pipeline.hh
   bpy_angelo_guard_confine_record.hh
+  bpy_angelo_guard_confine_remote.hh
   bpy_angelo_guard_confine_vouches.hh
   bpy_angelo_guard_confine_winpath.hh
   bpy_angelo_guard_sha256.hh
@@ -297,6 +315,11 @@ if(WITH_MESHOPTIMIZER AND TARGET meshoptimizer::meshoptimizer)
   if(UNIX AND NOT APPLE)
     list(APPEND LIB ${CMAKE_DL_LIBS})
   endif()
+endif()
+
+if(WIN32)
+  # NetUseEnum: the shares Windows has connected now (bpy_angelo_guard_confine_remote.cc).
+  list(APPEND LIB netapi32)
 endif()
 
 # Desktop notifications for background jobs (`bpy_angelo_desktop.hh`); a stub elsewhere.
@@ -553,8 +576,15 @@ if(WITH_GTESTS)
     bpy_angelo_checkpoint_binding_test.cc
     bpy_angelo_clipboard_test.cc
     bpy_angelo_guard_authority_core_test.cc
+    bpy_angelo_guard_authority_covers_test.cc
+    bpy_angelo_guard_authority_routing_test.cc
+    bpy_angelo_guard_confine_automount_test.cc
     bpy_angelo_guard_confine_changes_test.cc
+    bpy_angelo_guard_confine_links_test.cc
+    bpy_angelo_guard_confine_tree_test.cc
     bpy_angelo_guard_confine_paths_test.cc
+    bpy_angelo_guard_confine_remote_test.cc
+    bpy_angelo_guard_confine_reparse_win_test.cc
     bpy_angelo_guard_confine_vouches_test.cc
     bpy_angelo_guard_confine_winpath_test.cc
     bpy_angelo_guard_sha256_test.cc

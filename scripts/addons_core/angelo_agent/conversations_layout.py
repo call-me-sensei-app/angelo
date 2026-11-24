@@ -8,9 +8,13 @@ Deleted page, and a footer link to that page while it holds any chat. Rectangles
 region coordinates, y up; a right-to-left language mirrors them as it mirrors the whole canvas (``canvas_rtl``).
 
 Rows (``rows``): ``new``, ``chat`` (``record``, ``snippet``), ``rename`` and ``confirm`` (a chat being renamed or
-asked about), ``deleted`` (a Recently Deleted chat), ``note`` (an empty list's sentence). The keyboard stops on every
-row but a note (``stops``).
+asked about), ``deleted`` (a Recently Deleted chat), ``note`` (an empty list's sentence), ``heading`` (the list
+without a search is grouped by when each chat was last used, ``GROUPS``, in local days). The keyboard stops on every
+row but a note or a heading (``stops``).
 """
+
+import datetime
+import time
 
 from .ui_text import iface_, n_
 
@@ -20,7 +24,9 @@ SEARCH = 30
 BANNER = 34
 HEADER = 44
 FOOTER = 32
-HEIGHTS = {"new": 36, "chat": 46, "rename": 58, "confirm": 76, "deleted": 46, "note": 34}
+HEIGHTS = {"new": 36, "chat": 46, "rename": 58, "confirm": 76, "deleted": 46, "note": 34, "heading": 24}
+GROUPS = ((0, n_("Today")), (1, n_("Yesterday")), (7, n_("Previous 7 days")), (30, n_("Previous 30 days")),
+          (None, n_("Earlier")))   # (days before today, up to and including; heading)
 ACTIONS = {"new": "popup_conversations_new", "chat": "popup_conversations_open",
            "deleted": "popup_conversations_restore"}
 
@@ -32,9 +38,20 @@ def shown_title(record):
     return iface_(UNTITLED) if record.get("title") == UNTITLED else record.get("title") or ""
 
 
-def rows(records, matches, popup, deleted=()):
+def group(updated, now):
+    """The heading of a chat last used at ``updated`` (seconds), counted in local calendar days before ``now``."""
+    try:
+        days = (datetime.date.fromtimestamp(now) - datetime.date.fromtimestamp(updated)).days
+    except (OverflowError, OSError, ValueError, TypeError):
+        return GROUPS[-1][1]
+    return next(label for limit, label in GROUPS if limit is None or days <= limit)
+
+
+def rows(records, matches, popup, deleted=(), now=None):
     """The rows of the open page. ``records``: the chat list, newest first; ``matches``: ``[(record, snippet)]``
-    for the current query (None without one); ``deleted``: Recently Deleted entries (``conversations.entries``)."""
+    for the current query (None without one); ``deleted``: Recently Deleted entries (``conversations.entries``).
+    Without a query, a ``heading`` row starts each group of days (``group``)."""
+    now = time.time() if now is None else now
     if popup.get("page") == "deleted":
         found = [{"kind": "deleted", "id": item["record"]["id"], "record": item["record"], "deleted": item["deleted"]}
                  for item in deleted]
@@ -42,7 +59,11 @@ def rows(records, matches, popup, deleted=()):
     output = [] if matches is not None else [{"kind": "new", "id": None}]
     listed = matches if matches is not None else [(record, None) for record in records]
     renaming, confirming = (popup.get("rename") or (None,))[0], popup.get("confirm")
+    heading = None
     for record, snippet in listed:
+        if matches is None and (label := group(record.get("updated") or 0, now)) != heading:
+            heading = label
+            output.append({"kind": "heading", "id": None, "label": label})
         kind = "rename" if record["id"] == renaming else "confirm" if record["id"] == confirming else "chat"
         output.append({"kind": kind, "id": record["id"], "record": record, "snippet": snippet})
     if matches is not None and not listed:
@@ -51,7 +72,7 @@ def rows(records, matches, popup, deleted=()):
 
 
 def stops(found):
-    return [index for index, row in enumerate(found) if row["kind"] != "note"]
+    return [index for index, row in enumerate(found) if row["kind"] not in ("note", "heading")]
 
 
 def place(found, width, height, *, banner=False, header=False, footer=False, scroll=0):

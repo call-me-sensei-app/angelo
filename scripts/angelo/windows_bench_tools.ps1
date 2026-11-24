@@ -21,6 +21,18 @@
   None of them reads, prints or copies a credential.
 #>
 
+# The machine's PATH (moved here from windows_final_runs.ps1, which dot-sources this file before it uses them).
+function Refresh-Path {
+    $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
+}
+function Add-MachinePath([string]$Folder) {
+    $machine = [Environment]::GetEnvironmentVariable("Path", "Machine")
+    if (($machine.Split(";") | Where-Object { $_ -eq $Folder }).Count -eq 0) {
+        [Environment]::SetEnvironmentVariable("Path", "$Folder;$machine", "Machine")
+    }
+    Refresh-Path
+}
+
 function Get-Sha256([string]$Path) { (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() }
 
 function Get-SignerName([string]$Path) {

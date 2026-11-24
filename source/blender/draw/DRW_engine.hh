@@ -155,7 +155,11 @@ void DRW_lock_end();
 void DRW_submission_start();
 void DRW_submission_end();
 
-void DRW_gpu_context_create();
+/**
+ * Create the draw manager's GPU contexts and bind the viewport one.
+ * \return false, creating nothing, when the system cannot create a GPU context.
+ */
+bool DRW_gpu_context_create();
 void DRW_gpu_context_destroy();
 /**
  * Binds the draw GPU context to the active thread.

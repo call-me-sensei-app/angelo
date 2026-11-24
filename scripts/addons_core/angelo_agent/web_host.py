@@ -120,6 +120,7 @@ def _pending_class():
 
 
 def execute(controller, window, name, request):
+    from . import web_export_spec
     from .web_export_spec import CHECK, EXPORT
     try:
         if name == CHECK:
@@ -128,8 +129,7 @@ def execute(controller, window, name, request):
             return _export(controller, window, request)
         if request["action"] == "STOP":
             return {"stopped": web_preview.stop()}
-        started = web_preview.start(window, {"meshes": "AUTO", "textures": "AUTO", "merge": True,
-                                             "selection_only": False})
+        started = web_preview.start(window, web_export_spec.PREVIEW_REQUEST)
         report = started["report"]
         answer = {"url": started["url"], "live": True}
         answer.update(web_export.for_agent(report) if "findings" in report else {"status": report.get("status")})

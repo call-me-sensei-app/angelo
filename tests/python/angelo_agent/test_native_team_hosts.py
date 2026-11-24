@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Under a Teams gateway profile the app contacts only the published host list.
 
-The profile: a managed policy (``ANGELO_POLICY_FILE``) that refuses personal connections and adds the test's root
+The profile: a managed policy (a managed source, injected) that refuses personal connections and adds the test's root
 as ``ExtraCACertificates``, and a signed-in team account whose organization uses the gateway. The published list
 (doc/angelo/enterprise_policy.rst, "Network"): ``gateway.angelo.studio``, ``console.angelo.studio``,
 ``angelo.studio``, ``downloads.angelo.studio``, ``assets.toonlab.io``, ``cdn.toonlab.io`` and Angelo's R2 download
@@ -121,10 +121,16 @@ class TeamHostsCase(unittest.TestCase):
     def setUp(self):
         environ = {name: value for name, value in os.environ.items()
                    if not name.lower().endswith("_proxy") and name.upper() not in ENDPOINT_VARIABLES}
-        environ[product_env.PREFIX + managed_policy.TEST_FILE_VARIABLE] = str(self.policy_file)
         environment = platform_env.cleared(environ)
         environment.start()
         self.addCleanup(environment.stop)
+        # A managed source (as MDM or Group Policy delivers it): the extra roots grant trust, which the person's own
+        # ANGELO_POLICY_FILE never may (managed_policy, "Sources": it can only narrow).
+        managed = json.loads(self.policy_file.read_text())
+        machine = patch.object(managed_policy, "load", lambda *args, **kwargs: managed_policy.combine(
+            [("managed (test)", managed)]))
+        machine.start()
+        self.addCleanup(machine.stop)
         managed_policy.reset()
         self.addCleanup(managed_policy.reset)
         policy = managed_policy.current()
@@ -409,7 +415,7 @@ class SavedKeyTests(TeamHostsCase):
             record = ui.store.add(spec["provider"], "API_KEY", spec["name"], group=spec["group"])
             if record["mode"] == mode:
                 records[record["id"]] = record
-        managed_policy.reset()   # The machine policy again, as ANGELO_POLICY_FILE says.
+        managed_policy.reset()   # The machine policy again, as its managed source says.
         self.addCleanup(saved_keys_ui.close)
         backend = FakeBackend()
         profile = profile_id(ui.store.directory)

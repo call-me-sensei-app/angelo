@@ -176,18 +176,22 @@ def elide(value, measure, width):
     """``value`` cut to fit ``width`` with "…" where it was cut: at the end of the *reading* order, so a
     right-to-left string loses its last words (on the left) rather than its first. ``measure(text)`` is a width.
     Nothing to cut stays nothing: an empty ``value`` (an icon-only button's title) never becomes a lone "…"."""
-    if not value or measure(value) <= width:
-        return value
+    # Reading-order text holding isolated units (``rtl_text.isolate``) is laid out here: no mark is ever drawn.
+    marked = bool(value) and rtl_text.strip_isolates(value) != value
+    whole = rtl_text.to_visual(value) if marked else value
+    if not value or measure(whole) <= width:
+        return whole
     rtl = bool(_RTL.search(value))
-    logical = rtl_text.to_logical(value) if rtl and rtl_text.is_visual(value) else value
-    drawn = rtl_text.to_visual if rtl else str
+    logical = rtl_text.to_logical(value, isolates=True) if rtl and rtl_text.is_visual(value) else value
+    drawn = rtl_text.to_visual if rtl or marked else str
     low, high = 1, max(1, len(logical) - 1)  # The longest kept prefix whose cut form fits; at least one character.
-    while low < high:
-        middle = (low + high + 1) // 2
-        if measure(drawn(logical[:middle] + "…")) <= width:
-            low = middle
-        else:
-            high = middle - 1
+    with rtl_text.probing():   # Forms only measured are never remembered as drawn text.
+        while low < high:
+            middle = (low + high + 1) // 2
+            if measure(drawn(logical[:middle] + "…")) <= width:
+                low = middle
+            else:
+                high = middle - 1
     return drawn(logical[:low] + "…")
 
 

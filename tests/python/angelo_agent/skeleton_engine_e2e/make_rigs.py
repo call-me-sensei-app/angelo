@@ -14,6 +14,9 @@ Rigs (each a skinned mesh of one box per deforming bone, so every engine imports
 * ``one_bone_arms``: the same humanoid with each arm a single bone from shoulder to wrist (no forearm), arbitrary
   names. Predicted to fail Unity Humanoid and Godot's profile (no LowerArm).
 * ``metarig``: Rigify's human metarig itself (its armature object named ``metarig``), for Unreal's Rigify template.
+* ``rigify_game_<engine>``: the game rig Angelo makes from the generated ``rigify`` rig for each engine
+  (``game_rig.make_game_rig``, doc/angelo/rigging.rst): deform-only, named for that engine, its skin copied. Each is
+  judged and exported for every engine, so an engine also says what it makes of another engine's names.
 
 Writes ``OUT/rigs/<rig>.<glb|fbx>`` and ``OUT/angelo.json`` (verdicts and roles per rig and engine).
 
@@ -209,6 +212,12 @@ def main():
     rigs["rigify"] = bpy.data.objects["rig"]
     bpy.ops.object.mode_set(mode="OBJECT")
     bodies = {name: skin(arm) for name, arm in rigs.items()}
+    bpy.context.view_layer.update()
+    from angelo_agent import game_rig
+    for engine in ("UNREAL", "UNITY", "GODOT"):   # Made from the skinned generated rig, as a person would.
+        receipt = game_rig.make_game_rig(rigs["rigify"], engine)
+        rigs["rigify_game_" + engine.lower()] = receipt["game_rig"]
+        bodies["rigify_game_" + engine.lower()] = [bpy.data.objects[name] for name in receipt["meshes"]]
     bpy.context.view_layer.update()
     verdicts = {}
     for name, arm in rigs.items():

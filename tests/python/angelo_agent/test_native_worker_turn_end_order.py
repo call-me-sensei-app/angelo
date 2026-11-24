@@ -99,7 +99,8 @@ class Order(unittest.TestCase):
         source = Path(WorkerChatHost.pump.__code__.co_filename).read_text(encoding="utf-8")
         pump = source[source.index("    def pump(self):"):source.index("    def _pump_tools")]
         self.assertLess(pump.index("self.outbox.cut()"), pump.index("self._save_part()"))
-        applied = pump.index("chat.pump_events()", pump.index("self._save_part()"))   # The end is over here too.
+        applied = pump.index("chat.pump_events", pump.index("self._save_part()"))   # The end is over here too (each
+        # chat's own step: worker_chat_host.pump guards each chat).
         self.assertLess(pump.index("self._save_part()"), applied)
         self.assertLess(applied, pump.index("self.outbox.release(saved)"))
 

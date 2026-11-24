@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "id": "phone-android-mid-30fps",
+  "name": "Phone, Android mid-range (OpenGL ES 3.2 / Vulkan), 30 fps",
+  "fps": 30,
+  "basis": "OpenGL ES 3.2 includes ASTC LDR textures in its core (Khronos OpenGL ES 3.2 specification); Vulkan devices of this class report textureCompressionASTC_LDR. Texture formats are a common choice (ASTC 6x6 colour, 4x4 normal maps), not a vendor rule. Budgets are left unset: a team sets its own in its own profile.",
+  "texture_formats": {
+    "default": "ASTC_6x6",
+    "normal": "ASTC_4x4"
+  },
+  "passes_per_primitive": 1,
+  "budgets": {
+    "triangles": null,
+    "vertices": null,
+    "draw_calls": null,
+    "texture_memory_mb": null,
+    "bones": null,
+    "influences": null,
+    "morph_targets": null,
+    "file_mb": null,
+    "app_mb": null
+  }
+}

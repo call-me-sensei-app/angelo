@@ -43,6 +43,19 @@ Editor and conversations
   history, native runtime sessions and draft. Histories and settings live in the
   state folder, outside the .blend file; unsent drafts and attachments are kept
   in memory only.
+* The conversation menu's search finds a chat by its title, the person's requests and (2.1.0) Angelo's replies
+  (``conversation_search``: the newest replies within the same budget as requests). Without a search the list is
+  grouped by when each chat was last used: Today, Yesterday, Previous 7 days, Previous 30 days, Earlier (local
+  calendar days, ``conversations_layout.GROUPS``); headings are never keyboard stops.
+* **@-mentions** (2.1.0, ``composer_mentions``, ``composer_mention_ui``): typing ``@`` at the start of a word lists
+  the chat scene's objects, collections and the file's own materials whose names match what follows (names starting
+  with it first, at most eight). Up and Down move, Return, Tab or a click inserts ``@<name>`` through the composer's
+  own insert (one Undo), Escape closes the list and editing goes on. A pick never changes the selection. It is
+  remembered by the item's session id, so an item renamed before Send is still the one meant: the request's
+  observation carries ``mentioned_items`` (kind, current name, the name as written when it differs, an object's
+  handle, a collection's object count, ``missing`` for a deleted item), an event field sent with every message
+  (``context_ledger.EVENT_OBSERVATION_KEYS``). Objects named literally are flagged in the objects list as before. A
+  worker's chat resolves no picks (its document is a copy with other ids). Not on the Rules page.
 
 Transcript
 ==========
@@ -94,6 +107,34 @@ Transcript
   An error that is already one of Angelo's translated sentences is the title;
   a provider's short plain sentence is the card's sentence (no Details), and
   only technical text (exception names, stack lines, JSON, ids) is collapsed.
+* A network share an agent script was refused is named to the person only
+  (``share_refusal_notice``). The agent reads only the plain network refusal,
+  so it can never ask the person to connect a share a script chose. The chat
+  shows an amber card that names the share, quoted, and says that scripts
+  can't use a network share the person hasn't connected, and that they can map
+  it to a drive letter or open their project from it if it's theirs. Its kind
+  comes from its template alone (``notice_kinds.kind``): no card is classified
+  by words a person or a script chose. The refusals come from
+  ``_angelo_guard.network_shares_refused()`` (Windows builds). Those made
+  during a script's run belong to that script's chat
+  (``script_confinement.run_confined`` and its call key); attribution is by
+  time, so a handler another chat's script left that runs during this run is
+  named here too. Those made outside a run, such as by work a script left for
+  later, go to the next chat that checks. A chat checks after each call's
+  activity changes and at its turn's end; a worker's mirror never does (its
+  worker's process keeps its scripts' record). Each refusal is named once, and
+  a share refused again later is named again. A check adds a card for each of
+  the latest three shares; the console lists every one. A name is cut to 80
+  characters, with control and line-separator characters replaced. The row is
+  ``person_only``, and ``row_audience.model_hidden`` keeps every notice and
+  person-only row out of a model's text: no handoff, lead's worker status,
+  external app or reopened chat reads it (``test_native_row_audience.py``,
+  ``test_native_share_refusal_notice.py``). A card the turn's end adds after
+  a failed turn's error leaves that error's Resend, Put back and connection
+  pills in place: what reads the latest failure skips those rows
+  (``turn_tail``). The record is per process, so only
+  refusals in the process that reads it are named: a worker Blender keeps its
+  own.
 * Generated media sits in a framed, rounded tile (``studio_chat``).
 * The transcript has a thin auto-hiding scrollbar (``chat_scrollbar``): it
   shows while the pointer is over the transcript and briefly after a scroll,
@@ -124,7 +165,8 @@ Transcript
   right-to-left mirror) or ``qa_input.window_click(..., scale=...)``; a rect
   added to ``region.x``/``region.y`` by hand missed whenever the scale is not
   1, as under Xvfb at 75 dpi (``test_native_chat_click_scale`` follows every
-  value read from ``chat_view._views``). Fonts: San Francisco and Menlo where macOS has them, otherwise
+  value read from ``chat_view._views``). These are ``qa_hit.LAYOUT``, the
+  chat's entry in the suites' one mapping (``native_coverage.rst``). Fonts: San Francisco and Menlo where macOS has them, otherwise
   Blender's bundled UI face (Inter) and DejaVu Sans Mono. The accent is the
   brand teal (``ui_tokens``).
 * ``test_native_markdown_blocks.py`` pins the parser (including every prefix of
@@ -896,6 +938,11 @@ Approvals
   (a typo, a mode from a later build) reads as Ask, and ``angelo.set_approval``
   refuses it. External CLI conversations are created in Ask
   (``external_cli.rst``).
+* **Plan mode** (``plan_mode.rst``) is Read only with ``options.planning``
+  set: the chat researches and proposes approaches, and only the person's Go
+  on the plan card (or Stop planning on its chip) leaves it, in the setting
+  the card shows. The approval control reads *Planning* meanwhile; choosing
+  another mode there also ends planning.
 * **One-time move to Auto.** A chat saved before Auto became the default holds
   Ask only because that was the old default: loading it moves it to Auto once
   and saves ``approval_version: 2`` with it (``migrate_saved_approval``; a later
@@ -916,10 +963,16 @@ Approvals
   this chat** (``agent_execution.rst``, "Trusted scripts for an open chat") or,
   in Auto, **Always allow scripts** ("Always allow scripts" there). The script
   approval card in an Auto chat offers it beside Approve and Decline, with a
-  note that scripts have full access to files, the network and other apps on
-  this computer and that Preferences can turn it off; Preferences > AI
-  Providers and the add-on preferences show the toggle (or the organization's
-  lock). With it on, the composer's label in an Auto chat reads "Approve for me
+  note of what scripts can reach (``script_access.SENTENCE``: "Scripts run
+  with your access: they can read and change your scene and your files,
+  including files other apps run or read. Only allow scripts you would run
+  yourself." No "can't" claim, since the confinement's documented routes leave
+  none it guarantees today; a "What scripts can reach" link opens the first
+  section of ``script_confinement.rst``, which names every route a script still
+  has: the 2.1.0 reviews' A-8, M-1 and S-2) and that Preferences can turn it off;
+  Preferences > AI Providers and the add-on preferences show the toggle (or the
+  organization's lock) with the same sentence and link, as does the Trust
+  scripts for this chat dialog (``script_access.SURFACES``). With it on, the composer's label in an Auto chat reads "Approve for me
   · scripts allowed" and the approval popover's footer "Scripts run without
   asking in Auto." Only the person changes it (``agent_execution.rst``, "Always
   allow scripts"), and a script that refers to preferences or to Angelo's own
@@ -1099,8 +1152,9 @@ Transcript activity
 ===================
 
 Two or more consecutive steps of a turn fold into one work group
-(``chat_rows.group_blocks``): "Working on the scene · 6 steps" with a spinner
-while it runs (its newest step stays visible under it), a summary such as
+(``chat_rows.group_blocks``): "Working · 6 steps" with a spinner while it runs
+(never "on the scene": what its steps change is not known yet; its newest step
+stays visible under it), a summary such as
 "Made 2 changes · Checked 3 things" when done; a click opens the steps. Each
 step row has an icon for its kind of work, a plain-language title and the
 kit's status chip (Running, Done, Failed, Declined, Stopped, Needs you,
@@ -1356,6 +1410,10 @@ Files dropped on the chat attach through Blender's native multi-file
 ``FileHandler``; a dropped .blend is attached, not opened. A busy turn rejects
 attachments without side effects, and typing or pasting a path never attaches.
 
+A picture chip opens the picture full size to mark it up and comment on it (2.1.0); the + menu's **Mark up a
+picture…** opens the newest picture, or captures the 3D view. The marked picture, the original and a structured
+block of the comments and marks go as one message: :doc:`attachment_markup`.
+
 The + menu
 ==========
 
@@ -1365,18 +1423,29 @@ button somewhere else, and ``chat_add_menu`` draws whatever is registered, in ``
 heading. Shipped (``TOP_LEVEL``): **Attach**; **Media Studio** (opens it in its own window, ``studio_toggle``);
 **Generation Flows**, a group with New Flow, the templates (``flow_templates``, the same list every entry point
 shows) and the person's flows (``flow_open``); **Workflows** (Media Studio on its Workflows tab, such as Character in
-parts: ``angelo.open_media_studio`` WORKFLOW, ``studio_toggle``); **Base meshes**; **Work on hands**, one row that
-one click chooses (``hand_rigging.rst``, "Choosing the hand tools").
+parts: ``angelo.open_media_studio`` WORKFLOW, ``studio_toggle``); **Base meshes**; **Rig**, a group whose **Work on
+hands** is one row that one click chooses (``hand_rigging.rst``, "Choosing the hand tools"; the group below).
 A worker's chat lists neither tool (``Feature.lead_only``): Send performs chosen tools on Angelo's own scene only
 (``console.execute``), and a worker's chat works on its worker's document, so a chip there would do nothing.
 A feature is one row that runs an operator, or a group whose rows open as a **page** of the menu (a Back button above
 them; Esc or Left goes back), never inline, and the menu remembers nothing between openings: **+** always opens at the
-top level. Two built-in groups keep Create short: **Video** holds Video, Make Video from This Shot and Video from This
-Camera Move, and **Render** holds AI render, Render region and Bake maps… (``chat_destinations.PARENTS``). A member keeps
-its own row, operator and module; a member whose group is not registered is drawn at the top level, and a group with
-no member to offer is left out, so no feature is ever hidden. ``test_native_chat_destinations`` checks every shipped
-feature (``TOP_LEVEL`` and ``PARENTS``) is registered by its module and reachable, that each group's page holds its
-members, and that a module constructing a ``Feature`` lists it.
+top level. Built-in groups (``chat_destinations.GROUPS``) keep the top level short: **Video** holds Video, Make Video
+from This Shot and Video from This Camera Move; **Render** holds AI render, Render region and Bake maps…; under one
+**Tools** heading (2.1.0), **Model** holds the modelling tools (Shape Cut, UV layout, later import) and **Inspect** holds
+Select Through, Tension map, UV checker and Check a rig for a game engine; **Rig**, in the place the hands tile had, holds
+Work on hands and the rigging tools (Retarget animation, Make game rig, Root motion, Export clips, IK controls, Switch
+IK/FK; ``doc/angelo/rigging.rst``), each lane mapping its own tool into a group (``chat_destinations.PARENTS``). A member keeps its own row, operator and module; a member whose group
+is not registered is drawn at the top level, and a group with no member to offer is left out, so no feature is ever
+hidden. ``chat_destinations.shown()`` is that top level (``TOP_LEVEL`` less any empty built-in group); every check of
+the top level in view reads it, never ``TOP_LEVEL`` (a host rule), so a group without members yet is never expected.
+
+**Row budget (2.1.0).** At 2.1.0's start the grid had no room for one more tile at 1280 x 800 in any language,
+while five lanes were adding tools; the coordinator's ruling made the four inspection tools one tile and gave
+modelling tools one. ``chat_destinations.ROW_BUDGET`` (9) is the most rows of grid tiles the top level shows without
+scrolling at 1280 x 800 in every language with the grid's longest title. Rows, not tiles: the grid has two columns,
+so a tile joining a section with an odd count fills its half-row for free, and a tile count was exact for one parity
+only. ``test_native_chat_add_layout`` counts the rows the grid lays out, keeps the budget exact (filled to it the menu
+fits everywhere, one row more scrolls somewhere) and refuses a grid past it, naming the groups a new tool can join.
 
 **Every feature in view without scrolling (1.0.8).** The menu was a list of two-line rows whose groups opened inline
 and stayed open across launches (``chat-add-menu.json``): at a 1440 x 900 screen it showed 10 of its 19 features, 6
@@ -1384,7 +1453,7 @@ once Generation Flows had been opened, and a new row pushed Workflows below the 
 (``chat_add_layout`` places, ``chat_add_draw`` draws, ``chat_add_nav`` holds the view and keys):
 
 * A search field with **Attach** beside it (``Feature.placement`` ``bar``); then a two-column grid of 38 px tiles (a
-  32 px glyph and the title) under the section headings (Create, Start from, Inspect, Share); then the footer: one strip
+  32 px glyph and the title) under the section headings (Create, Start from, Tools, Share); then the footer: one strip
   that describes the pointed-at or keyboard-focused tile (its title and why line, as tall as the longest description in
   the person's language), and the ``footer`` features as text buttons (Report a bug…, Request a feature…).
 * Titles are never cut: one line, or two balanced whole-word lines (``text_layout.two_lines``: spaces, hyphens, the
@@ -1404,6 +1473,67 @@ all 21 languages with the canvas fonts' advance widths (``fixtures/menu_font_adv
 the canvas rounds them): every feature in view and nothing scrolled at 1440 x 900 and 1280 x 800, no title or
 description cut. A new feature that would push the menu past the fold fails it: place it in a group, or merge sections.
 ``test_blender_chat_start_states`` checks the same in the app (Director), with real fonts.
+
+Rules
+=====
+
+Standing instructions the person writes once and Angelo follows in every request (2.1.0, ``project_rules``,
+``project_rules_host``, ``rules_sheet``, ``rules_ui``). Two scopes, both only ever the person's words:
+
+* **This project**: a Text data-block, "Angelo Rules", marked with the ``_angelo_rules`` custom property. It saves
+  with the .blend and travels with it, shows in the Outliner's Blender File view, and is never written into a glTF.
+  A Text a library links in is never read. Rules are words: the Text is never a registered module.
+* **All projects**: ``rules.json`` in the state folder (owner-only, written whole and replaced), never in a document.
+  Each text is at most 4,000 characters; control characters (but newline and tab), surrogates and text-direction
+  overrides are refused, so the text reviewed is the text the model reads.
+
+**Delivery.** The rules that apply are one block of the request's context (``context_ledger.TurnBlocks.standing``,
+``project_rules.model_block``): sent whole to a new native context, again only when they change, and once as "none
+now" when they are removed. Never in the runtimes' base instructions, so the cached prefix never moves; the same
+block reaches Codex and Claude. They say what the person wants; they never grant anything: approvals, file roots
+and budgets stay host checks. Angelo still reads no ``CLAUDE.md``, ``AGENTS.md`` or rules file by itself (see "Web
+and file tools"); Rules is what replaces them.
+
+**Review before use.** Every text has a decision, kept by the text's SHA-256 (never by the file it came from): Use,
+Don't use, or none yet. What applies is held in C (``rule_decisions`` by digest, and ``global_rules`` as the All
+projects text's digest), never in Python state a script could rewrite; ``rules.json`` is Angelo's own copy, mirrored
+into C as Angelo reads it (again once a script that was running has ended), and only what C holds is saved. Use and a
+new All projects text are set only in the person's grant scope, and agent code decides nothing in either direction. Rules the person saves on the Rules page are decided Use. A project's text
+with no decision (the file came from someone else, or the Text changed outside the page: the Text Editor, a script,
+another program) is not sent: the chat shows a card, "This file has project rules Angelo isn't using yet…", with
+**Review rules** (a person-only notice, never in the model's context, once per chat and text). Review opens the page
+on that text with **Use these rules** and **Don't use**. Use writes the text the page showed and decides it, so a
+change made while the page was open is never what gets used; Don't use declines the text the page loaded and leaves
+the file as it is. A declined text stays out until the person uses it from the page.
+
+**What is reviewed is what is sent.** Rules can't hold a character a person can't see there: Angelo's one check for
+that (``hidden_text``: controls, format, private-use and unassigned characters and every default-ignorable one, such as
+a zero-width space between Latin words, the Tag block, a stray variation selector or a Hangul filler), which keeps
+what real writing needs in context (Thai and Japanese word breaks, joiners in joining and Indic scripts and emoji,
+bidirectional marks in right-to-left text) and is tested on every catalogue; a tab is read as the space it shows
+(round 1, R-2). Save, Use and the composer's Send carry the digest of the text the page drew that frame
+(``rules_sheet.shown_digest``), and C tickets the press by it: text put in the box after it was drawn is never kept,
+and the page stays open on it, saying the rules changed after it showed them (R-3). A project Save decides the text before
+it writes the file, so a decision that can't be made leaves the file's rules as they were.
+
+**Known limit (round 2, N-1).** C holds only what Angelo's own code mirrors into it, in its automatic scope, from the
+file at a path Python holds (``RulesStore._ready``), at parity with 2.0.0's other mirrored consents (Always allow, each
+chat's mode, remembered scripts, context folders). The confinement hides Angelo's modules from agent code, so no
+agent route to that path is known. The fix for the whole class is to mirror only from a file C confirms is in Angelo's guarded
+private folder, or to have the helper process own the files (grant_operators.rst, "Residuals").
+
+**The page.** **Rules…** in the + menu's footer (``ANGELO_OT_chat_rules``) opens it as a card over the top of the
+transcript (the newest rows and any approval above the composer stay in view; nothing under the card takes a click).
+Tabs choose This project or All projects (not during a review). The composer edits the rules instead of the draft:
+``rules_sheet.line_of`` gives it a line of its own, so the draft, its Undo history and the composer's selection and
+scroll return exactly as they were, and every editing feature of the composer (input methods, wrapping, the
+platform's keys, paste) works on the rules. Return adds a line; the composer's Send, or Save, saves; Cancel leaves
+everything as it was. An empty save removes the rules. Only the page's own clicks decide: an operator or script that
+opens the page decides nothing, and a script that writes the Text makes a new text to review.
+
+Tests: ``test_native_project_rules`` (store, decisions, limits, file safety), ``test_native_project_rules_context``
+(the block, through the real controller), ``test_native_project_rules_host`` (the file's Text, the review gate),
+``test_native_rules_sheet`` (the page), ``test_native_composer_mentions``, ``test_native_conversation_groups``.
 
 Start from a base mesh
 ======================
@@ -1475,7 +1605,8 @@ which turns bare mode on, is dropped (``runtime_environment.TOOL_POOL``).
 A Claude session launched without
 WebSearch is told that native web search is unavailable, as on Codex. WebFetch
 refuses ``localhost``, ``.local`` hosts, private IP addresses and URLs with
-credentials. Results and file contents are untrusted data.
+credentials. Results and file contents are untrusted data. The person's own standing instructions come
+through Rules (above), never through a file the runtime reads.
 
 On an API-key or team connection, by Claude Code 2.1.293's code (unbilled
 captures show the tools; no search or fetch has run live on these routes yet):
@@ -1499,6 +1630,207 @@ private workspace in the state folder for an unsaved project. Absolute or
 folders (``.git``, ``.ssh``, ``.aws``, ``.codex``, ``.claude``, ``.env*``) and
 Angelo's state and account folders are rejected. Writes and deletions are
 journaled in the request snapshot; Blender Undo does not revert them.
+
+Continue after Angelo closes
+============================
+
+A request Angelo was running when it closed (a crash, a forced quit, power lost, a restart to update) can be continued
+when its chat opens again (2.1.0, ``crash_resume``, ``crash_resume_ui``).
+
+* **Knowing.** Every request row is written with ``open_turn`` (this process's id and a per-launch token,
+  ``request_rows.request_fields``) and loses it when its turn ends (``message_end.ended``) or when the chat's next
+  request starts. A chat loaded with its newest request still open, from a process that has ended, was cut off. A
+  process still running (another Angelo on the same state folder) is never offered over, nor is a worker's chat (its
+  worker's journal has its own recovery, ``agent_execution.rst``).
+* **What it says comes from the call journal only.** Each admitted call's record is written before it runs and
+  replaced by its result when it finishes (``tool_finalization.journal_tool``); a record the bounded journal no longer
+  holds falls back to the call's row. The card counts **done** (a final result), **may have applied** (execution or
+  commit had started with no final read-back, a failure that says it may have changed the scene, or a row still
+  running with no record) and **didn't run** (admitted only, waiting for approval, queued, or refused with nothing
+  applied); read-only calls are left out. Never from the model's words. **Restore** on the request still brings back
+  the scene from before it.
+* **Continue, never replay.** Continue is Angelo's own request (``request_kind`` ``angelo_continue``, shown as a
+  translated notice with the counts): the journal's facts for the model (each call's tool and bounded arguments), and
+  the scene observed as it is now. Angelo runs nothing again, and the old invocation ids stay closed in the chat's
+  ledger. When a scene edit is listed, done or may have applied, the request starts with a hold
+  (``RecoveryBarrier.arm_continue``, armed for that request only and installed when it starts): the reopened scene is
+  the file as last saved, so a done step may be missing from it and one that may have applied may be in it (the 2.1.0
+  break-it review, C-2). Scene edits are refused (``RECOVERY_REQUIRED``) until the model has read the scene with one
+  of the scene reads (``request_recovery.SCENE_READS``, an allow-list: a file, attachment, memory, collaborator,
+  library, goal, web or job read does not count, nor a failed read; C-1), and run from its next model step, so no
+  edit is written blind. A step the journal no longer holds whose row says it failed counts as may have applied
+  (C-3). A send that is refused disarms the hold and says why in the chat. The card's Continue stands while that
+  request is still the chat's newest and cut off, no turn runs, and the chat works on its own document.
+
+Tests: ``test_native_crash_resume`` (the mark through a real controller save and reload, the summary, the hold, the
+offer).
+
+Folder as context
+=================
+
+The person can let a chat use folders of theirs while it works, such as a game project and a folder of references,
+as Claude Code and Codex let a session add directories (2.1.0, ``context_folder``, ``context_folder_grants``,
+``context_folder_host``, ``context_folder_write``, ``context_folder_ui``). One folder is the **working folder**, where
+the agent may write text files such as research notes, checklists and plans; every other folder is a read-only
+**reference folder**.
+
+* **The grants** are per chat and only the person's: **Folder as context…** in the + menu's footer opens Blender's
+  file browser on folders, and each pick adds one folder, up to five. Why five: each folder's manifest is bounded (50
+  top-level names of at most 80 characters, 24 kinds), about 1.5 KB for a typical project and at most 6 KB, so five
+  keep the turn's folder context under 30 KB even at that bound (``test_native_context_folders`` measures it). A
+  folder already attached, or one inside or holding an attached folder, is refused, so a write to the working folder
+  never reaches a reference folder by another name. Grants are kept in the state folder (``context-folders.json``,
+  version 2, owner-only), never in a .blend or a chat file, and held in C (``context_folders``: ``<chat>/<folder
+  id>`` and ``<chat>/working``, each the digest of the folder's real path, device and inode), written only in a grant
+  scope; a folder is read or written only while it is that same folder: one renamed away, deleted or replaced by
+  another at its path (another drive of the same name, another checkout) is not, and the person picks it again (the
+  2.1.0 break-it review, F-2). Each folder has its own card in the chat naming it and its role, with **Make working
+  folder** on a reference folder and **Remove**, drawn from what is saved and held without looking at the disk;
+  Remove also ends the grant of a folder moved or deleted since (F-5). Deleting the chat ends its grants; restoring it
+  asks for the folders again (F-4). A worker's chat has none, on either path: a lane chat in Angelo and a chat its
+  worker hosts (design A′), whose store is the lead's state folder; both folder tools are refused there as every tool
+  a worker can't run is (``worker_refusals``). A grant saved by 2.1.0 before several folders (one read-only folder)
+  is read as a reference folder marked legacy: it was attached as read-only, so only the person's click makes it
+  writable.
+* **The working folder** is the first folder attached; the person makes another one the working folder from its
+  card (their own click, in its C ticket's scope; the old one stops being writable first). Removing the working folder
+  makes the next folder still there the working one, as Angelo's own decision (never while agent code runs, never a
+  legacy folder), and the chat says which ("“refs” is now this chat's working folder"); with no such folder left there
+  is none. Continue after a close and a resumed chat read the same grants, so they keep the
+  folders, their order and the working folder.
+* **What may be chosen** (F-1): never a folder whose real path holds a hidden or credential folder (``.ssh``,
+  ``.aws``, a repository's ``.git``), judged below the home folder for a folder in it, nor one where the platform keeps
+  apps' settings and private data, itself or inside (macOS ``~/Library`` but the person's own iCloud Drive and
+  cloud-provider folders there, ``/Library`` and the system's settings;
+  Windows ``AppData`` and where ``%APPDATA%``, ``%LOCALAPPDATA%`` and ``%PROGRAMDATA%`` point, and the system folder;
+  elsewhere the XDG folders wherever they point, ``/etc`` and ``/var/lib``; round 2, N-4): "it holds keys, credentials
+  or a repository's internals". Nor the home folder, a folder holding it or one of those, or a whole drive ("too
+  wide"). An agent can ask for exactly that pick; the person picks a project folder inside a too-wide one instead
+  (``context_folder_roots.vet_root``). Each path is judged as the system spells it, never as typed (macOS keeps a
+  path's typed case in its real path), with the environment and home folder as Angelo started; Windows' temporary
+  folder inside ``%LOCALAPPDATA%`` stays usable, as the file tools keep it. On macOS a chosen folder that can't be
+  opened to check (privacy protection answers EPERM) is refused, never judged as typed ("can't open that folder to
+  check it"; re-read of 23413c6bae1, S-1). macOS's per-user cache and temporary parent ``/private/var/folders`` is
+  refused (its own temporary folder ``T`` stays usable, never a parent a ``TMPDIR`` names), and so are Linux's
+  ``/proc``, ``/sys`` and ``/dev``. A folder with a mount point below it (a child or grandchild: ``/Volumes``,
+  ``/media/<user>``, ``/run/media/<user>``, a share mounted in a project) is too wide; Linux reads its mount table
+  (``/proc/self/mountinfo``) and macOS its own (``getfsstat``), both through ``private_conventions.mount_points``;
+  elsewhere (Windows) the first two levels are looked at, and a scan that reaches 4,096 folders is too wide (it fails
+  closed). Where a store sits inside a root, the narrowest decides (re-read of 1c2c4edaf48, S-1, S-2, N-2, N-4).
+* **Every read stays on the attached folder's drive.** Vetting looks once, at the pick; each read then checks the
+  device of every folder it opens and of the file itself (``ReadOnlyFolder._folder``, ``_admit``), so a drive mounted
+  inside the folder later, or a file bind-mounted over a name in it, is never read. A folder or file left out that way
+  is named in LIST's and SEARCH's ``limits`` as ``other_drive``, never as a folder too large (re-reads of ccdfea52edb
+  S-1, dd87b2d5aa3 N-1 and 70142a371dd N-3).
+* **Known limits.** Vetting goes by location, not content: a copy of a home folder on another drive is judged by
+  where it is, and its folders inside are read only through the reader's own conventions. Vetting and the grant's
+  identity are two resolutions of the same path; Windows judges spellings by its real path (N-1, N-3). The file browser's Accept takes the folder it shows, not one bound to the person's own navigation
+  (round 1, F-3): during the browse, code that is not the agent's (an add-on) could change it. Agent code ends the
+  browse, and such code already has the person's file access (grant_operators.rst, "Residuals", G7), so it gains no
+  file it could not read; the card names the folder the chat got, with Remove. A folder's identity is its device and
+  inode: a filesystem that reuses a freed inode at once can give a new folder at the same path the old one's identity,
+  and one that synthesizes inode numbers (exFAT, some network shares) can change them across mounts, which only asks
+  for the folder again. An agent script still shares Angelo's process ("Objects shared in place" in
+  script_confinement.rst): a script that swaps a workspace's ``__class__`` or patches a class during its region, racing
+  Angelo's background thread, can steer a context-folder read or write, but only into a folder C holds a grant for
+  (the root is judged by C's record for the very folder opened, and writing only by the working folder's grant). The
+  helper process, in the release after 2.1.0, closes it: nothing of Angelo's is in a script's reach there.
+* **Path-free.** Each request's observation carries ``context_folders``: for each folder in attach order its name
+  (two folders of one name are told apart as "Game (2)"), its ``role`` (``working`` or ``reference``, as it is now),
+  counts by kind and the first 50 top-level entries, built on its own thread and refreshed at most every 30 s
+  (``pending`` until the first one is ready). A state field: a delta sends it only when it changed, and ``null`` once
+  the last folder is removed. Every tool argument and result is relative to a folder, named by that name; an error
+  never carries a path.
+* **Reading,** ``angelo_context_folder`` (``folder``: a folder's name, the working folder when left out; ``action``: ``LIST`` 200 entries a page, with ``more`` and ``next_start``
+  taken back as ``start``; ``READ`` a 16 KiB UTF-8 window unless a ``length`` up to 128 KiB asks for more, with
+  ``next_start`` where the rest begins, never splitting a character; ``SEARCH`` names and text through every folder,
+  paged, within 5,000 entries, 2 s, 12 levels, 1 MiB per searched file and 50 hits, ``complete`` only when no bound
+  cut it and each that did named in ``limits``; ``VIEW`` a PNG, JPEG or WebP of up to 5 MiB, judged by its bytes and
+  never its name (F-6), as a picture kept in the chat's own folder). Audit 2026-11-14 F4 and its token note: nothing past a bound is ever reported as everything.
+  Read-only, never asked about, deferred on both runtimes
+  (``plan_kinds.DEFERRED_TOOLS``) and never declared to voice or collaborators.
+* **Nothing outside it.** Every action goes through ``ReadOnlyFolder``, the file tools' own ``FileWorkspace`` rooted
+  at the folder: walks are anchored at the folder itself and refuse links and junctions at every component, absolute
+  and ``..`` paths, hidden names, credential and repository folders, Angelo's state and account folders, and files
+  over 20 MiB. Reading has no write or delete. Content is untrusted data, never instructions. The folder itself is
+  judged at every walk by its own grant in C, never by C's ``may_write``, which refuses a person's project folder once
+  any agent script has run in the process (``context_folder_root.granted_root``, the class-level root step of
+  ``ReadOnlyFolder``): the folder is opened without following a link and walked only when C holds that grant for that
+  very folder (the digest of its real path with the opened descriptor's device and inode against
+  ``<chat>/<folder id>``, or only ``<chat>/working`` to write). No attribute set on a workspace switches this on, and
+  a workspace of another kind reaching that step would still need C's grant for the exact folder. Before this, every
+  read and write of an attached folder failed for the rest of a session in which a script had run (the break-it
+  review's third and fourth reads; ``test_blender_context_folders_gui`` and ``test_blender_context_folder_script_gui``
+  run a script first).
+* **Off the main thread.** The controller only routes the call (``context_folder_host.start``): it runs on its own
+  thread and returns through the same event a collaborator's result does; Stop or a closed chat ends it with an error
+  and a late result changes nothing. Each read belongs to the grant of its folder it started under
+  (``context_folder_host``'s generation): **Remove** ends that folder's reads under way, never another folder's, and a
+  read asks whether its grant still holds before reading, before keeping a picture and before delivering, so nothing of
+  a removed folder reaches the chat or stays in its folder (audit 2026-11-14 F2).
+* **Writing,** ``angelo_context_folder_write`` (deferred, never for voice, collaborators, an outside app's External
+  conversation or a typed plan's batch): ``CREATE`` a new text file (refused when the name is taken) or ``UPDATE`` the
+  whole text of one (refused when it is missing), in the working folder only. Agent scripts get no new access: the
+  confinement is unchanged and writing happens only through this typed tool. Its limits, each with its reason:
+
+  - Nothing deletes, moves or renames a file: there is no such action, so a note the agent wrote can never cost the
+    person a file of theirs.
+  - Only the working folder: a ``folder`` naming a reference folder is refused, and a write is refused in a folder
+    that is, or lies inside, a reference folder, by each reference folder's identity as attached and now and by the
+    path the system gives the opened folder, so a reference folder moved into the working folder later is still not
+    written.
+  - Only text files: documents (``.md``, ``.markdown``, ``.txt``, ``.text``, ``.csv``, ``.tsv``, ``.rst``) and data
+    or settings formats (``.json``, ``.jsonl``, ``.yaml``, ``.yml``): notes, checklists, plans and tables, never a
+    script or a scene. A tool the person runs may still read a text file it finds by its name (``requirements.txt``,
+    ``package.json``); Angelo runs none of them, and creating a data or settings file always asks
+    (``auto_reasons.CONFIG_FILE``), since that is the kind tools read as settings.
+  - Only plain names, at most 8 deep: no hidden name, repository or credential folder however it is spelled (compared
+    after NFKC folding and ignoring case, so ``.GIT`` and a full-width dot are refused), no ``..``, no character Windows
+    gives a meaning to (``:`` would open an alternate data stream), no trailing dot or space, no device name such as
+    ``con``, no Windows short (8.3) name such as ``GIT~1``, which is another spelling of a long one.
+  - Nothing outside the folder: each write walks from the folder one opened folder at a time
+    (``files.FileWorkspace``): links and junctions are refused at every name, a file with another hard link is
+    refused, Angelo's state folders and the platform's private ones are refused, another drive is refused.
+  - Atomic: the text goes to a hidden temporary file in the same folder, which then takes the file's name. A new file
+    takes it by an exclusive rename that never replaces one that appeared meanwhile (macOS ``RENAME_EXCL``, Linux
+    ``RENAME_NOREPLACE``, Windows a rename without replace); where the file system has none, by a no-replace hard link;
+    where it has neither (some network shares), the write is refused rather than done by a rename that could replace a
+    file. An update replaces the file by a rename and keeps its mode. The file must still be what it was when the call
+    was bound (its size, modification and change times, inode and device) when the run starts and just before the
+    rename, and the working folder must still be the one the call was bound to; otherwise nothing is written. New files
+    and folders get the person's own default permissions (their umask). A refused or failed write leaves nothing
+    behind: folders made for it are removed while still empty, and a temporary file a stopped write left is removed once
+    ten minutes old.
+  - Sizes are bounded: 131,072 characters and 512 KiB per write, as the file tools' own writes, and 200 new files per
+    folder per chat (counted in C), so a runaway turn can't fill the disk.
+  - **Approval.** Creating a document, or updating a file the agent created in this chat that nobody changed since,
+    follows the chat's approval mode: in Auto it is a bounded typed edit with no question, in Ask it asks, in Read only
+    it is refused. Which files the agent created is held in C (``<chat>/<folder id>/own``: a token of each file's size,
+    times, inode and device as the agent left it, up to 128 per folder), written only in a grant scope and read from
+    C. The grant file is written from C, never from Python's state (the folders C holds, the working folder C names,
+    each folder's state: its attach order, created count, legacy mark and tokens), and mirrored back into C at the
+    next start, so nothing an agent script changes in Python makes a file the agent's, now or after a restart; a start
+    whose grants could not reach C (read while an agent script ran) saves nothing over them and reads them into C
+    again at the next call that isn't agent code. A grant file from an internal build before this one (version 2)
+    is not read: its chats' folders are attached again (testers: expect that once). A program that touches a file's metadata (a sync client
+    setting an extended attribute) changes its change time, so the agent's file asks again: it fails safe. Ownership comes only from creating: an update of the agent's own file carries it on, and an update of any
+    other file, the person's approved one included, never makes it the agent's. Updating any other file, one that was
+    there before or that the person changed since, always asks the person, in every mode (``auto_reasons.PREEXISTING``),
+    and its run is refused unless their own click approved it; creating a data or settings file always asks too. A
+    write takes no scene snapshot and is no Undo step, as task memory's notes aren't (the card's Approve runs it
+    directly, so Global Undo off refuses nothing); Undo and snapshots don't restore it, and its card says so. Its chip
+    reads "Working folder", and its refusals carry closed codes that say nothing ran.
+  - Each write is shown in the transcript by the file's own name ("Wrote “checklist.md”"), never a path.
+
+Tests: ``test_native_context_folder``, ``test_native_context_folders`` (several folders, the working folder, the cap,
+manifests, resume), ``test_native_context_folder_write`` (every write refusal, approval, registration),
+``test_native_context_folder_breakit`` (the break-it review of 565f5df, each finding),
+``test_native_context_folder_reads`` and ``test_native_context_folder_anchor`` (after a script, on POSIX with and
+without macOS' one-open walk and through the Windows backend); in the app, ``test_blender_context_folder_script_gui``
+(one folder: an agent script, then every read) and
+``test_blender_context_folders_gui`` (two folders through the file browser, switching the working folder on its card,
+a checklist written in Auto, a write into the reference folder refused, an update of a file that was there waiting on
+its card for the person's Approve).
 
 Request snapshots
 =================

@@ -3,10 +3,7 @@
 """Scoped, bounded file tools with anchored effects and versioned recovery."""
 
 from contextlib import ExitStack, contextmanager
-import os
-import stat
-import sys
-import uuid
+import os, stat, sys, uuid  # noqa: E401
 from pathlib import Path
 
 from . import anchored_windows, change_clock, private_conventions, private_roots, script_confinement, storage
@@ -52,15 +49,13 @@ PRIVATE_MESSAGE = "Application profiles, credentials, transcripts and snapshots 
 
 
 def folder_identity(info):
-    """(device, inode) of a stat result, or None where the filesystem has no stable inode (then only the path
-    comparison applies)."""
+    """(device, inode) of a stat result, or None where the filesystem has no stable inode (then the path decides)."""
     inode = getattr(info, "st_ino", 0)
     return (info.st_dev, inode) if inode else None
 
 
 def _canonical_path(descriptor):
-    """The path the system has for an opened folder, as spelled on disk (macOS F_GETPATH, Linux /proc, Windows
-    GetFinalPathNameByHandleW), or None."""
+    """An opened folder's path as spelled on disk (macOS F_GETPATH, Linux /proc, GetFinalPathNameByHandleW), or None."""
     try:
         if isinstance(descriptor, anchored_windows.WindowsDirectory):
             return Path(descriptor.final_path())
@@ -207,8 +202,7 @@ class FileWorkspace:
         return found
 
     def _refuse_member(self, folder, families):
-        """Refuse ``folder`` or a folder above it that is a declared family's member (a process folder, crashed or
-        not), by the names on disk."""
+        """Refuse ``folder`` or a folder above it that is a declared family member (a process folder), by its names."""
         for item in (folder, *folder.parents):
             prefixes = families.of(_identity(item.parent), item.parent) if item.parent != item else None
             if prefixes and _member(prefixes, item.name):
@@ -227,7 +221,7 @@ class FileWorkspace:
         round 3 M-2). The same walk on POSIX descriptors and on Windows' verified handles (round 4 M-3: a handle's
         ``fstat`` is its volume serial and file index); the workspace opened must be the one set up."""
         with ExitStack() as stack:
-            current = stack.enter_context(_private_directory(self.root, within=self.root))
+            current = stack.enter_context(type(self)._open_root(self))   # The class's step, never an instance's.
             if not (type(current) is int or isinstance(current, anchored_windows.WindowsDirectory)):
                 # No descriptor-relative opens on this platform: the folder opened is checked.
                 self._refuse_member(path, self._families())
@@ -260,13 +254,16 @@ class FileWorkspace:
                         raise ValueError(PRIVATE_MESSAGE)
                     if parent and _member(parent, (_canonical_path(current) or lexical).name):
                         raise ValueError(PRIVATE_MESSAGE)
-                # The convention, on the path the system has for the folder actually opened: it holds every folder
-                # above it, as they really are (an exempt store inside ~/Library is reached through ~/Library).
+                # The convention, on the system's path for the folder opened: every folder above it as it really is.
                 self._refuse_convention(_canonical_path(current) or lexical)
                 yield current
             finally:
                 if owned:
                     _close(current)
+
+    def _open_root(self):
+        """The workspace folder, by the shared walk, which C's ``may_write`` judges (``require_anchorable``)."""
+        return _private_directory(self.root, within=self.root)
 
     def _is_own(self, own):
         if own is None:
@@ -343,16 +340,14 @@ class FileWorkspace:
             change_clock.settle(info, change=False)
         return file_signature(info) if info is not None else ("missing",)
 
-    def _list(self, path):
-        entries = []
-        mounts = subtree_mounts()
+    def _list(self, path, offset=0):
+        entries, skipped, mounts = [], 0, subtree_mounts()
         with self._folder(path) as folder:
             private = self._private()
             lexical, spelled = self.lexical, _canonical_path(folder) or path
             prefixes = self._families().of(folder_identity(directory_info(folder)), spelled)
             below = self.canonical if self.own else None
-            # Stream directory admission before sorting, rather than allocating
-            # an unbounded list merely to return at most 200 entries.
+            # Stream admission, then a page of 200 from the offset-th admitted entry; more says one followed (audit F4).
             names = []
             for entry in iter_names(folder):
                 if len(names) == 4096:
@@ -368,11 +363,16 @@ class FileWorkspace:
                         or self.convention.private_path(spelled / name, below=below)
                         or any((path / name).is_relative_to(item) for item in lexical)):
                     continue
-                entries.append({"name": name, "directory": stat.S_ISDIR(info.st_mode),
-                                "bytes": info.st_size if stat.S_ISREG(info.st_mode) else None})
-                if len(entries) == 200:
+                skipped += 1
+                if skipped > offset:
+                    entries.append({"name": name, "directory": stat.S_ISDIR(info.st_mode),
+                                    "bytes": info.st_size if stat.S_ISREG(info.st_mode) else None})
+                if len(entries) > 200:
                     break
-        return {"path": str(path.relative_to(self.root)), "entries": entries, "limit": 200}
+        return {"path": str(path.relative_to(self.root)), "entries": entries[:200], "limit": 200, "more": len(entries) > 200}
+
+    def _admit(self, info):
+        return info   # A file about to be read (its own stat, or None): every one here; a narrower workspace checks.
 
     def _read(self, path, arguments):
         if (type(arguments["start"]) is not int or not 0 <= arguments["start"] <= 2**53 - 1 or
@@ -380,7 +380,7 @@ class FileWorkspace:
             raise ValueError("File excerpts require bounded non-negative whole-number offsets/lengths")
         self.precondition("angelo_read_file", arguments)
         with self._folder(path.parent) as folder:
-            info = optional_info(folder, path.name)
+            info = self._admit(optional_info(folder, path.name))
             if info is None:
                 raise ValueError("The file doesn't exist")
             with os.fdopen(_open_file(folder, path.name, os.O_RDONLY), "rb") as handle:

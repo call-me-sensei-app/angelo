@@ -34,6 +34,7 @@ from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 import qa_input  # noqa: E402  (synthetic clicks; after_clicks)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-studio-tabs-qa"))
@@ -406,7 +407,7 @@ def tick():
                        key=lambda a: a.width * a.height)
             header = next(r for r in area.regions if r.type == 'HEADER' and r.height > 1)
             unit = round(18 * scale) + 2 * bpy.context.preferences.system.pixel_size
-            press(header.x + int(4 * scale) + unit * 0.8, header.y + header.height // 2)   # Its editor-type button.
+            press(*qa_hit.xy(qa_hit.RAW, header, int(4 * scale) + unit * 0.8, header.height // 2))   # Its editor-type button.
             state["phase"] = "type_menu_open"
             return .8
         if phase == "type_menu_open":

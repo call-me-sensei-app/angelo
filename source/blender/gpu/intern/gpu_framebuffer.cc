@@ -15,6 +15,7 @@
 #include "CLG_log.h"
 
 #include "GPU_capabilities.hh"
+#include "GPU_init_exit.hh"
 #include "GPU_texture.hh"
 
 #include "gpu_backend.hh"
@@ -734,6 +735,16 @@ GPUOffScreen *GPU_offscreen_create(int width,
                                    bool clear,
                                    char err_out[256])
 {
+  if (!GPU_is_init()) {
+    /* No GPU context was ever created (a machine without a usable GPU): nothing can draw. The
+     * GPU-drawn entry points refuse before this (WM_gpu_is_available); this keeps any other
+     * caller from a crash. */
+    if (err_out) {
+      BLI_strncpy(err_out, "the GPU is not initialized", 256);
+    }
+    return nullptr;
+  }
+
   GPUOffScreen *ofs = MEM_new_zeroed<GPUOffScreen>(__func__);
 
   /* Sometimes areas can have 0 height or width and this will

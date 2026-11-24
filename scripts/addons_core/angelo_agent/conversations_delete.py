@@ -18,7 +18,8 @@ A finished worker's chat may be deleted: its tile on the rail is dismissed first
 shown on screen is replaced first by the next most recent chat (its scene comes back, as any switch brings it) or, when
 it is the only one, by a new chat; then the chat is closed (its last save) and moved to Recently Deleted
 (``conversations``). The scene is never touched: a chat is bound to its document, the document never to the chat.
-Its request snapshots stay with the snapshot policy (``conversations``).
+Its request snapshots stay with the snapshot policy (``conversations``). Its Folder as context grant ends with it
+(``context_folder_host.forget_chat``); restoring the chat asks for the folder again.
 """
 
 from . import conversations
@@ -90,6 +91,12 @@ def delete(ui, session_id, *, switch, dismiss_tile=None):
     entry = conversations.delete(ui.state_directory(), record, shown=shown)
     collection.records.pop(session_id, None)
     collection.save()
+    from . import context_folder_host
+    try:   # Its folder grant ends with it (narrows in memory and C first; a failed write is logged, never undone).
+        context_folder_host.forget_chat(ui.state_directory(), session_id)
+    except OSError as error:
+        import logging
+        logging.getLogger(__name__).warning("A deleted chat's folder grant could not be saved as removed: %s", error)
     ui._drafts.pop(session_id, None)
     search_index(ui).forget(session_id)
     return entry

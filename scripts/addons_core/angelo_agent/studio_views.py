@@ -21,6 +21,7 @@ from . import live_windows
 _windows = {}    # Studio window pointer -> its state
 _handlers = []   # the load_pre handler, once registered
 _hooks = []      # what else a file load must stop first (Studio's requests in flight: ``on_load``)
+_chosen = {}     # kind -> (connection, model id): the person's latest model choice in any Studio (``chosen``)
 
 
 def defaults():
@@ -87,6 +88,20 @@ def track(views, busy=()):
         views.pop(pointer)
 
 
+def choose_model(state, kind, choice):
+    """The person picked ``choice`` (connection, model id) for ``kind`` in a Studio showing ``state``. Remembered as
+    the latest choice too, for what runs Studio's generations elsewhere (the picture viewer's Remove BG and Erase,
+    ``markup_edit``)."""
+    state["models"][kind] = choice
+    _chosen[kind] = tuple(choice)
+
+
+def chosen(kind):
+    """The person's latest model choice for ``kind`` in any Studio, or None. A file load forgets it, as it forgets
+    Studio's own states."""
+    return _chosen.get(kind)
+
+
 def on_load(hook):
     """Run ``hook`` before a file loads, ahead of forgetting the states (Studio cancels its requests in flight)."""
     if hook not in _hooks:
@@ -100,6 +115,7 @@ def _forget(*_args):
     for views in _handlers[1:]:
         views.clear()
     _windows.clear()
+    _chosen.clear()
 
 
 _forget._bpy_persistent = True   # bpy.app.handlers.persistent: kept across the loads it watches.
@@ -115,6 +131,7 @@ def clear(views):
     """Studio's unregister."""
     views.clear()
     _windows.clear()
+    _chosen.clear()
     _hooks.clear()
     if _forget in bpy.app.handlers.load_pre:
         bpy.app.handlers.load_pre.remove(_forget)

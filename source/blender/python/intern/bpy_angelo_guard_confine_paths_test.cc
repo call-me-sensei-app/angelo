@@ -220,4 +220,23 @@ TEST(ConfinementVouchTest, a_path_naming_a_parent_folder_is_never_vouched_for)
   }
 }
 
+TEST(ConfinementRemoteNames, a_remote_name_is_known_by_its_text)
+{
+#ifdef _WIN32
+  for (const char *remote : {"\\\\host\\share\\x", "//host/share/x", "\\\\?\\UNC\\host\\share\\x",
+                             "\\??\\UNC\\host\\share\\x", "\\\\.\\UNC\\host\\x", "\\\\host@SSL\\DavWWWRoot\\x",
+                             "\\\\.\\pipe\\name", "\\\\?\\GLOBALROOT\\Device\\x", "/\\host\\x"})
+  {
+    EXPECT_TRUE(names_a_remote_file(remote)) << remote;
+  }
+  for (const char *local : {"C:\\x", "c:/x", "\\\\?\\C:\\x", "\\\\.\\D:\\x", "\\??\\C:\\x", "relative\\x", "\\x"}) {
+    EXPECT_FALSE(names_a_remote_file(local)) << local;
+  }
+#else
+  for (const char *local : {"//host/share/x", "/x", "relative/x"}) {
+    EXPECT_FALSE(names_a_remote_file(local)) << local;
+  }
+#endif
+}
+
 }  // namespace blender::angelo_guard::tests

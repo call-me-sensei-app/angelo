@@ -116,6 +116,21 @@ class ConfinementAttackTests(unittest.TestCase):
         for name in ("network_connect", "network_resolve", "network_urllib", "network_http"):
             with self.subTest(attack=name):
                 self.assert_refused(name, {NETWORK})
+                # The agent reads the reason alone, in the text and on the exception: no path, URL, share, host or
+                # entry point (doc/angelo/script_confinement.rst, "The network"; a share goes to the person only).
+                result = self.results[name]
+                self.assertEqual((result.get("text"), result.get("what")), (NETWORK, ""), result)
+
+    def test_a_network_refusal_built_with_a_location_carries_none(self):
+        from angelo_agent import script_confinement
+        for what in ("\\\\host.invalid\\folder\\file.png", "//host.invalid/folder/file.png", "smb://host.invalid/f",
+                     "https://host.invalid/f?k=v", "socket.connect"):
+            with self.subTest(what=what):
+                error = script_confinement._PythonConfined(script_confinement.NETWORK, what)
+                self.assertEqual((str(error), error.what, error.args), (script_confinement.NETWORK, "",
+                                                                         (script_confinement.NETWORK,)))
+        private = script_confinement._PythonConfined(script_confinement.PRIVATE, "/a/key")   # Other reasons keep it.
+        self.assertEqual((str(private), private.what), (script_confinement.PRIVATE + " (/a/key)", "/a/key"))
 
     def test_native_code_is_refused(self):
         from angelo_agent.script_confinement import NATIVE
@@ -297,13 +312,43 @@ class ConfinementWiringTests(unittest.TestCase):
         fileops = (source / "blenlib/intern/fileops_c.cc").read_text(encoding="utf-8")
         import re
         for function in ("BLI_fopen", "BLI_gzopen", "BLI_open", "BLI_open_replacing", "BLI_rename",
-                         "BLI_rename_overwrite", "BLI_delete", "BLI_delete_soft", "BLI_copy", "BLI_file_touch",
-                         "BLI_dir_create_recursive"):
+                         "BLI_rename_overwrite", "BLI_path_move", "BLI_delete", "BLI_delete_soft", "BLI_copy",
+                         "BLI_file_touch", "BLI_dir_create_recursive"):
             bodies = re.findall(r"\b%s\([^)]*\)\n\{\n(.*?)\n\}" % function, fileops, re.S)
             with self.subTest(function=function):
                 self.assertTrue(bodies, "defined")
                 for body in bodies:
-                    self.assertIn("gate_refuses(", body.split("\n", 3)[0] + body.split("\n", 3)[1])
+                    first = body.split("\n", 3)[0] + body.split("\n", 3)[1]
+                    # A move asks as a move: both names as writes, and no folder holding a link (head-7 M6).
+                    if function in ("BLI_path_move", "BLI_copy"):
+                        # The target is named first (a folder gets the source's name), then asked; both systems ask
+                        # before anything moves or is copied. A confined thread never copies a folder (head-12 M2).
+                        acted = next(body.index(call) for call in ("MoveFileW(", "CopyFileW(", "recursive_operation(")
+                                     if call in body)
+                        asked = "gate_refuses_move(" if function == "BLI_path_move" else \
+                            "gate_refuses(path_dst_with_filename, true)"
+                        self.assertLess(body.index(asked), acted)
+                        if function == "BLI_copy" and "recursive_operation(" in body:
+                            # Judged before anything looks at the source; the folder test follows nothing
+                            # (head-14 read MUST-1).
+                            self.assertLess(body.index(asked), body.index("S_ISDIR(st.st_mode)"))
+                            self.assertLess(body.index("S_ISDIR(st.st_mode)"), acted)
+                            self.assertNotIn(" stat(path_src", body)
+                            self.assertIn("lstat(path_src, &st)", body)
+                        continue
+                    # A move asks as a move; a folder made or anything removed asks as a change of the folders
+                    # (head-14 read SHOULD: only those forget the resolved folders); the rest as a plain gate.
+                    expected = "gate_refuses_move(" if function in ("BLI_rename", "BLI_rename_overwrite") else \
+                        "gate_refuses_structure(" if function in ("BLI_delete", "BLI_delete_soft",
+                                                                  "BLI_dir_create_recursive") else "gate_refuses("
+                    self.assertIn(expected, first)
+        pre = re.search(r"static int copy_callback_pre\([^)]*\)\n\{\n(.*?)\n\}", fileops, re.S).group(1)
+        self.assertLess(pre.index("file_gate->confined()"), pre.index("mkdir(to"))   # No folder copied for a script.
+        move = re.search(r"static bool gate_refuses_move\([^)]*\)\n\{\n(.*?)\n\}", fileops, re.S).group(1)
+        self.assertIn("if (gate_refuses_structure(from) || gate_refuses_structure(to)) {", move)
+        structure = re.search(r"static bool gate_refuses_structure\([^)]*\)\n\{\n(.*?)\n\}", fileops, re.S).group(1)
+        self.assertLess(structure.index("file_gate->folders_changed();"), structure.index("gate_refuses(path, true)"))
+        self.assertIn("file_gate->move_refused(from)", move)
 
     def test_operators_that_reload_the_add_ons_are_refused(self):
         """read_factory_settings and read_homefile naming an app template run ``addon_utils.reset_all()`` inside the
@@ -346,12 +391,16 @@ class ConfinementWiringTests(unittest.TestCase):
         # One predicate for the browser's tag, its refusal and popups (the re-read of 9dcfb883ebb, SHOULD-2).
         self.assertEqual(wm.count("handler->angelo_from_agent = BPY_angelo_guard_thread_confined() || "
                                   "WM_angelo_in_agent_modal();"), 2)
-        self.assertIn('return WM_angelo_in_agent_modal() &&\n                   (file_browser ||\n'
-                      '                    (RNA_struct_is_a(ptr->type, RNA_WindowManager) && '
-                      'STREQ(function, "fileselect_add"))) ?', ops)
+        # Unconfined, it refuses only inside an agent's modal (asked first: every RNA function call comes here, 2.1.0's
+        # hot-path pass), then a browser or a fileselect_add.
+        refusal = ops[ops.index("const char *BPY_angelo_guard_input_refusal"):]
+        self.assertIn("if (!confined && !WM_angelo_in_agent_modal()) {\n    return nullptr;\n  }", refusal)
+        self.assertIn('if (!confined) {', refusal)
+        self.assertIn('return file_browser ||\n                   (RNA_struct_is_a(ptr->type, RNA_WindowManager) && '
+                      'STREQ(function, "fileselect_add")) ?', refusal)
         # SHOULD-7: an open browser's settings and its operator's properties are refused to a confined write.
         self.assertIn("RNA_struct_is_a(ptr->type, RNA_FileSelectParams)", ops)
-        self.assertIn("return file_browser_pointer(ptr) ? POINTER : nullptr;", ops)
+        self.assertIn("preferences_pointer(ptr) ? PREFERENCES : file_browser_pointer(ptr) ? POINTER : nullptr;", ops)
         self.assertIn("data == op->properties", wm)
         self.assertIn("!angelo_fileselect_from_agent(wm, ophandle)", wm)
         self.assertIn('"fileselect_add"', ops)

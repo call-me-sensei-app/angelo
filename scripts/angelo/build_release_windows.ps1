@@ -165,8 +165,7 @@ Write-Host "Libraries: $LibDir ($libsHead)"; Reset-BuildDirForLibraries $BuildDi
 # --- Agent runtime (scripts\addons_core\angelo_agent\agent_runtime.json; checked before anything compiles) ----------
 $runtimePin = Get-Content (Join-Path $SourceDir "scripts\addons_core\angelo_agent\agent_runtime.json") -Raw | ConvertFrom-Json
 $runtimeFiles = $runtimePin.platforms.windows
-$agentRuntime = [ordered]@{ version = $runtimePin.version; fork_commit = $runtimePin.fork.commit; folder = $null; files = @()
-    sha256 = [ordered]@{} }
+$agentRuntime = [ordered]@{ version = $runtimePin.version; fork_commit = $runtimePin.fork.commit; folder = $null; files = @(); sha256 = [ordered]@{} }
 if (-not $AgentRuntimeDir) {
     if ("agent-runtime" -notin $allowed) {
         throw ("The Windows agent runtime is not supplied: build Codex $($runtimePin.version) with cacheAffinityKey (branch " +
@@ -176,7 +175,8 @@ if (-not $AgentRuntimeDir) {
     }
     $agentRuntime.folder = "omitted (-AllowMissing agent-runtime)"
 } else {
-    $AgentRuntimeDir = (Resolve-Path $AgentRuntimeDir).Path
+    $AgentRuntimeDir = (Resolve-Path $AgentRuntimeDir).Path; $requiredAppServerFlags = @("--ignore-user-config")   # release_checks.REQUIRED_APP_SERVER_FLAGS: the runtime starts only with them
+    foreach ($flag in $requiredAppServerFlags) { if (@($runtimePin.app_server_flags) -notcontains $flag) { throw "agent_runtime.json does not list $flag in app_server_flags: Angelo would refuse to start that runtime. Pin a build that has it" } }
     foreach ($name in $runtimeFiles.required) {
         $path = Join-Path $AgentRuntimeDir $name
         if (-not (Test-Path $path -PathType Leaf)) { throw "$AgentRuntimeDir lacks $name (the agent runtime is $($runtimeFiles.required -join ', '))" }

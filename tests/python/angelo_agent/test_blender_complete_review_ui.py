@@ -50,6 +50,7 @@ from angelo_agent.program_material_obligations import GUARD  # noqa: E402
 from angelo_agent.program_spec import validate_program  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 report = {'checks': {}, 'cases': {}, 'screenshots': [], 'paid_requests': 0, 'success': False,
           'binary': bpy.app.binary_path, 'version': bpy.app.version_string,

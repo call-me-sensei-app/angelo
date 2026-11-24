@@ -119,6 +119,7 @@ class Release:
     downloads: tuple   # ((platform, Download), …)
     automatic_install: bool = True   # False: never installed by Angelo itself; the person downloads it.
     recommended: bool = False        # In ``lines``: the signed feed recommends moving to this line.
+    blender: str = ""                 # The Blender version it is built on (MAJOR.MINOR.PATCH); "": not said.
 
     def download_for(self, platform):
         return dict(self.downloads).get(platform)
@@ -190,6 +191,24 @@ def load_keys(path=KEYS_FILE):
         except (KeyError, TypeError, ValueError, binascii.Error):
             continue
     return keys
+
+
+def listed_keys(path):
+    """Every public key a key list names, revoked ones included (keys are kept apart by what they ever signed); None
+    when the list cannot be read as one, so a check against it fails closed."""
+    try:
+        entries = json.loads(Path(path).read_text(encoding="utf-8"))["keys"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if not isinstance(entries, list):
+        return None
+    found = set()
+    for entry in entries:
+        try:
+            found.add(base64.b64decode(entry["public_key"], validate=True))
+        except (KeyError, TypeError, ValueError, binascii.Error):
+            continue
+    return found
 
 
 def _b64(value, field):
@@ -336,6 +355,9 @@ def _release(value):
     recommended = value.get("recommended", False)
     if not isinstance(recommended, bool):
         raise FeedError("invalid", "recommended must be true or false")
+    blender = value.get("blender")
+    if blender is not None:   # Optional (the add-on check, updates_and_reports.rst); a build before it ignores it.
+        blender = _version(blender, "latest.blender")
     released = value.get("released", "")
     if released:
         _stamp(str(released) + "T00:00:00Z", "latest.released")
@@ -344,7 +366,7 @@ def _release(value):
         summary=_text(value.get("summary"), "latest.summary", 300, required=False),
         highlights=tuple(_text(line, "latest.highlights", 140) for line in highlights),
         notes_url=_url(value.get("notes_url"), "latest.notes_url", LINK_HOSTS), critical=critical,
-        released=released, automatic_install=automatic, recommended=recommended,
+        released=released, automatic_install=automatic, recommended=recommended, blender=blender or "",
         downloads=tuple((key, _download(item, key, version)) for key, item in sorted(downloads.items())))
 
 

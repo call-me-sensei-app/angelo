@@ -10,6 +10,9 @@ the system's, so a person who turned motion down for every app gets it in Angelo
   (AppKit is already loaded in the app; the answer is AppKit's cached value, under a microsecond to read).
 * Windows: Settings > Accessibility > Visual effects > Animation effects ("Show animations in Windows"), read
   with ``SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION)``; off means reduce motion.
+* Linux: the desktop's reduced-motion setting through the desktop portal (``desktop_linux.reduced_motion``:
+  ``org.freedesktop.appearance`` ``reduced-motion``, else GNOME's ``enable-animations``), the answer its worker
+  thread last read (refreshed every ``desktop_linux.MOTION_SECONDS``; nothing waits on the bus here).
 * Elsewhere, or when the query fails: False (the app's preference still applies).
 
 Callers ask once when an animation starts (``marble_host``), never in a draw callback.
@@ -62,4 +65,11 @@ def os_reduces_motion(platform=None):
         return _macos_query()
     if platform == "win32":
         return _windows_query()
+    if platform.startswith("linux"):
+        return _linux_query()
     return False
+
+
+def _linux_query():
+    from .desktop_linux import reduced_motion
+    return bool(reduced_motion())

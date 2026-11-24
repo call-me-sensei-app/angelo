@@ -34,6 +34,7 @@ from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-asset-shelf-add-qa"))
@@ -152,9 +153,8 @@ def tab_colours(path, target):
     mirror = view.get("mirror")
     for rect, action, value in view.get("hits", []):
         if action == "tab":
-            x, y, w, h = rect
-            x = x if mirror is None else mirror - x - w
-            inner = (region.x + x + w * .1, region.y + y + h * .15, w * .25, h * .25)   # Fill, not the label.
+            x, y, w, h = qa_hit.rect(qa_hit.mirrored_about(mirror), region, rect)
+            inner = (x + w * .1, y + h * .15, w * .25, h * .25)   # Fill, not the label.
             block = box(px, inner).reshape(-1, 3)
             found[value] = float(numpy.abs(block - numpy.array(TEAL)).sum(axis=1).mean()) if block.size else 999.0
     return found

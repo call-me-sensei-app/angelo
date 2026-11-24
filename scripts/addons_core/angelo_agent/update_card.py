@@ -31,8 +31,12 @@ go through the interface translations too: a line that matches a catalogue entry
 lines are extracted) is shown translated, any other line stays English.
 """
 
-from . import app_version, card_kit as kit, update_feed
-from .ui_text import iface_, n_
+from pathlib import Path
+
+from . import app_version, card_kit as kit, update_card_addons, update_feed
+from .ui_text import file_text, iface_, n_
+
+ADDON_REASONS = update_card_addons.ADDON_REASONS
 
 TITLE = n_("Angelo {version} is available")
 TITLE_IMPORTANT = n_("Angelo {version} is an important update")
@@ -63,7 +67,47 @@ WHY_MANUAL = {
     "permission": n_("An administrator installed Angelo here, so Angelo can't update itself."),
     "machine": n_("Angelo is installed for all users of this computer, so an administrator installs its updates."),
     "failed": n_("Angelo couldn't prepare this update by itself. Download it to install it."),
+    # Linux (update_stage_linux.support): each says why, and the download is the way on.
+    "location_linux": n_("This copy of Angelo can't update itself where it is. Download the update and extract it "
+                         "into a folder of your own to install it."),
+    "shared": n_("Other people can change this Angelo folder, so Angelo won't replace it by itself. Download the "
+                 "update to install it."),
+    "untrusted": n_("This copy of Angelo has no key to check Linux updates with, so it doesn't install them by "
+                    "itself. Download the update to install it."),
+    "modified": n_("This Angelo folder holds files that aren't part of Angelo, and an automatic update would remove "
+                   "them. Download the update to install it."),
 }
+# Linux: what the installer's two-rename fallback leaves beside the install until the swap is done (a stop between
+# the renames leaves them for the person): the kept previous folder's name and a note, in the person's language.
+KEPT_NAME = n_("{name} (previous)")
+NOTE_NAME = n_("{name} - update interrupted.txt")
+NOTE_LINES = (n_("Angelo was being updated to {version} when the update stopped."),
+              n_("Your previous Angelo is in: {previous}"),
+              n_("To use it again, rename that folder back to: {folder}"))
+
+
+def linux_recovery(root, version):
+    """``(kept folder, note file, note text)`` for the Linux installer's fallback, in the person's language and in
+    reading order (``file_text``: they are a file system's names and a file's text, never drawn by Blender). Names
+    that exist already are never reused (a number is added) and the note always ends in ``.txt``. Angelo records the
+    two paths (``update_flow.record_recovery``) and finds them again by that record, never by their translated text."""
+    root = Path(root)
+
+    def free(template, extension=""):
+        name = file_text(template, name=root.name).replace("/", "-").strip()
+        if extension and not name.endswith(extension):
+            name += extension
+        stem = name[:-len(extension)] if extension else name
+        candidate, number = root.parent / name, 2
+        while candidate.exists() or candidate.is_symlink():
+            candidate, number = root.parent / ("%s %d%s" % (stem, number, extension)), number + 1
+        return candidate
+    kept, note = free(KEPT_NAME), free(NOTE_NAME, ".txt")
+    text = "".join(file_text(line, version=app_version.display(version), previous=str(kept), folder=str(root)) + "\n"
+                   for line in NOTE_LINES)
+    return str(kept), str(note), text
+
+
 # Why Restart to Update waits (ready phase), by ``work_guard`` reason.
 WHY_WAIT = {
     "scene": n_("You can restart when the chat waiting for its scene finishes: switch back to that scene, or stop "
@@ -98,12 +142,15 @@ def corner_plan(builder, region_w, region_h):
 class UpdateCard(kit.BaseCard):
     kind, modal, priority, cancel_action = "update", False, 10, "later"
 
-    def __init__(self, offer, current, decide, live=None):
+    def __init__(self, offer, current, decide, live=None, addons=None):
         """``decide(choice, offer)`` records "later" or "skip" (``update_check.Checker.snooze`` / ``skip``).
 
         ``live`` (``update_ready``) reports the phase and runs a restart; without it the card is the notice only.
+        ``addons(offer)`` (``addon_compat_live.summary_for``) is the ``addon_compat.Summary`` for the version an
+        offer installs, or None while there is none; without it the card says nothing about add-ons.
         """
-        self.offer, self.current, self.decide, self.live = offer, current, decide, live
+        self.offer, self.current, self.decide, self.live, self.addons = offer, current, decide, live, addons
+        self.addons_open = False
 
     @property
     def animated(self):
@@ -143,6 +190,7 @@ class UpdateCard(kit.BaseCard):
             return b
         if later is not None:
             self._build_options(b, later)
+            self._addons(b, self._chosen())
         elif phase in {"downloading", "preparing"}:
             self._build_progress(b, phase, version)
         elif phase == "ready":
@@ -301,6 +349,20 @@ class UpdateCard(kit.BaseCard):
         if self.offer.release.highlights:
             b.bullets([iface_(line) for line in self.offer.release.highlights[:3]], size=13, color=kit.MUTED)
             b.gap(6)
+        self._addons(b, self.offer)
+
+    def _summary(self, offer):
+        if self.addons is None:
+            return None
+        try:
+            return self.addons(offer)
+        except Exception as error:   # The card never fails over what it can say about add-ons.
+            print("Angelo: add-on check:", error)
+            return None
+
+    def _addons(self, b, offer):
+        """The person's add-ons that are not yet known to work on the version ``offer`` installs."""
+        update_card_addons.section(b, self._summary(offer), offer.release.version, self.addons_open)
 
     def act(self, action, value, host):
         if self.phase() == "restarting":
@@ -315,6 +377,9 @@ class UpdateCard(kit.BaseCard):
             self.live.accept(later, self.offer)
         elif action == "notes":
             open_link(chosen.release.notes_url)
+        elif action == "addons":
+            self.addons_open = not self.addons_open
+            host.redraw()
         elif action == "restart" and self.live is not None:
             self.live.restart(self.offer, host)
         elif action in {"later", "skip"}:
@@ -322,13 +387,14 @@ class UpdateCard(kit.BaseCard):
             host.close(action)
 
     def version(self):
+        addons = (self.addons_open, self._summary(self._chosen()))
         if self.live is None:
-            return self.offer.release.version
+            return self.offer.release.version, addons
         later = self.offer.newer_line
         done, total = self.live.progress(self._chosen())
         step = int(100 * done / total) if total else 0
         return (self.offer.release.version, self.phase(), step, self.live.wait_reason(),
-                self.live.unsupported_reason(self.offer), later and self.live.unsupported_reason(later))
+                self.live.unsupported_reason(self.offer), later and self.live.unsupported_reason(later), addons)
 
 
 class NoticeCard(kit.BaseCard):

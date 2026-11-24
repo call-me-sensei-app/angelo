@@ -6,9 +6,11 @@
   power assertion of type ``PreventUserIdleSystemSleep`` (the display may still
   sleep; ``pmset -g assertions`` lists it with its name), on Windows a power
   request of type ``PowerRequestSystemRequired`` (``powercfg /requests`` lists
-  it with its reason). Neither stops a sleep the person asks for (closing a
-  laptop's lid, the Sleep command); both end with the process, so a crash never
-  leaves the machine awake. Elsewhere it does nothing and says so.
+  it with its reason), on Linux the desktop portal's Suspend inhibition
+  (``desktop_linux.InhibitSuspend``, asked by its worker thread; GNOME's and KDE's power settings list it).
+  None stops a sleep the person asks for (closing a laptop's lid, the Sleep
+  command); all end with the process, so a crash never leaves the machine
+  awake. Elsewhere, or without a session bus, it does nothing and says so.
 * ``flash_taskbar`` asks Windows to flash Angelo's taskbar button until its
   window comes to the front (``FlashWindowEx``), when it is not already there.
 
@@ -122,18 +124,27 @@ def _backend(platform):
         return _MacAssertion()
     if platform == "win32" and windows_enabled():
         return _WindowsRequest()
+    if platform.startswith("linux"):
+        from .desktop_linux import InhibitSuspend
+        return InhibitSuspend()   # OSError without a session bus: "unsupported".
     return None
 
 
 class KeepAwake:
-    """One hold at a time: ``hold`` while a job runs, ``release`` when none does. Idempotent both ways."""
+    """One hold at a time: ``hold`` while a job runs, ``release`` when none does. Idempotent both ways.
+
+    A hold that failed or is unsupported is not asked for again until ``release`` (the end of the run of jobs): a job
+    poll calls ``hold`` four times a second, and a backend that waits on the system (Linux's portal) must not be asked
+    each time. A backend whose answer comes later (``outcome(token)``: None while pending, ``held`` once the system
+    answered, else ``failed`` or ``unsupported``) is read whenever ``held`` or ``status`` is: until it answers, the
+    status is ``pending`` and ``held`` is False (re-review of 1c31d63dead, NIT-2)."""
 
     def __init__(self, platform=sys.platform, backend=None):
         self.platform = platform
         self._backend = backend
         self._loaded = backend is not None
         self.token = None
-        self.status = "idle"   # idle, held, unsupported or failed: what the last call did.
+        self._status = "idle"   # idle, pending, held, unsupported or failed: what the last call did.
 
     def _get(self):
         if not self._loaded:
@@ -144,33 +155,55 @@ class KeepAwake:
                 self._backend = None
         return self._backend
 
+    def _settle(self):
+        """Take a late answer from a backend that has one (the hold is then gone, and latched)."""
+        if self.token is not None and hasattr(self._backend, "outcome"):
+            outcome = self._backend.outcome(self.token)
+            if outcome in ("failed", "unsupported"):
+                self.token, self._status = None, outcome
+            elif outcome == "held":
+                self._status = "held"
+
+    @property
+    def status(self):
+        self._settle()
+        return self._status
+
     @property
     def held(self):
-        return self.token is not None
+        self._settle()
+        return self.token is not None and self._status == "held"
 
     def hold(self, reason):
+        self._settle()
         if self.token is not None:
             return True
+        if self._status in ("failed", "unsupported"):
+            return False   # Latched until release: never asked again within the same run of jobs.
         backend = self._get()
         if backend is None:
-            self.status = "unsupported"
+            self._status = "unsupported"
             return False
         try:
             self.token = backend.hold(reason)
         except (OSError, ValueError, ctypes.ArgumentError):
             self.token = None
-        self.status = "held" if self.token is not None else "failed"
-        return self.token is not None
+        if self.token is None:
+            self._status = "failed"
+        else:   # A backend that answers later is pending until it does.
+            self._status = "pending" if hasattr(backend, "outcome") else "held"
+            self._settle()
+        return self.token is not None   # Asked (pending or held): the caller need not ask again.
 
     def release(self):
-        if self.token is None:
-            return
+        self._settle()
         token, self.token = self.token, None
-        try:
-            self._backend.release(token)
-        except (OSError, ValueError, ctypes.ArgumentError):
-            pass
-        self.status = "idle"
+        if token is not None:
+            try:
+                self._backend.release(token)
+            except (OSError, ValueError, ctypes.ArgumentError):
+                pass
+        self._status = "idle"
 
 
 FLASHW_ALL, FLASHW_TIMERNOFG = 0x3, 0xC

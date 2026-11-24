@@ -692,6 +692,7 @@ Block *popup_block_refresh(bContext *C, PopupBlockHandle *handle, ARegion *butre
   const int margin = UI_POPUP_MARGIN;
   wmWindow *window = CTX_wm_window(C);
   ARegion *region = handle->region;
+  const rcti covered_before = UI_angelo_temporary_cover(region); /* Angelo: what a refresh may uncover. */
 
   const BlockCreateFunc create_func = handle->popup_create_vars.create_func;
   const BlockHandleCreateFunc handle_create_func = handle->popup_create_vars.handle_create_func;
@@ -925,6 +926,13 @@ Block *popup_block_refresh(bContext *C, PopupBlockHandle *handle, ARegion *butre
   ED_region_tag_redraw(region);
 
   ED_region_update_rect(region);
+
+  const rcti covered_after = UI_angelo_temporary_cover(region); /* Like with like: never its shadow. */
+  if (handle->refresh && !BLI_rcti_compare(&covered_before, &covered_after)) {
+    /* Angelo: resized or moved, what it covered before is on screen again from now. */
+    ui_angelo_note_uncovered(window, covered_before, region);
+  }
+  ui_angelo_note_covering(window, region, true); /* Angelo: from its first frame on, before any draw. */
 
 #ifndef NDEBUG
   window->runtime->eventstate = event_back;

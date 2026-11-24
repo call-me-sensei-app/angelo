@@ -16,6 +16,14 @@ simple arrangements are ``PARTIAL``; everything else is dropped from the exporte
 from .ui_text import n_
 
 ERROR, WARN, INFO = "error", "warn", "info"
+# A gltfpack start Angelo refused (owned_paths.require_runnable's ``run_refusal``) -> the web export's finding
+# (web_export.UNAVAILABLE): its own words and fix for each cause, never gltfpack's failure.
+KTX2_REFUSED = {"agent_change": "ktx2_refused_script", "changed": "ktx2_refused_changed"}
+
+
+def ktx2_refused(error):
+    """The finding code for the refused gltfpack start ``error``; an unknown or untagged cause is ``ktx2_refused``."""
+    return KTX2_REFUSED.get(getattr(error, "run_refusal", ""), "ktx2_refused")
 SEVERITIES = (ERROR, WARN, INFO)
 
 CARRIED_NODES = frozenset({

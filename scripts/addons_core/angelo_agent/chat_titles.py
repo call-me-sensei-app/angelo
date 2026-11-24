@@ -82,6 +82,7 @@ OTHER = {"angelo_inspect_scene": (n_("Read scene"), n_("Reading the scene"), n_(
                                   n_("Comparing the sculpt shape with reference targets"),
                                   n_("Compare the sculpt shape with reference targets")),
          "angelo_view": (n_("Viewed the scene"), n_("Viewing the scene"), n_("View the scene")),
+         "angelo_plan": (n_("Planned the work"), n_("Planning the work"), n_("Plan the work")),   # plan_mode.rst
          "angelo_set_transform": (n_("Edited object transform"), n_("Editing an object transform"),
                                   n_("Edit an object transform")),
          "angelo_apply_batch": (n_("Edited scene"), n_("Editing the scene"), n_("Edit the scene")),
@@ -212,11 +213,13 @@ def live_label(status):
 
     A plan being written may carry what it will make (plan_progress): shown after the label as data.
     """
-    from .codex_retry import WAITING
+    from .codex_retry import NETWORK, WAITING
     from .plan_progress import split
     status, detail = split(status)
-    if status == WAITING and detail.isdigit():  # The one resend's wait, counted down (codex_retry.waiting).
+    if status == WAITING and detail.isdigit():  # A provider's wait, counted down (codex_retry.waiting).
         return iface_("Provider busy — retrying in {seconds} s", seconds=int(detail))
+    if status == NETWORK:   # The runtime waits to reconnect: the person's network, not the provider.
+        return iface_("Can't reach the provider · check your internet connection")
     label = iface_(LIVE.get(status, n_("Thinking")))
     return iface_("{action} · {state}", action=label, state=detail) if detail else label
 

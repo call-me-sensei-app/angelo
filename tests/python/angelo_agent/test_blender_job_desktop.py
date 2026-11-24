@@ -13,7 +13,9 @@ automation run never shows the system's permission question, posts or asks for
 attention (``app_notices.automation_off``); this suite then opts in
 (``ANGELO_ENABLE_JOB_NOTIFICATIONS=1`` in its own process) to prove the
 notification, which posts when the system allows it and otherwise reports the
-attention fallback's own answer. On Windows the calls stay off until verified there
+attention fallback's own answer. On Linux the desktop's notification service and
+portal answer over the session bus (``desktop_linux``); without them both say
+"unsupported", which the report records. On Windows the calls stay off until verified there
 (``desktop_os.WINDOWS_VERIFIED``); ``ANGELO_WINDOWS_JOB_DESKTOP=1`` from the caller
 turns them on for the verification run.
 
@@ -52,7 +54,9 @@ harness = Harness("ANGELO_JOB_DESKTOP", "job-desktop.json", "/tmp/angelo-job-des
 ctx = harness.ctx
 PERMISSIONS = {"authorized", "denied", "not_determined", "unknown", "unavailable", "unsupported"}
 # What reached the person: the notification, or the attention fallback's own answer (a window in front gets none).
-SHOWN = {"darwin": {"posted", "bounced", "foreground"}, "win32": {"flashed", "foreground", "unsupported"}}
+SHOWN = {"darwin": {"posted", "bounced", "foreground"}, "win32": {"flashed", "foreground", "unsupported"},
+         # Linux: the desktop's notification service when the session bus has one; none on a bare display.
+         "linux": {"posted", "unsupported"}}
 
 
 def assertion_listed():
@@ -80,9 +84,14 @@ def step(harness):
                                          "frame_end": 40})
         harness.go("a")
     elif phase == "a":
-        if ctx["a"]["status"] == "running" and "held_while_running" not in harness.state["checks"]:
+        pending = job_desktop.keep_awake().status == "pending"   # Linux: asked, the portal not answered yet.
+        if ctx["a"]["status"] == "running" and "held_while_running" not in harness.state["checks"] and not pending:
             if sys.platform == "win32" and not desktop_os.windows_enabled():   # Off until verified on Windows.
                 check("held_while_running", job_desktop.keep_awake().status == "unsupported")
+            elif sys.platform.startswith("linux") and job_desktop.keep_awake().status == "unsupported":
+                # No session bus or desktop portal (a bare display): nothing to hold, and it says so. The report's
+                # keep_awake_status says which this run was; a desktop session holds it (the next branch).
+                check("held_while_running", not job_desktop.keep_awake().held)
             else:
                 check("held_while_running", assertion_listed())
             harness.state["keep_awake_status"] = job_desktop.keep_awake().status

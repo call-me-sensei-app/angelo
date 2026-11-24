@@ -15,6 +15,41 @@ side of the benchmark harness. The general runtime boundary is in
 Model IDs
 =========
 
+The shipped Astra and Sol are GPT-6.2 from Angelo 2.1.0 (OpenAI released them
+on 2026-11-17; coordinator's ruling 2026-11-18): ``gpt-6.2-astra`` (display
+"GPT-6.2-Astra") and ``gpt-6.2-sol`` ("GPT-6.2-Sol"), both ``visibility:
+list``. GPT-6 Astra and GPT-6.1 Sol stay selectable while OpenAI serves them.
+Facts, each from OpenAI's own pages (read 2026-11-18, windows re-read 2026-11-20):
+
+* API (https://developers.openai.com/api/docs/models/gpt-6.2-astra and
+  ``.../gpt-6.2-sol``): text and image input, a 1,050,000-token window with
+  922,000 max input and 128,000 max output tokens. Per million tokens, Astra
+  $8 input, $0.40 cached input, $10 cache write (30-minute retention), $40
+  output; Sol $2, $0.10, $2.50, $10. Above 272K input tokens a whole request
+  costs 2x input and cache and 1.5x output, as on GPT-6 and 6.1: every GPT
+  row in ``model_profiles`` carries that step (``OPENAI_STEP_TOKENS``). A
+  harness sum of several Codex requests above it has no list price unless
+  each request's usage was recorded (``list_prices.py``); a subscription has
+  no long-context surcharge. ``context_window`` there is the 922,000-token
+  input budget, and so on every GPT row: each row records its page, the date
+  it was read, the window and the maximum output, and the budget is the one
+  less the other (GPT-6 Astra, GPT-6.1 Sol and GPT-6 Luna state the same
+  1,050,000 and 128,000).
+* Codex (https://learn.chatgpt.com/docs/models): default context 272,000
+  (Astra) and 500,000 (Sol) tokens, up to 1M with ``model_context_window``.
+  The Codex changelog (https://developers.openai.com/codex/changelog) has the
+  release on 2026-11-17, the day of codex-cli 0.169.1.
+* Codex's bundled catalog (``codex-rs/models-manager/models.json``) lists the
+  6.2 models first in rust-v0.169.1, with ``minimal_client_version`` 0.166.0
+  and ``max_context_window`` 872,000 (Codex caps ``model_context_window``
+  there; rust-v0.171.0's catalog has the same cap for every GPT-6 model). A
+  subscription's server catalog may offer them to 0.166; a team
+  connection, the OpenAI API mode and a custom endpoint mapped to them read
+  the bundled catalog, so they need 0.169.1 or later. Angelo 2.1.0 bundles
+  0.171.0 (the newest stable, 2026-11-19), so every route can offer them.
+
+Earlier generation:
+
 As the Codex runtime exposes them on a ChatGPT subscription (``codex-cli
 0.160.0``; on macOS the runtime bundled with the ChatGPT desktop app is not on
 ``PATH`` and ``providers.find_executable`` locates it):
@@ -130,7 +165,7 @@ experimental ``cacheAffinityKey`` (1-64 visible ASCII characters) on
 thread ID as ``prompt_cache_key`` and ``session-id`` and is persisted in the
 thread's rollout. Stock Codex ignores the field. Angelo returns to stock Codex
 once upstream ships the feature (openai/codex#21796). The build is pinned in
-``agent_runtime.json`` (Codex ``0.166.0``, the fork's commit, the
+``agent_runtime.json`` (Codex ``0.171.0``, the fork's commit, the
 feature and each platform's files); how it is built, checked, bundled, signed
 and licensed is in ``releasing.rst``, "Agent runtime".
 
@@ -210,7 +245,7 @@ and licensed is in ``releasing.rst``, "Agent runtime".
   send plain JSON, and no app-server schema shows one. The release checks load,
   offline, a throwaway provider declaring each pinned value (each must load)
   and an unpinned value (it must be refused as unknown). Stock Codex 0.163.0
-  accepts the unknown value and is refused; the pinned 0.166.0 build passes.
+  accepts the unknown value and is refused; the pinned 0.171.0 build passes.
 * **First run.** Where Angelo carries the runtime, the connect card always
   offers ChatGPT (``first_run.built_in``) and never asks for a Codex CLI to be
   installed; Claude Code is still found as before.
@@ -425,10 +460,24 @@ codex app-server ends a turn a provider error stops with ``error``
 ``TurnError`` whose ``codexErrorInfo`` is a name (``"usageLimitExceeded"``)
 or an object keyed by its name with the HTTP status
 (``{"responseTooManyFailedAttempts": {"httpStatusCode": 429}}``). Codex
-retries a failed model request itself only when the server advised a delay
+retries a failed model request itself when the server advised a delay
 (``Retry-After``: ``error`` with ``willRetry`` true, "Reconnecting... 1/5");
 a plain HTTP 429 or an overloaded answer ends the turn at once (one request,
-12-73 ms; codex 0.162 against a local endpoint).
+12-73 ms; codex 0.162 against a local endpoint). A provider entry's
+``stream_max_retries`` also re-sends a failed or silent request: on Gemini a
+failed or silent request is re-sent once (``ai_providers.rst``, "Silent model
+streams"). Any such runtime re-send rules out the host's resend below, and one
+after a 429 counts as ``provider_retries_rate``. Since the 2.1.0 pin the fork
+reports every retry whose wait the server advised or that waits 5 s or more,
+the first on WebSockets included (release builds used to hide that one, so a
+429's 576 s Retry-After went by in silence in the 2.1.0 Sol gate), and names the
+wait as ``retryDelayMs`` and what it is for as ``retryWaitKind`` (server
+advice, its own backoff, or the network). Angelo counts it down and its clocks
+rest until then (``agent_execution.rst``, "How long a turn may run"). Gate
+numbers across that pin are not like for like: a first WebSocket 429 the
+runtime used to wait out silently now reaches the receipt as
+``provider_retries_rate``, so the harness marks such a trial invalid (a
+throttle waited out) where an earlier gate graded it as a pass or a timeout.
 
 * ``provider_errors.codex_error_info`` reads both shapes (never raising);
   ``codex_error_kind`` says ``usage``, ``rate`` (HTTP 429 that is not a usage
@@ -632,7 +681,9 @@ Claude runs with a Codex runtime on both sides:
   notification's ``codexErrorInfo`` naming a limit, HTTP 429 in the error
   that ended the turn, as a Claude turn's 429 counts, ``rateLimitReachedType``,
   or an exhausted window with a failed turn) makes the trial invalid and stops
-  the run; a 429 Codex retried through is not a limit. The plan type from
+  the run, as does a 429 Codex retried through (``willRetry``) or one only its
+  own runtime log shows (``eval_codex_logs``, ``agent_stack_integration.rst``,
+  "Harness"). The plan type from
   ``account/rateLimits/updated`` is recorded. On the Angelo side the chat's
   error row ("Too many requests (HTTP 429): …", "Provider usage limit reached
   (…)") is the evidence (``angelo_limit``), as for Claude, at once instead of

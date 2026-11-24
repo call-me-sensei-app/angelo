@@ -19,12 +19,14 @@ import bpy
 import gpu
 from gpu_extras.batch import batch_for_shader
 from .input_policy import modal_options, refresh_move
+from .overlay_holds import holds_covered, keep_ahead
 from . import canvas_controls, canvas_pixels, canvas_rtl, canvas_wrap, chat_card_draw, chat_cards, chat_composer, chat_goal, chat_welcome, text_layout
 from . import grant_gestures, grant_guard  # noqa: E402  (only the person grants: a click, a drag, a focused key)
 from . import approval_arming, approval_wait, chat_rows, chat_blocks, chat_history, chat_guard, chat_notices, review_again, chat_replies, chat_scrollbar, live_windows, marble_draw, scroll_input, ui_tokens
 from . import composer_ime, composer_input, composer_scroll  # The composer's keys, pointer, input method, scroll.
-from . import chat_pending, chat_start_states  # Pending messages; progress rows, work groups, notices.
+from . import chat_pending, chat_start_states, composer_mention_ui, rules_sheet  # Pending, progress rows; @ list; Rules page.
 from . import canvas_focus, chat_key_arming, ui_tokens as tk
+from .chat_icons import icon  # noqa: F401  The chat's line icons (chat_icons): chat_view.icon, as before.
 from .ui_text import iface_, is_rtl, plural_
 from .chat_changes import change_counts, file_counts
 from .chat_titles import tool_title  # Re-exported: console and ui read titles through this module.
@@ -153,57 +155,6 @@ def stroke(x1, y1, x2, y2, color=None, thickness=1.2):
     _shader.bind()
     _shader.uniform_float("color", color)
     batch.draw(_shader)
-
-
-def icon(name, x, y, color=None):
-    color = tk.MUTED if color is None else color
-    if name == "plus":
-        stroke(x - 5, y, x + 5, y, color, 1.5)
-        stroke(x, y - 5, x, y + 5, color, 1.5)
-    elif name in {"mic", "approval"}:
-        if name == "mic":
-            shape(x - 3, y - 1, 6, 10, color, 3)
-            shape(x - 1.7, y + 0.2, 3.4, 7.5, tk.RAISED, 1.7)
-            stroke(x - 5, y + 1, x - 5, y - 2, color)
-            stroke(x - 5, y - 2, x - 2, y - 5, color)
-            stroke(x - 2, y - 5, x + 2, y - 5, color)
-            stroke(x + 2, y - 5, x + 5, y - 2, color)
-            stroke(x + 5, y - 2, x + 5, y + 1, color)
-            stroke(x, y - 5, x, y - 8, color)
-        else:
-            for a, b in [((-5, -5), (-5, 5)), ((-5, 5), (2, 7)), ((2, 7), (6, 3)), ((6, 3), (6, -5)), ((6, -5), (-1, -7)), ((-1, -7), (-5, -5)), ((-1, 0), (1, -2)), ((1, -2), (4, 2))]:
-                stroke(x + a[0], y + a[1], x + b[0], y + b[1], color)
-    elif name == "pencil":
-        for a, b in [((-5, -5), (-2, 2)), ((-2, 2), (4, 7)), ((4, 7), (7, 4)), ((7, 4), (1, -2)), ((1, -2), (-5, -5))]:
-            stroke(x + a[0], y + a[1], x + b[0], y + b[1], color)
-    elif name == "chevron":
-        stroke(x - 3, y + 2, x, y - 1, color)
-        stroke(x, y - 1, x + 3, y + 2, color)
-    elif name == "next":
-        stroke(x - 1, y + 3, x + 2, y, color)
-        stroke(x + 2, y, x - 1, y - 3, color)
-    elif name == "check":
-        stroke(x - 4, y, x - 1, y - 3, color, 1.4)
-        stroke(x - 1, y - 3, x + 4, y + 4, color, 1.4)
-    elif name == "reset":
-        for i in range(16):
-            a, b = math.radians(65 + i * 18), math.radians(65 + (i + 1) * 18)
-            stroke(x + 5 * math.cos(a), y + 5 * math.sin(a), x + 5 * math.cos(b), y + 5 * math.sin(b), color)
-        stroke(x - 5, y + 6, x - 5, y + 2, color)
-        stroke(x - 5, y + 2, x - 1, y + 2, color)
-    elif name == "arrow":
-        stroke(x, y - 5, x, y + 5, color, 1.7)
-        stroke(x - 4, y + 1, x, y + 5, color, 1.7)
-        stroke(x + 4, y + 1, x, y + 5, color, 1.7)
-    elif name == "close":
-        stroke(x - 3, y - 3, x + 3, y + 3, color)
-        stroke(x - 3, y + 3, x + 3, y - 3, color)
-    elif name == "fast":
-        points = [(x + 1, y + 6, 0), (x - 5, y - 1, 0), (x - 1, y - 1, 0), (x - 2, y - 6, 0), (x + 5, y + 2, 0), (x + 1, y + 2, 0)]
-        batch = batch_for_shader(_shader, 'TRIS', {"pos": points}, indices=[(0, 1, 2), (0, 2, 5), (2, 3, 4), (2, 4, 5)])
-        _shader.bind()
-        _shader.uniform_float("color", color)
-        batch.draw(_shader)
 
 
 def elide(value, width, size=14):
@@ -485,7 +436,7 @@ def _draw_chat():
         state["hits"] = []
         state["message_rects"] = {}
         expanded = state.setdefault("expanded", set())
-        line = area.spaces.active.history[-1] if area.spaces.active.history else None
+        line = rules_sheet.line_of(state, area.spaces.active)   # The Rules page's own line while it is open.
         shown_ime = composer_ime.preview(state, line)   # An input method's composition, inline where it lands.
         draft = shown_ime.value if shown_ime else line.body if line else ""
         draft_lines = wrap(draft, chat_composer.hint_width(width), size, _font, ordered=False)
@@ -607,11 +558,14 @@ def _draw_chat():
             state["focus_request"] = state["focused"] = True  # The field takes the keyboard once it can be used.
         if waiting:
             state["composer_hidden"] = True   # Nothing to type into yet: Tab and Return choose a connect option.
+        if rules_sheet.is_open(state):   # The Rules page over the transcript's top; the composer edits the rules.
+            rules_sheet.draw(_this_module(), state, controller, message_viewport, width, height, shown=draft)
         chat_composer.draw(state, ui, controller, geometry=geometry, composer_bottom=composer_bottom,
                            composer_height=composer_height, line=line, draft=draft, draft_lines=draft_lines, size=size,
                            line_height=line_height, width=width, attachment_rows=attachment_rows, connected=connected,
                            waiting=waiting)
         chat_start_states.draw_blocked(sys.modules[__name__], state, width, composer_bottom + composer_height + 8)
+        composer_mention_ui.draw(_this_module(), state, 16, composer_bottom + composer_height + 4, width)
         state["geometry"] = geometry
         state["hits"] = clipped_hits(state["hits"], (0, 0, width, height))
         state["hit_region"] = (region.width, region.height)
@@ -659,7 +613,12 @@ def dispatch_action(context, controller, action, value):
     from . import console
     from .chat_settings import clean_options
     state = _views.get(context.area.as_pointer(), {})
-    if action == "history":
+    if rules_sheet.is_open(state) and (action == "send" or action.startswith(rules_sheet.PREFIX)):
+        return rules_sheet.dispatch(state, controller, action, value)   # Send saves the rules while the page is open.
+    if action == composer_mention_ui.ACTION:   # A click on a row of the @ list.
+        composer_mention_ui.pick(state, rules_sheet.line_of(state, context.area.spaces.active), controller, value,
+                                 lambda s, l, t: composer_input.insert(s, l, t, session=controller.state["id"], controller=controller))
+    elif action == "history":
         from . import chat_history
         chat_history.move(state, value)
         context.area.tag_redraw()
@@ -707,8 +666,8 @@ def dispatch_action(context, controller, action, value):
     elif action == "remove_chosen":
         controller.chosen_tools = [c for i, c in enumerate(getattr(controller, "chosen_tools", []) or []) if i != value]
         controller.version += 1
-    elif action == "remove_reference":
-        bpy.ops.angelo.remove_reference(index=value)
+    elif action in ("remove_reference", "open_reference"):   # A chip's x, or its picture (markup_ui).
+        (bpy.ops.angelo.remove_reference if action == "remove_reference" else bpy.ops.angelo.markup_picture)(index=value)
     elif action == "voice":
         bpy.ops.angelo.voice('INVOKE_DEFAULT')
     elif action == "expand":
@@ -735,7 +694,7 @@ def dispatch_action(context, controller, action, value):
             chat_cards.dispatch(context, controller, state, action, value)
         except (ValueError, OSError, RuntimeError) as error:
             controller.status = str(error)[:200]
-    elif action.startswith(("flow_", "job_", "script_")):
+    elif action.startswith(("flow_", "job_", "script_", "plan_")):
         chat_cards.perform(controller, action, lambda: chat_cards.dispatch(context, controller, state, action, value))
     elif action.startswith("notice_"):   # A notice card's own pill (chat_notices).
         chat_notices.dispatch(context, controller, state, action, value)
@@ -979,6 +938,7 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
             chat_key_arming.leave(view)
             view["focused"] = False
 
+    @holds_covered   # Nothing handed on reaches an editor an Angelo overlay covers.
     @_kept_alive
     def modal(self, context, event):
         from . import console, ui
@@ -1077,7 +1037,7 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
             composer_input.end_drag(_views)   # A picker opened mid-drag: the drag and its autoscroll end.
             with context.temp_override(window=window, area=area, region=region):
                 popover_event(bpy.context, controller, state, event, x, y)
-            if not state.get("popover"):
+            if not state.get("popover") and not state.get("blur_request"):   # A surface the row opened keeps it.
                 self.focused_area = area.as_pointer()
                 state["focused"] = True
             area.tag_redraw()
@@ -1085,7 +1045,7 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
 
         plain = canvas_rtl.pointer_x(x, region.width / scale)  # The composer's text field is never mirrored.
         if event.type == 'MOUSEMOVE' and self.dragging and area.spaces.active.history:
-            composer_input.drag(state, area.spaces.active.history[-1], plain, y, area.as_pointer())
+            composer_input.drag(state, rules_sheet.line_of(state, area.spaces.active), plain, y, area.as_pointer())
             area.tag_redraw()
             return {'RUNNING_MODAL'}
         if composer_scroll.handle(event, state, area, plain, y, scale):   # The draft's wheel, trackpad and bar.
@@ -1113,7 +1073,7 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
             # that happen to have obsolete geometry beneath it.
             if inside(state.get("composer", (0, 0, 0, 0)), x, y) and area.spaces.active.history:
                 # Caret, word (double-click), paragraph (triple-click) or Shift's extension, on the scrolled rows.
-                caret = composer_input.press(state, area.spaces.active.history[-1], plain, y, time.monotonic(),
+                caret = composer_input.press(state, rules_sheet.line_of(state, area.spaces.active), plain, y, time.monotonic(),
                                              composer_input.double_click_seconds(context), event.shift)
                 self.focused_area = area.as_pointer()
                 state["focused"] = True
@@ -1159,12 +1119,16 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
             with context.temp_override(window=target, area=area, region=region):
                 _clicked(controller, action, value)   # A granting one takes only a press (grant_guard.by_click).
 
-        if composer_ime.handle(event, window, state, area.spaces.active.history[-1], controller.state["id"], controller,
+        if composer_ime.handle(event, window, state, rules_sheet.line_of(state, area.spaces.active), controller.state["id"], controller,
                                accepts=not state.get("composer_hidden")):   # Composition, commit, the IME's own keys.
+            composer_mention_ui.refresh(state, rules_sheet.line_of(state, area.spaces.active), controller)
             area.tag_redraw()
             return {'RUNNING_MODAL'}
         handled = chat_key_arming.key(event, state, area.tag_redraw, controller, activate_control)
         if handled is not None:
+            return {'RUNNING_MODAL'}
+        if event.type == 'ESC' and state.pop("mention", None) is not None:   # Closes the @ list; editing goes on.
+            area.tag_redraw()
             return {'RUNNING_MODAL'}
         if event.type == 'ESC':
             # Escape ends editing, as in Blender's own text fields and a chat app's composer: the draft stays as typed
@@ -1180,9 +1144,13 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
         if state.get("composer_hidden"):
             # The field waits (Tab, Return pick a connect option); its Console keymap must not type in (edits_field).
             return {'RUNNING_MODAL'} if over_chat and edits_field(event) else {'PASS_THROUGH'}
-        line = area.spaces.active.history[-1]
+        line = rules_sheet.line_of(state, area.spaces.active)
         self.selected_all = False   # Select all is a selection like any other (state["selection"]).
-        if event.type in {'RET', 'NUMPAD_ENTER'} and not event.shift:
+        typed = lambda s, l, t: composer_input.insert(s, l, t, session=controller.state["id"], controller=controller)  # noqa: E731
+        if composer_mention_ui.key(event, state, line, controller, typed):   # The @ list's Up, Down, Return, Tab, Esc.
+            area.tag_redraw()
+            return {'RUNNING_MODAL'}
+        if event.type in {'RET', 'NUMPAD_ENTER'} and not event.shift and not rules_sheet.is_open(state):
             with context.temp_override(window=window, area=area, region=region):
                 self.just_sent = (event.mouse_x, event.mouse_y) if 'FINISHED' in console.execute(bpy.context) else None
             state["selection"] = None
@@ -1192,13 +1160,13 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
             # The platform's text-field keys (composer_keys), typing, and the draft's own Undo; anything else, and
             # Undo with no draft history, is Blender's, except what the Console keymap under the chat would type.
             return {'RUNNING_MODAL'} if over_chat and edits_field(event) else {'PASS_THROUGH'}
+        composer_mention_ui.refresh(state, line, controller)   # An @ word at the caret opens the list; else it closes.
         area.tag_redraw()
         return {'RUNNING_MODAL'}
 
 
 def ensure_input(window, area):
-    """Start the chat's input handler. It starts even while another tool holds the window: it passes every event
-    on until that tool ends, and a click on the chat meanwhile gets the notice saying which tool holds it."""
+    """Start the chat's input handler (even while a tool holds the window: it passes every event on until then)."""
     if bpy.app.background:
         return
     from .input_policy import handler_running
@@ -1209,6 +1177,7 @@ def ensure_input(window, area):
         if region:
             with bpy.context.temp_override(window=window, area=area, region=region):
                 bpy.ops.angelo.chat_input('INVOKE_DEFAULT')
+            keep_ahead(window)   # An overlay drawn over the window stays ahead of the new handler (re-read S1).
 
 
 def animate_popovers():

@@ -40,6 +40,7 @@ from angelo_agent.chat_popovers import effective_effort, model_rows
 from angelo_agent.chat_settings import normalize_models, selected_model
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 ui._authentication.start = lambda *args, **kwargs: None
 addon_utils.enable("angelo_agent", default_set=False, persistent=False)

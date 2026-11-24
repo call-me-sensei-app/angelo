@@ -4852,7 +4852,7 @@ static void rna_def_userdef_studiolights(BlenderRNA *brna)
 
   func = RNA_def_function(srna, "load", "rna_StudioLights_load");
   RNA_def_function_ui_description(func, "Load studiolight from file");
-  parm = RNA_def_string(
+  parm = RNA_def_string_file_path(
       func, "path", nullptr, 0, "File Path", "File path where the studio light file can be found");
   RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
   parm = RNA_def_enum(func,
@@ -4868,7 +4868,7 @@ static void rna_def_userdef_studiolights(BlenderRNA *brna)
 
   func = RNA_def_function(srna, "new", "rna_StudioLights_new");
   RNA_def_function_ui_description(func, "Create studiolight from default lighting");
-  parm = RNA_def_string(
+  parm = RNA_def_string_file_path(
       func,
       "path",
       nullptr,
@@ -7592,7 +7592,8 @@ static void rna_def_userdef_asset_library_collection(BlenderRNA *brna, PropertyR
   RNA_def_function_flag(func, FUNC_NO_SELF | FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Add a new Asset Library");
   RNA_def_string(func, "name", nullptr, sizeof(bUserAssetLibrary::name), "Name", "");
-  RNA_def_string(func, "directory", nullptr, sizeof(bUserAssetLibrary::dirpath), "Directory", "");
+  /* Angelo: judged as a folder (doc/angelo/script_confinement.rst). */
+  RNA_def_string_dir_path(func, "directory", nullptr, sizeof(bUserAssetLibrary::dirpath), "Directory", "");
   RNA_def_string(func,
                  "remote_url",
                  nullptr,
@@ -7635,12 +7636,13 @@ static void rna_def_userdef_extension_repos_collection(BlenderRNA *brna, Propert
 
   RNA_def_string(func, "name", nullptr, sizeof(bUserExtensionRepo::name), "Name", "");
   RNA_def_string(func, "module", nullptr, sizeof(bUserExtensionRepo::module), "Module", "");
-  RNA_def_string(func,
-                 "custom_directory",
-                 nullptr,
-                 sizeof(bUserExtensionRepo::custom_dirpath),
-                 "Custom Directory",
-                 "");
+  /* Angelo: judged as a folder (doc/angelo/script_confinement.rst). */
+  RNA_def_string_dir_path(func,
+                          "custom_directory",
+                          nullptr,
+                          sizeof(bUserExtensionRepo::custom_dirpath),
+                          "Custom Directory",
+                          "");
   RNA_def_string(
       func, "remote_url", nullptr, sizeof(bUserExtensionRepo::remote_url), "Remote URL", "");
   RNA_def_enum(func,

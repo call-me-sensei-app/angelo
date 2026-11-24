@@ -27,6 +27,7 @@ def _register(bpy, ui):
     from . import agent_workspace_ui, native_programs
     from .blender_tools import track_scene_changes
     from .program_storage import retire_native_residue_after_load
+    ui.fresh_preference_definitions()   # As imported (preference_definitions).
     for cls in (ui.ANGELO_Preferences, ui.ANGELO_OT_approve) + apply_operators(ui):
         bpy.utils.register_class(cls)
     if ui.__package__ not in bpy.context.preferences.addons:
@@ -43,6 +44,10 @@ def _register(bpy, ui):
     from . import script_confinement_blender   # Agent scripts run confined here too (script_confinement.rst).
     script_confinement_blender.install_app(bpy)
     script_confinement_blender.register_fixed_folders()
+    import os
+    from . import strict_flag   # Before any agent code: the flag of the Angelo that started it (no preferences here).
+    if strict_flag.from_environment(os.environ):   # Its own preference says so too, should anything sync it.
+        bpy.context.preferences.addons[ui.__package__].preferences.strict_script_protection = True
 
 
 def _prepare_preferences(bpy):

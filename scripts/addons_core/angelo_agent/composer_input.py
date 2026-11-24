@@ -445,7 +445,8 @@ def _start_autoscroll(area_pointer, drag_info):
             drag_info["scrolling"] = False
             return None
         composer_scroll.step(state, edge)
-        _extend(state, area.spaces.active.history[-1], *info["pointer"])
+        from .rules_sheet import line_of
+        _extend(state, line_of(state, area.spaces.active), *info["pointer"])   # The Rules page's line too.
         area.tag_redraw()
         return AUTOSCROLL_SECONDS
     bpy.app.timers.register(tick, first_interval=AUTOSCROLL_SECONDS)

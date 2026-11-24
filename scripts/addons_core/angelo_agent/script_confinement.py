@@ -69,9 +69,15 @@ _guard = _native()
 
 
 class _PythonConfined(PermissionError):
-    """Raised inside the script for an action the confinement refuses; ``reason`` is one of ``REASONS``."""
+    """Raised inside the script for an action the confinement refuses; ``reason`` is one of ``REASONS``.
+
+    A network refusal names nothing (as the C ``refuse()`` does): no path, URL, share, host or entry point, in its
+    text or on the exception, since whatever the script reads reaches the agent; a share goes to the person only
+    (share_refusal_notice). The script knows what it asked for.
+    """
 
     def __init__(self, reason, what=""):
+        what = "" if reason == NETWORK else what
         super().__init__(reason + (" (" + what + ")" if what else ""))
         self.reason, self.what = reason, what
 
@@ -167,12 +173,14 @@ def run_confined(source, namespace, compiler=None, call_id="", finish=None):
     The C confinement installs itself here when nothing installed it yet (a worker, a headless run, a process that
     runs scripts without the add-on registered): through the same ``install_app`` the add-on calls, once. It can't
     be installed while confined, and a run it can't install for is refused (the C side fails closed)."""
-    if _guard is not None:
-        _ensure_installed()
-        return _guard.run_confined(source, MARK, namespace, call_id, compiler, finish)
-    code = (compiler(source, namespace=namespace) if compiler is not None
-            else compile(source, MARK, "exec", dont_inherit=True))
-    return _run_python(code, namespace, finish)
+    from . import share_refusal_notice
+    with share_refusal_notice.attributed(call_id):   # A share it is refused is named in its chat, to the person.
+        if _guard is not None:
+            _ensure_installed()
+            return _guard.run_confined(source, MARK, namespace, call_id, compiler, finish)
+        code = (compiler(source, namespace=namespace) if compiler is not None
+                else compile(source, MARK, "exec", dont_inherit=True))
+        return _run_python(code, namespace, finish)
 
 
 def _ensure_installed():

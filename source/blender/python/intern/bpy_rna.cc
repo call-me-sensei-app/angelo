@@ -28,6 +28,7 @@
 
 #include "BLI_alloca.hh"
 #include "BLI_dynstr.hh"
+#include "BLI_fileops.hh" /* BLI_fileops_confine_possible. */
 #include "BLI_listbase.hh"
 #include "BLI_math_rotation_c.hh"
 #include "BLI_memory_utils.hh"
@@ -1260,6 +1261,9 @@ void BPY_id_release(ID *id)
 /** Angelo: a confined agent script may not change Preferences or the keymap (doc/angelo/script_confinement.rst). */
 static bool angelo_write_refused(const PointerRNA *ptr, const char *what)
 {
+  if (!BLI_fileops_confine_possible()) {
+    return false; /* Refused only while confined: no thread is (every set from Python; BLI_fileops.hh). */
+  }
   if (const char *refusal = BPY_angelo_guard_write_refusal(ptr)) {
     BPY_angelo_guard_raise(refusal, what);
     return true;
@@ -1274,6 +1278,9 @@ static bool angelo_value_refused(const PointerRNA *ptr,
                                  int int_value,
                                  bool pointer_set)
 {
+  if (!BLI_fileops_confine_possible()) {
+    return false; /* As angelo_write_refused. */
+  }
   if (const char *refusal = BPY_angelo_guard_value_refusal(
           ptr, prop, string_value, int_value, pointer_set))
   {
@@ -2774,6 +2781,13 @@ static int pyrna_py_to_prop(PointerRNA *ptr,
                            Py_TYPE(value)->tp_name);
             }
 
+            return -1;
+          }
+
+          /* Angelo: a byte string can name a place too (the file browser's folder): judged as the text form is,
+           * below (bpy_angelo_guard_confine_ops.cc, PLACE_STRINGS). */
+          if (const char *refusal = BPY_angelo_guard_path_property_refusal(prop, param)) {
+            BPY_angelo_guard_raise(refusal, param);
             return -1;
           }
 
@@ -4783,6 +4797,11 @@ static PyObject *pyrna_struct_subscript(BPy_StructRNA *self, PyObject *key)
 static int pyrna_struct_ass_subscript(BPy_StructRNA *self, PyObject *key, PyObject *value)
 {
   PYRNA_STRUCT_CHECK_INT(self);
+  /* Angelo: nor through this (a confined script's preference reset: the review of 93ef5b1, M1). */
+  if (angelo_write_refused(&self->ptr.value(), value ? "bpy_struct[key]" : "del bpy_struct[key]"))
+  {
+    return -1;
+  }
 
   IDProperty *group = RNA_struct_idprops(&self->ptr.value(), true);
 
@@ -4970,6 +4989,10 @@ static PyObject *pyrna_struct_property_unset(BPy_StructRNA *self, PyObject *args
   {
     return nullptr;
   }
+  /* Angelo: nor through this (a confined script's preference reset: the review of 93ef5b1, M1). */
+  if (angelo_write_refused(&self->ptr.value(), name)) {
+    return nullptr;
+  }
 
   if ((prop = RNA_struct_find_property(&self->ptr.value(), name)) == nullptr) {
     PyErr_Format(PyExc_TypeError,
@@ -5123,6 +5146,10 @@ static PyObject *pyrna_struct_property_overridable_library_set(BPy_StructRNA *se
                         &name,
                         &is_overridable))
   {
+    return nullptr;
+  }
+  /* Angelo: nor through this (a confined script's preference reset: the review of 93ef5b1, M1). */
+  if (angelo_write_refused(&self->ptr.value(), name)) {
     return nullptr;
   }
   PYRNA_STRUCT_CHECK_OBJ(self);
@@ -5810,6 +5837,10 @@ PyDoc_STRVAR(
 static PyObject *pyrna_struct_id_properties_ensure(BPy_StructRNA *self)
 {
   PYRNA_STRUCT_CHECK_OBJ(self);
+  /* Angelo: nor through this (a confined script's preference reset: the review of 93ef5b1, M1). */
+  if (angelo_write_refused(&self->ptr.value(), "id_properties_ensure")) {
+    return nullptr;
+  }
 
   if (RNA_struct_idprops_check(self->ptr->type) == 0) {
     PyErr_SetString(PyExc_TypeError, "This type doesn't support IDProperties");
@@ -5895,6 +5926,10 @@ PyDoc_STRVAR(
 static PyObject *pyrna_struct_id_properties_clear(BPy_StructRNA *self)
 {
   PYRNA_STRUCT_CHECK_OBJ(self);
+  /* Angelo: nor through this (a confined script's preference reset: the review of 93ef5b1, M1). */
+  if (angelo_write_refused(&self->ptr.value(), "id_properties_clear")) {
+    return nullptr;
+  }
 
   if (RNA_struct_idprops_check(self->ptr->type) == 0) {
     PyErr_SetString(PyExc_TypeError, "This type doesn't support IDProperties");
@@ -6153,6 +6188,15 @@ static int pyrna_struct_meta_idprop_setattro(PyObject *cls, PyObject *attr, PyOb
   StructRNA *srna = srna_from_self(cls, "StructRNA.__setattr__");
   const bool is_deferred_prop = (value && BPy_PropDeferred_CheckTypeExact(value));
   const char *attr_str = PyUnicode_AsUTF8(attr);
+
+  /* Angelo: a confined script redefines, removes or replaces nothing on a preferences type (the review of a121c9a,
+   * M2: a redefined property loses its update, so the person's later change never reaches what it guards). */
+  if (srna) {
+    if (const char *refusal = BPY_angelo_guard_definition_refusal(srna)) {
+      BPY_angelo_guard_raise(refusal, attr_str ? attr_str : "__setattr__");
+      return -1;
+    }
+  }
 
   if (srna && !pyrna_write_check() &&
       (is_deferred_prop || RNA_struct_type_find_property_no_base(srna, UString(attr_str))))
@@ -6857,6 +6901,10 @@ static PyObject *pyrna_struct_pop(BPy_StructRNA *self, PyObject *args)
                         &key,
                         &def))
   {
+    return nullptr;
+  }
+  /* Angelo: nor through this (a confined script's preference reset: the review of 93ef5b1, M1). */
+  if (angelo_write_refused(&self->ptr.value(), key)) {
     return nullptr;
   }
 
@@ -12195,6 +12243,11 @@ static PyObject *pyrna_register_class(PyObject * /*self*/, PyObject *py_class)
   if (srna == nullptr) {
     return nullptr;
   }
+  /* Angelo: a confined script registers no preferences class (the review of a121c9a, M2). */
+  if (const char *refusal = BPY_angelo_guard_definition_refusal(srna)) {
+    BPY_angelo_guard_raise(refusal, "register_class");
+    return nullptr;
+  }
   /* Refuse before class hooks and before unregister can remove the class's bl_rna. */
   if (BKE_undosys_restore_protects_main() && RNA_struct_is_a(srna, RNA_RenderEngine)) {
     PyErr_SetString(PyExc_RuntimeError, BKE_undosys_restore_refusal_message());
@@ -12457,6 +12510,11 @@ static PyObject *pyrna_unregister_class(PyObject * /*self*/, PyObject *py_class)
 
   srna = pyrna_struct_as_srna(py_class, false, error_prefix);
   if (srna == nullptr) {
+    return nullptr;
+  }
+  /* Angelo: nor unregisters one, which takes its preferences away (the review of a121c9a, M2). */
+  if (const char *refusal = BPY_angelo_guard_definition_refusal(srna)) {
+    BPY_angelo_guard_raise(refusal, "unregister_class");
     return nullptr;
   }
   /* Refuse before class hooks and before unregister can remove the class's bl_rna. */

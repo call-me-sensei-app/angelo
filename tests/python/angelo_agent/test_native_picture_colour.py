@@ -58,8 +58,8 @@ DISPLAY = {
     "session_rail_draw": "rail_pictures' offscreens",
 }
 # Offscreens read back as pixels, never drawn as a picture.
-READ_BACK = {"program_preview", "sculpt", "view_capture", "view_first_draw", "view_motion", "view_silhouette",
-             "view_weights"}
+READ_BACK = {"markup_flatten", "markup_ui", "program_preview", "sculpt", "view_capture", "view_first_draw", "view_motion",
+             "view_silhouette", "view_weights"}   # markup_ui: the 3D view drawn offscreen into a picture of the chat.
 
 
 def _name(node):

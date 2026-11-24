@@ -30,6 +30,7 @@ import bpy
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_input, inside the app.
 import qa_input  # noqa: E402
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')  # This suite needs the default Director startup.
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-chat-replies-qa"))

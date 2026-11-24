@@ -11,10 +11,19 @@ graphics nor on another run's GPU.
 
 ``ANGELO_QA_BROWSER`` names the browser's executable; ``none`` turns it off, so a person opens the page instead.
 Unset, the usual install locations are tried (``find``).
+
+``evaluate`` runs a line of JavaScript in the open page through the browser's own DevTools protocol, so a scenario
+presses the page's real controls (``click``) as a person would; nothing is added to the page for it. The channel is
+two private pipes the browser inherits as descriptors 3 and 4 (``--remote-debugging-pipe``, as the Fab browser's
+``fab_browser_process``), never a port another process could reach. POSIX only: on Windows ``open`` starts the page
+without the channel and ``evaluate`` refuses.
 """
 
+import itertools
+import json
 import os
 import shutil
+import time
 import signal
 import subprocess
 import sys
@@ -65,22 +74,106 @@ class Page:
         self.log_path = log_path
         self.process = None
         self._profile = None
+        self._channel = None   # (write to the browser, read from it): the DevTools pipe, or None.
+        self._ids = itertools.count(1)
+        self._buffer = b""
+        self._session = None
 
     def open(self, url):
         if self.executable is None:
             return False
         self._profile = tempfile.mkdtemp(prefix="angelo-qa-browser-")
-        log = open(self.log_path, "wb")
-        try:
-            group = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if sys.platform == "win32" else \
-                {"start_new_session": True}
-            self.process = subprocess.Popen(command(self.executable, url, self._profile), stdin=subprocess.DEVNULL,
-                                            stdout=log, stderr=subprocess.STDOUT, **group)
-        finally:
-            log.close()
+        if sys.platform == "win32":
+            log = open(self.log_path, "wb")
+            try:
+                self.process = subprocess.Popen(command(self.executable, url, self._profile),
+                                                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                                                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+            finally:
+                log.close()
+            return True
+        self.process = _Spawned(*self._spawn(url))
         return True
 
+    def _spawn(self, url):
+        """The browser with the DevTools pipe on descriptors 3 (it reads) and 4 (it writes), its own process group,
+        output to the log; returns (pid,)."""
+        incoming, to_browser = _pipe()
+        from_browser, outgoing = _pipe()
+        log = _high(os.open(self.log_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600))
+        null = _high(os.open(os.devnull, os.O_RDONLY))
+        line = command(self.executable, url, self._profile)
+        line = line[:-1] + ["--remote-debugging-pipe", line[-1]]
+        try:
+            pid = os.posix_spawn(self.executable, line, dict(os.environ), setpgroup=0, file_actions=[
+                (os.POSIX_SPAWN_DUP2, null, 0), (os.POSIX_SPAWN_DUP2, log, 1), (os.POSIX_SPAWN_DUP2, log, 2),
+                (os.POSIX_SPAWN_DUP2, incoming, 3), (os.POSIX_SPAWN_DUP2, outgoing, 4)])
+        finally:
+            for descriptor in (incoming, outgoing, log, null):
+                os.close(descriptor)
+        self._channel = (to_browser, from_browser)
+        return (pid,)
+
+    def _call(self, method, params=None, session=None, deadline=None):
+        to_browser, from_browser = self._channel
+        ident = next(self._ids)
+        message = {"id": ident, "method": method, "params": params or {}}
+        if session:
+            message["sessionId"] = session
+        os.write(to_browser, json.dumps(message).encode("utf-8") + b"\0")
+        import select
+        while True:
+            while b"\0" in self._buffer:
+                raw, self._buffer = self._buffer.split(b"\0", 1)
+                answer = json.loads(raw)
+                if answer.get("id") == ident:
+                    if "error" in answer:
+                        raise RuntimeError("DevTools refused %s: %s" % (method, answer["error"]))
+                    return answer.get("result", {})
+            left = (deadline - time.monotonic()) if deadline else CAP_S
+            if left <= 0 or not select.select([from_browser], [], [], left)[0]:
+                raise TimeoutError("the browser did not answer %s" % method)
+            chunk = os.read(from_browser, 65536)
+            if not chunk:
+                raise OSError("the browser closed the DevTools pipe")
+            self._buffer += chunk
+
+    def evaluate(self, expression, timeout=10.0):
+        """The value of ``expression`` (JavaScript, a promise awaited) in the open page, through DevTools."""
+        if self.process is None or self._channel is None:
+            raise OSError("no page open with a DevTools channel")
+        deadline = time.monotonic() + timeout
+        if self._session is None:
+            pages = []
+            while not pages and time.monotonic() < deadline:
+                pages = [t for t in self._call("Target.getTargets", deadline=deadline)["targetInfos"]
+                         if t.get("type") == "page"]
+                if not pages:
+                    time.sleep(0.1)
+            if not pages:
+                raise OSError("the browser shows no page")
+            self._session = self._call("Target.attachToTarget", {"targetId": pages[0]["targetId"], "flatten": True},
+                                       deadline=deadline)["sessionId"]
+        result = self._call("Runtime.evaluate", {"expression": expression, "awaitPromise": True,
+                                                 "returnByValue": True}, self._session, deadline)
+        if "exceptionDetails" in result:
+            raise RuntimeError("the page refused %r: %s" % (expression, result["exceptionDetails"]))
+        return result["result"].get("value")
+
+    def click(self, element_id):
+        """Press the page's control ``element_id`` as a person's click does (its own handler); False when the control
+        is missing or disabled."""
+        return bool(self.evaluate("(() => { const control = document.getElementById(%s); if (!control || "
+                                  "control.disabled) return false; control.click(); return true; })()"
+                                  % json.dumps(element_id)))
+
     def close(self):
+        channel, self._channel, self._session, self._buffer = self._channel, None, None, b""
+        for descriptor in channel or ():
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
         process, self.process = self.process, None
         if process is not None and process.poll() is None:
             try:
@@ -100,3 +193,40 @@ class Page:
         if self._profile:
             shutil.rmtree(self._profile, ignore_errors=True)
             self._profile = None
+
+
+def _high(fd):
+    """``fd`` moved to 10 or above, close-on-exec: clear of the child's fixed descriptors 0-4 (as the Fab browser's
+    ``fab_browser_process._pipe``), so each dup2 below really copies onto its target."""
+    import fcntl
+    try:
+        return fcntl.fcntl(fd, fcntl.F_DUPFD_CLOEXEC, 10)
+    finally:
+        os.close(fd)
+
+
+def _pipe():
+    read, write = os.pipe()
+    return _high(read), _high(write)
+
+
+class _Spawned:
+    """The ``subprocess.Popen`` surface ``close`` uses (pid, poll, wait), for a browser started by ``posix_spawn``."""
+
+    def __init__(self, pid):
+        self.pid, self.returncode = pid, None
+
+    def poll(self):
+        if self.returncode is None:
+            done, status = os.waitpid(self.pid, os.WNOHANG)
+            if done:
+                self.returncode = os.waitstatus_to_exitcode(status)
+        return self.returncode
+
+    def wait(self, timeout=None):
+        deadline = None if timeout is None else time.monotonic() + timeout
+        while self.poll() is None:
+            if deadline is not None and time.monotonic() > deadline:
+                raise subprocess.TimeoutExpired("browser", timeout)
+            time.sleep(0.05)
+        return self.returncode

@@ -15,6 +15,7 @@ from .validation_spec import VALIDATION_TOOLS, VALIDATION_NAMES, validate_valida
 from .action_recipes import RECIPE_TOOLS, RECIPE_NAMES, validate_recipe
 from .view_spec import VIEW_TOOLS, VIEW_NAMES, validate_view
 from .goal_spec import GOAL_TOOLS, GOAL_NAMES, validate_goal
+from .planning_spec import PLAN_TOOLS, PLAN_NAMES, validate_plan
 from .team_library_spec import TEAM_TOOLS, TEAM_NAMES, validate_team
 from .library_spec import LIBRARY_TOOLS, LIBRARY_NAMES, validate_library
 from .worker_spec import FAMILY_NAMES, PART_NAMES, PART_TOOLS, WORKER_TOOLS, WORKER_NAMES, cube_batch, note_reports, validate_worker  # noqa: F401
@@ -32,7 +33,7 @@ from .app_feature_spec import APP_FEATURE_TOOLS, APP_FEATURE_NAMES, validate_app
 from .engine_link_tool_spec import ENGINE_LINK_TOOLS, ENGINE_LINK_NAMES, validate_engine_link
 from .download_spec import DOWNLOAD_TOOLS, DOWNLOAD_NAMES, validate_download
 from .schema_compaction import compact_schema
-from . import product_env, read_only, script_api_removed, script_source
+from . import context_folder, context_folder_write, product_env, read_only, script_api_removed, script_source
 from .script_store import LIMIT_SENTENCE, MAX_CODE, PATCH_FIELDS, PATCH_SENTENCE, SCRIPT_TOOLS, over_limit
 from .script_store import TOOL_NAME as SCRIPT_SOURCE_TOOL
 from .script_store import validate as validate_script_source
@@ -157,7 +158,7 @@ TOOLS.extend(ENGINE_LINK_TOOLS)   # Deferred; voice threads leave them out too (
 TOOLS.extend(DOWNLOAD_TOOLS)   # Deferred; never by voice: a file from the web needs the person's card.
 TOOLS.extend(SKELETON_TOOLS)   # The rig check: never declared to voice threads either (dynamic_tools).
 TOOLS.extend(GAME_READY_TOOLS)   # Nor this one.
-TOOLS.extend(GOAL_TOOLS)   # Deferred on both runtimes (plan_kinds); the instructions name it; never by voice (goal_mode.rst).
+TOOLS.extend(GOAL_TOOLS + PLAN_TOOLS + [context_folder.SPEC, context_folder_write.SPEC])   # Deferred (plan_kinds); never by voice.
 if parallel_access_enabled():   # Parallel edit: on a capable machine, unless launched without it (parallel_access).
     TOOLS.extend(worker_tools_for_launch(parallel_worker_limit(), parallel_limit_where()) + PART_TOOLS)   # Its own.
 elif parallel_in_worker():   # A worker Blender hosting its chats (A′): only a worker's own tool, never the lead's.
@@ -171,39 +172,16 @@ WITHHELD_TOOLS = frozenset(name.strip() for name in (product_env.current("WITHHO
 # Every tool any launch may declare (a job binary's, parallel edit's, one withheld here): whether a tool writes decides
 # approvals, plans, recovery and certification, whichever this launch offers, and every such decision reads
 # READ_ONLY_TOOLS, a frozenset taken here as the tools register, never a spec's annotations (test_native_dialog_consent).
-class _Frozen(dict):
-    """A tool's annotations as it registered, read, serialized and copied as a dict. Its own methods refuse a change, so
-    a mistaken edit fails loudly; ``dict``'s methods still change it (2026-11-17 review), so no decision reads it."""
-
-    def __init__(self, *args, **kwargs):
-        if self:   # Built once, when the tool registers.
-            self._refuse()
-        super().__init__(*args, **kwargs)
-
-    def _refuse(self, *_args, **_kwargs):
-        raise TypeError("a tool's annotations are fixed as it registers")
-    __setitem__ = __delitem__ = __ior__ = clear = pop = popitem = setdefault = update = _refuse
-
-    def __copy__(self):
-        return dict(self)
-
-    def __deepcopy__(self, memo):
-        return {key: value for key, value in self.items()}   # Plain values (bools): a copy needs no recursion.
-
-    def __reduce__(self):
-        return (dict, (dict(self),))
-
-
 _EVERY = TOOLS + JOB_TOOLS + list(WORKER_TOOLS) + list(PART_TOOLS)
 for _tool in _EVERY:
-    _tool["annotations"] = _Frozen(_tool["annotations"])
+    _tool["annotations"] = read_only.FixedDict(_tool["annotations"])
 READ_ONLY_TOOLS = frozenset(tool["name"] for tool in _EVERY if tool["annotations"]["readOnlyHint"])
 TOOLS[:] = [tool for tool in TOOLS if tool["name"] not in WITHHELD_TOOLS]
 TOOL_MAP = {tool["name"]: tool for tool in TOOLS}
 KNOWN_TOOLS = frozenset(TOOL_MAP)   # This launch's tools as they registered, and their schemas, read only (read_only).
 SCHEMAS = read_only.frozen({name: tool["inputSchema"] for name, tool in TOOL_MAP.items()})
 # A collaborator reads the scene, references and scoped files, never this conversation's scripts.
-COLLABORATOR_TOOLS = frozenset(tool["name"] for tool in TOOLS if tool["name"] in READ_ONLY_TOOLS and tool["name"] not in ({"angelo_delegate", SCRIPT_SOURCE_TOOL} | STUDIO_NAMES | FLOW_NAMES | TEAM_NAMES | LIBRARY_NAMES | JOB_NAMES | FAMILY_NAMES | RIG_NAMES | SKELETON_NAMES | GAME_READY_NAMES | ENGINE_LINK_NAMES | GOAL_NAMES | DOWNLOAD_NAMES))
+COLLABORATOR_TOOLS = frozenset(tool["name"] for tool in TOOLS if tool["name"] in READ_ONLY_TOOLS and tool["name"] not in ({"angelo_delegate", SCRIPT_SOURCE_TOOL} | STUDIO_NAMES | FLOW_NAMES | TEAM_NAMES | LIBRARY_NAMES | JOB_NAMES | FAMILY_NAMES | RIG_NAMES | SKELETON_NAMES | GAME_READY_NAMES | ENGINE_LINK_NAMES | GOAL_NAMES | PLAN_NAMES | DOWNLOAD_NAMES | {context_folder.TOOL}))
 # angelo_apply_recipe stages exactly an angelo_scene_program from the closed catalog.
 BOUNDED_MUTATIONS = frozenset({"angelo_create_cube", "angelo_set_transform", "angelo_apply_batch", "angelo_prepare_sculpt", "angelo_sculpt_batch", "angelo_scene_program", "angelo_apply_recipe", "angelo_accept_preview", "angelo_discard_preview", "angelo_workers_start", "angelo_workers_merge"}) | SCULPT_MUTATIONS | FLOW_EDITS
 FILE_TOOLS = frozenset({"angelo_list_files", "angelo_read_file", "angelo_write_file", "angelo_delete_file"})
@@ -271,8 +249,8 @@ def _validate_call(name, args, *, host=False):
         return validate_program(name, args, derive_checks=True)
     if name in VALIDATION_NAMES:
         return validate_validation(name, args)
-    if name in GOAL_NAMES:
-        return validate_goal(name, args)
+    if name in GOAL_NAMES or name in PLAN_NAMES:   # A held goal; plan mode.
+        return validate_goal(name, args) if name in GOAL_NAMES else validate_plan(name, args)
     if name in RECIPE_NAMES:
         return validate_recipe(name, args)
     if name in VIEW_NAMES:
@@ -310,6 +288,10 @@ def _validate_call(name, args, *, host=False):
             if not isinstance(args[field], str) or not args[field].strip() or len(args[field]) > limit or "\x00" in args[field]:
                 raise ValueError(f"Delegation {field} requires 1-{limit} characters")
         return dict(args, connection_id=identity)
+    if name == context_folder.TOOL:
+        return context_folder.validate(args)
+    if name == context_folder_write.TOOL:
+        return context_folder_write.validate(args)
     if name in FILE_TOOLS:
         path = args["path"]
         if not isinstance(path, str) or len(path) > 1024 or any(ord(c) < 32 for c in path):
@@ -406,8 +388,8 @@ def declared_dynamic(allowed=None):
             # game-ready check or the engine link.
             if t["name"] not in FAMILY_NAMES
             and t["name"] not in (RIG_NAMES | LIBRARY_NAMES | APP_FEATURE_NAMES | SKELETON_NAMES | GAME_READY_NAMES
-                                  | ENGINE_LINK_NAMES | GOAL_NAMES   # A voice turn holds no goal (goal_loop).
-                                  | DOWNLOAD_NAMES)
+                                  | ENGINE_LINK_NAMES | GOAL_NAMES | PLAN_NAMES   # A voice turn holds no goal or plan.
+                                  | DOWNLOAD_NAMES | {context_folder.TOOL, context_folder_write.TOOL})
             and (t["name"] in allowed if allowed is not None else t["name"] not in TEAM_NAMES)]
 
 

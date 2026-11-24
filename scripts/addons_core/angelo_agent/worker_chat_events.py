@@ -37,6 +37,19 @@ OPENS = {}   # session -> the ``open_id`` of its current ``chat.open`` here (``W
 _VERSIONS = itertools.count(1)   # Pending-call versions, rising across every chat of this worker.
 
 
+def text(value):
+    """``value`` as text a frame can carry: a surrogate with no partner (from a file name or a model's output) can't
+    be UTF-8, and one would make the whole event unsendable (``dropped``), so it becomes U+FFFD; a pair is joined.
+    Checked in C: ASCII at once, other text by one encode."""
+    if value.isascii():
+        return value
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        return value.encode("utf-16", "surrogatepass").decode("utf-16", "replace")
+    return value
+
+
 def plain(value, redact=str, depth=0):
     """``value`` as plain JSON values, strings redacted; anything else (a callback, a result object) is ``None``."""
     if depth > 64:
@@ -44,13 +57,13 @@ def plain(value, redact=str, depth=0):
     if value is None or isinstance(value, bool):
         return value
     if isinstance(value, str):
-        return redact(value)
+        return redact(text(value))
     if isinstance(value, int):
         return value
     if isinstance(value, float):
         return value if math.isfinite(value) else None
     if isinstance(value, dict):
-        return {redact(str(key)): plain(item, redact, depth + 1) for key, item in list(value.items())}
+        return {redact(text(str(key))): plain(item, redact, depth + 1) for key, item in list(value.items())}
     if isinstance(value, (list, tuple)):
         return [plain(item, redact, depth + 1) for item in list(value)]
     return None

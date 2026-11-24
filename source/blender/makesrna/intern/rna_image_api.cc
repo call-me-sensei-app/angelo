@@ -206,6 +206,11 @@ static void rna_Image_scale(
 static int rna_Image_gl_load(
     Image *image, ReportList *reports, int frame, int layer_index, int pass_index)
 {
+  if (!WM_gpu_is_available()) {
+    BKE_report(reports, RPT_ERROR, WM_gpu_unavailable_message());
+    return 0x0502; /* GL_INVALID_OPERATION */
+  }
+
   ImageUser iuser;
   BKE_imageuser_default(&iuser);
   iuser.framenr = frame;

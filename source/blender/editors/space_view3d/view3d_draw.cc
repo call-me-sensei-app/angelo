@@ -2025,6 +2025,13 @@ ImBuf *ED_view3d_draw_offscreen_imbuf(Depsgraph *depsgraph,
                                       /* output vars */
                                       char err_out[256])
 {
+  if (!WM_gpu_is_available()) {
+    if (err_out) {
+      BLI_strncpy_utf8(err_out, RPT_(WM_gpu_unavailable_message()), 256);
+    }
+    return nullptr;
+  }
+
   RegionView3D *rv3d = static_cast<RegionView3D *>(region->regiondata);
   const bool draw_sky = (alpha_mode == R_ADDSKY);
 

@@ -172,7 +172,9 @@ class ManifestTests(unittest.TestCase):
 
     def test_host_driver_output_matches_its_report_path(self):
         drivers = [suite for suite in manifest.SUITES if suite.host_launcher]
-        self.assertEqual({s.name for s in drivers}, {"test_blender_crash_handler", "test_blender_memory_project_resume", "test_blender_external_cli", "test_blender_external_mcp",
+        self.assertEqual({s.name for s in drivers}, {"test_blender_crash_handler", "test_blender_memory_project_resume",
+                                                 "test_blender_crash_continue_gui",   # 2.1.0: two launches, a SIGKILL.
+                                                 "test_blender_external_cli", "test_blender_external_mcp",
                                                      "test_blender_keychain_live", "test_blender_legacy_migration",
                                                      "test_blender_credential_manager_live",
                                                      "test_blender_app_identity", "test_blender_perf_ratchet",
@@ -211,20 +213,27 @@ class ManifestTests(unittest.TestCase):
             {"test_blender_canvas_states", "test_blender_chat_cards", "test_blender_engine_fix_gui", "test_blender_chat_start_states", "test_blender_chat_waiting",
              "test_blender_codex_turn_errors", "test_blender_approval_wait", "test_blender_download_card",
              "test_blender_connect_hero", "test_blender_connect_surfaces", "test_blender_director_navigation", "test_blender_everyday_turns", "test_blender_first_run",
-             "test_blender_goal_gui",
+             "test_blender_goal_gui", "test_blender_markup_director_gui", "test_blender_plan_gui",
              "test_blender_plan_progress", "test_blender_prefs_and_quit", "test_blender_reply_stream",
              "test_blender_script_stream", "test_blender_select_through_director_gui", "test_blender_settings_import",
+             "test_blender_agent_ux_director_gui", "test_blender_crash_continue_gui",   # 2.1.0: stand-in CLIs.
+             "test_blender_context_folder_script_gui", "test_blender_context_folders_gui",
              "test_blender_steering", "test_blender_steering_codex",
-             "test_blender_uv_checker_director_gui", "test_blender_engine_skeleton_gui",
+             "test_blender_uv_checker_director_gui", "test_blender_engine_skeleton_gui", "test_blender_loops_menu",
+             "test_blender_clip_export_director_gui",   # Stand-in provider CLIs (POSIX shell wrappers).
+             "test_blender_splat_export_director_gui",
              "test_blender_update_restart_settle",
+             "test_blender_retopology_director_gui",
              "test_blender_team_chat", "test_blender_translation",
+             "test_blender_covered_approve",   # 2.1.0: the stand-in claude CLI.
              "test_blender_turn_recovery"})
 
     def test_output_roots_resolve_through_the_short_temp_root(self):
         roots = {s.name: s.output_root for s in manifest.SUITES if s.output_root}
         self.assertEqual(roots, {"test_blender_external_cli": manifest.SHORT_TEMP_ROOT,
                                  "test_blender_external_mcp": manifest.SHORT_TEMP_ROOT,
-                                 "test_blender_memory_project_resume": manifest.SHORT_TEMP_ROOT})
+                                 "test_blender_memory_project_resume": manifest.SHORT_TEMP_ROOT,
+                                 "test_blender_crash_continue_gui": manifest.SHORT_TEMP_ROOT})
         for name in roots:
             self.assertEqual(runner.required_output_root(SUITES[name]), native_suite_paths.short_temp_root())
             source = (HERE / SUITES[name].script).read_text(encoding="utf-8")
@@ -277,9 +286,11 @@ class SelectionTests(unittest.TestCase):
         selected, _ = self.select(gui=True, includes=["*"])
         # On macOS (the default here) every suite but the ones that need a second GPU backend applies.
         self.assertEqual(selected, {s.name for s in manifest.SUITES if s.kind != manifest.LIVE and s.runs_on("darwin")})
-        # The suites macOS cannot run: a second GPU backend, and Windows Credential Manager (a live suite).
+        # The suites macOS cannot run: a second GPU backend, Windows Credential Manager (a live suite), and the
+        # share notice (only Windows records a refused share).
         self.assertEqual({s.name for s in manifest.SUITES if not s.runs_on("darwin")},
-                         {"test_blender_gpu_startup_fallback", "test_blender_credential_manager_live"})
+                         {"test_blender_gpu_startup_fallback", "test_blender_credential_manager_live",
+                          "test_blender_share_notice_director_gui"})
 
     def test_live_requires_allow_live_and_exact_include(self):
         live = "test_blender_cross_provider_live"
@@ -599,11 +610,15 @@ class PlanTests(unittest.TestCase):
         self.assertNotIn("TOONLAB_QA_LIVE_BOTH", plan["env"])
 
     def test_background_command(self):
-        command = self.plan("test_blender_script_confinement")["command"]   # No harness (native_suite_harness).
+        # A plain background suite: no harness (native_suite_harness), event simulation, extra or host arguments or
+        # variants, whichever the manifest lists first.
+        suite = next(s for s in SUITES.values() if s.kind == manifest.BACKGROUND and not s.harness
+                     and not s.event_simulate and not s.extra_args and not s.host_args and not s.variants)
+        command = self.plan(suite.name)["command"]
         self.assertEqual(command[:6], [str(self.binary), "--factory-startup", "--disable-autoexec",
                                        "--python-exit-code", "1", "--background"])
         self.assertNotIn("--no-window-focus", command)
-        self.assertEqual(command[-2:], ["--python", str(HERE / "test_blender_script_confinement.py")])
+        self.assertEqual(command[-2:], ["--python", str(HERE / suite.script)])
         self.assertNotIn("--enable-event-simulate", command)
 
     def test_gui_commands(self):

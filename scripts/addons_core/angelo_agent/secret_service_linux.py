@@ -48,14 +48,16 @@ Python's own bytes and str copies cannot be zeroed.
 import configparser
 import ctypes
 import os
+import types
 from contextlib import contextmanager
 
 from .key_store import SERVICE, KeyStoreError, KeyStoreUnavailable, decode_secret, encode_secret
 
 STORE = "Your keyring"
 SCHEMA = "org.angelo.ApiKey"
-LIBRARIES = {"secret": "libsecret-1.so.0", "glib": "libglib-2.0.so.0",
-             "gobject": "libgobject-2.0.so.0", "gio": "libgio-2.0.so.0"}
+# Immutable: what ctypes loads must not be a container a script could change in place (test_native_loader_constants).
+LIBRARIES = (("secret", "libsecret-1.so.0"), ("glib", "libglib-2.0.so.0"),
+             ("gobject", "libgobject-2.0.so.0"), ("gio", "libgio-2.0.so.0"))
 
 # libsecret enums (secret-service.h, secret-item.h, secret-schema.h).
 SECRET_SERVICE_OPEN_SESSION = 1 << 1
@@ -166,32 +168,33 @@ class GLibError(Exception):
 
 
 _VOID, _ERROR = ctypes.c_void_p, ctypes.POINTER(ctypes.POINTER(GError))
-_FUNCTIONS = {
+# Immutable throughout: ctypes signatures a script could otherwise change in place (test_native_loader_constants).
+_FUNCTIONS = types.MappingProxyType({
     "secret": (
-        ("secret_error_get_quark", ctypes.c_uint32, []),
-        ("secret_service_get_sync", _VOID, [ctypes.c_int, _VOID, _ERROR]),
-        ("secret_collection_for_alias_sync", _VOID, [_VOID, ctypes.c_char_p, ctypes.c_int, _VOID, _ERROR]),
-        ("secret_collection_get_locked", ctypes.c_int, [_VOID]),
-        ("secret_service_search_sync", _VOID, [_VOID, ctypes.POINTER(Schema), _VOID, ctypes.c_int, _VOID, _ERROR]),
-        ("secret_item_get_locked", ctypes.c_int, [_VOID]),
-        ("secret_item_get_secret", _VOID, [_VOID]),
-        ("secret_item_create_sync", _VOID, [_VOID, ctypes.POINTER(Schema), _VOID, ctypes.c_char_p, _VOID,
-                                            ctypes.c_int, _VOID, _ERROR]),
-        ("secret_item_delete_sync", ctypes.c_int, [_VOID, _VOID, _ERROR]),
-        ("secret_value_new", _VOID, [_VOID, ctypes.c_ssize_t, ctypes.c_char_p]),
-        ("secret_value_get", _VOID, [_VOID, ctypes.POINTER(ctypes.c_size_t)]),
-        ("secret_value_unref", None, [_VOID])),
+        ("secret_error_get_quark", ctypes.c_uint32, ()),
+        ("secret_service_get_sync", _VOID, (ctypes.c_int, _VOID, _ERROR,)),
+        ("secret_collection_for_alias_sync", _VOID, (_VOID, ctypes.c_char_p, ctypes.c_int, _VOID, _ERROR,)),
+        ("secret_collection_get_locked", ctypes.c_int, (_VOID,)),
+        ("secret_service_search_sync", _VOID, (_VOID, ctypes.POINTER(Schema), _VOID, ctypes.c_int, _VOID, _ERROR,)),
+        ("secret_item_get_locked", ctypes.c_int, (_VOID,)),
+        ("secret_item_get_secret", _VOID, (_VOID,)),
+        ("secret_item_create_sync", _VOID, (_VOID, ctypes.POINTER(Schema), _VOID, ctypes.c_char_p, _VOID,
+                                            ctypes.c_int, _VOID, _ERROR,)),
+        ("secret_item_delete_sync", ctypes.c_int, (_VOID, _VOID, _ERROR,)),
+        ("secret_value_new", _VOID, (_VOID, ctypes.c_ssize_t, ctypes.c_char_p,)),
+        ("secret_value_get", _VOID, (_VOID, ctypes.POINTER(ctypes.c_size_t),)),
+        ("secret_value_unref", None, (_VOID,))),
     "glib": (
-        ("g_strdup", _VOID, [ctypes.c_char_p]),
-        ("g_hash_table_new_full", _VOID, [_VOID, _VOID, _VOID, _VOID]),
-        ("g_hash_table_insert", ctypes.c_int, [_VOID, _VOID, _VOID]),
-        ("g_hash_table_unref", None, [_VOID]),
-        ("g_list_free", None, [_VOID]),
-        ("g_error_free", None, [ctypes.POINTER(GError)]),
-        ("g_quark_to_string", ctypes.c_char_p, [ctypes.c_uint32])),
-    "gobject": (("g_object_unref", None, [_VOID]),),
-    "gio": (("g_dbus_error_quark", ctypes.c_uint32, []), ("g_io_error_quark", ctypes.c_uint32, [])),
-}
+        ("g_strdup", _VOID, (ctypes.c_char_p,)),
+        ("g_hash_table_new_full", _VOID, (_VOID, _VOID, _VOID, _VOID,)),
+        ("g_hash_table_insert", ctypes.c_int, (_VOID, _VOID, _VOID,)),
+        ("g_hash_table_unref", None, (_VOID,)),
+        ("g_list_free", None, (_VOID,)),
+        ("g_error_free", None, (ctypes.POINTER(GError),)),
+        ("g_quark_to_string", ctypes.c_char_p, (ctypes.c_uint32,))),
+    "gobject": (("g_object_unref", None, (_VOID,)),),
+    "gio": (("g_dbus_error_quark", ctypes.c_uint32, ()), ("g_io_error_quark", ctypes.c_uint32, ())),
+})
 
 
 def _address(function):
@@ -210,7 +213,7 @@ class LibSecret:
 
     def __init__(self, load=None):
         load = ctypes.CDLL if load is None else load
-        libraries = {key: load(name) for key, name in LIBRARIES.items()}  # OSError when missing.
+        libraries = {key: load(name) for key, name in LIBRARIES}  # OSError when missing.
         for key, functions in _FUNCTIONS.items():
             for name, restype, argtypes in functions:
                 function = getattr(libraries[key], name)  # AttributeError when too old.
@@ -357,7 +360,7 @@ class SecretServiceStore:
             library = LibSecret(load)
         except OSError:
             raise KeyStoreUnavailable("Your keyring can't be used: libsecret (%s) isn't installed"
-                                      % LIBRARIES["secret"]) from None
+                                      % dict(LIBRARIES)["secret"]) from None
         except AttributeError:
             raise KeyStoreUnavailable("Your keyring can't be used: the installed libsecret is too old") from None
         if kde_session(environ):

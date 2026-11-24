@@ -8,6 +8,7 @@
  * (bpy_angelo_guard_confine_paths.cc); the deepest root that holds it decides. No Python and no GIL.
  */
 
+#include <cctype>
 #include <algorithm>
 #include <mutex>
 #include <optional>
@@ -17,6 +18,7 @@
 
 #include "bpy_angelo_guard_confine_changes.hh"
 #include "bpy_angelo_guard_confine_paths.hh"
+#include "bpy_angelo_guard_confine_remote.hh"
 
 namespace blender::angelo_guard {
 
@@ -51,10 +53,19 @@ static std::string trimmed_key(const std::string &resolved)
   return result;
 }
 
-void Roots::add(const std::string &folder)
+void Roots::add(const std::string &folder, const bool refusing)
 {
+  note_connected_root(folder); /* Not chosen by a script: noted only before the first region (remote.hh). */
+  const RootLinksNoted noting; /* A link of the person's on the way to a share they use: noted too, before a region. */
   const std::optional<std::string> resolved = resolve(folder);
   if (!resolved) {
+    if (const std::optional<std::string> spelled = refusing ? unconnected_remote_spelling(folder) : std::nullopt) {
+      const std::string root = trimmed_key(*spelled); /* Held by its text: a key resolved onto it later matches. */
+      std::unique_lock guard(lock());
+      if (std::find(keys_.begin(), keys_.end(), root) == keys_.end()) {
+        keys_.push_back(root);
+      }
+    }
     return;
   }
   const std::string root = trimmed_key(*resolved);
@@ -174,7 +185,13 @@ size_t Roots::size() const
 
 void Families::add(const std::string &parent, const std::string &prefix)
 {
-  const std::optional<std::string> resolved = resolve(parent);
+  note_connected_root(parent); /* As in `Roots::add`. */
+  const RootLinksNoted noting;
+  /* A family is private: on a share nobody connected, its parent is held by its text (`Roots::add`). */
+  std::optional<std::string> resolved = resolve(parent);
+  if (!resolved) {
+    resolved = unconnected_remote_spelling(parent);
+  }
   if (!resolved || prefix.empty()) {
     return;
   }
@@ -265,13 +282,41 @@ int Folders::forget(const std::string &folder) const
 }
 
 thread_local bool judged_unrecorded = false;
+thread_local bool resolve_reached_network = false; /* paths.hh */
+thread_local bool judged_unreadable = false;       /* paths.hh */
 
 Refusal Folders::judge(const std::string &path, bool write, int dir_fd, bool link_target, Change change) const
 {
   judged_unrecorded = false;
+  judged_unreadable = false;
+  network_refusal_begin(path);
+  if (names_a_remote_file(path)) {
+    return Refusal::Network; /* By its text, before anything resolves (and so connects to) it. */
+  }
+  if (write && (change == Change::Moved || change == Change::Linked || change == Change::Metadata)) {
+    links_changed(); /* What may move, appear or go: no thread trusts a folder it found plain before (M5). */
+  }
+#ifdef _WIN32
+  /* A link on the way (a symbolic link, junction or mount point, the 8.3 name of one, a chain) whose target is a
+   * share nobody connected: resolving the path would follow it, and connect. Walked without following anything
+   * (bpy_angelo_guard_confine_links.hh); what can't be told is refused. With Strict script protection only
+   * (`strict_lookups`): its cost is measurable against Angelo's own speed (Ruling 17). */
+  if (std::wstring wide; strict_lookups() && utf8_to_wide(path, wide)) {
+    switch (links_walk(wide, true)) {
+      case links::Verdict::Network:
+        return Refusal::Network;
+      case links::Verdict::Unreadable:
+        judged_unreadable = true;
+        return Refusal::Private; /* Fail closed: where it leads can't be told. */
+      case links::Verdict::Safe:
+        break;
+    }
+  }
+#endif
   const std::optional<std::string> resolved = resolve(path, dir_fd);
   if (!resolved) {
-    return Refusal::Private; /* Fail closed: what cannot be resolved is not opened while confined. */
+    /* Fail closed: what cannot be resolved is not opened while confined (through a link into /net: the network). */
+    return resolve_reached_network ? Refusal::Network : Refusal::Private;
   }
   const std::vector<Identity> chain = ancestors(*resolved);
   if (const std::optional<std::string> open = open_roots.deepest(*resolved)) {

@@ -21,7 +21,9 @@ from pathlib import Path
 import bpy
 from angelo_agent import authentication, product_env
 from angelo_agent.chat_settings import normalize_models
+import qa_auth
 import qa_boot
+import qa_hit
 
 OFFLINE_MODELS = normalize_models([{'model': 'offline-fixture-model', 'displayName': 'Offline fixture model',
                                    'isDefault': True}])
@@ -38,6 +40,7 @@ os.environ['PATH'] = str(OFFLINE_BIN) + os.pathsep + os.environ.get('PATH', '')
 REPORT = OUT / 'signin-reconnect.json'
 STARTED = time.monotonic()
 state = dict(success=False, phase='boot', checks={}, screenshots=[], auth_calls=[], browser_callbacks=[],
+             intercept_violations=[], startup_status={},
              network_requests=0, unexpected_process_requests=0, blocked_process_attempts=[], actual_pixels_accepted=False, account_login_acceptance=False,
              scope='Actual registered GUI/canvas click, isolated synthetic status, final auth/browser intercepted')
 pending = []
@@ -52,7 +55,9 @@ OriginalThread = threading.Thread
 
 class RecordedThread(OriginalThread):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        # Not super(): threading.Timer (any Thread subclass) calls ``Thread.__init__(self)``, which is this method once
+        # threading.Thread is replaced, on an object that is no RecordedThread.
+        OriginalThread.__init__(self, *args, **kwargs)
         if self.name == 'AngeloNativeAuthentication':
             auth_threads.append(self)
 
@@ -67,7 +72,7 @@ def forbidden_process(*args, **kwargs):
         executable = command[0] if isinstance(command, (list, tuple)) and command else ''
         name = Path(str(executable)).name
         kind = ('system-shell:' + name if name in {'sh', 'bash', 'zsh'} else
-                'fixture-cli' if executable == str(OUT / 'intercepted-codex') else 'other-executable')
+                'fixture-cli' if Path(str(executable)).parent == OFFLINE_BIN else 'other-executable')
         state['blocked_process_attempts'].append(dict(executable_class=kind, callers=[
             dict(module=Path(frame.filename).name, function=frame.name, line=frame.lineno)
             for frame in traceback.extract_stack(limit=7)[:-1]]))
@@ -77,6 +82,19 @@ def forbidden_process(*args, **kwargs):
 # macOS child_process.popen/cli_runtime/protocol resolve subprocess.Popen per call. Auth is intercepted below.
 # This also blocks login-shell discovery or a missed model/app-server launch rather than letting it escape.
 subprocess.Popen = forbidden_process
+
+
+def violation(text):
+    """A broken expectation in code Angelo calls (its auth worker, inside its own ``except``): recorded, so the suite
+    fails on it at its next tick with this text, then raised, so the call goes no further. An ``assert`` here became
+    a "Native runtime unavailable" status and the row silently never appeared (test_native_suite_owned_status)."""
+    state['intercept_violations'].append(text)
+    raise RuntimeError(text)
+
+
+# The start-up status checks answer this late on purpose: the boot must wait for their completion signal
+# (qa_auth.startup_settled), never a tick count (the force-late-workers lesson).
+LATE_STARTUP_SECONDS = 1.0
 
 
 class InterceptedProcess:
@@ -89,21 +107,25 @@ class InterceptedProcess:
         home = env.get('CODEX_HOME', '')
         private = bool(expected_profile is not None and Path(home).resolve() == expected_profile)
         if self.login:
-            assert private, 'A notice must reconnect only its private fixture profile'
-            assert owned_connections is not None and Path(home).resolve().is_relative_to(owned_connections)
+            if not private:
+                violation('A notice must reconnect only its private fixture profile')
+            if owned_connections is None or not Path(home).resolve().is_relative_to(owned_connections):
+                violation('A reconnect must keep its profile inside the suite-owned connections folder')
             pending.append(self)
         else:
             # Startup status checks remain signed out; fixture-owned completion rechecks are released explicitly.
             if private:
                 pending.append(self)
             else:
-                self.returncode = 1
-                self.gate.set()
+                late = threading.Timer(LATE_STARTUP_SECONDS, self.finish, (1,))
+                late.daemon = True
+                late.start()
         state['auth_calls'].append(dict(kind='login' if self.login else 'status', private_profile=private,
                                        intercepted=True, connection_id=record['id'] if private else None))
 
     def communicate(self, input=None, timeout=None):
-        assert input is None, 'No API key belongs in this GUI fixture'
+        if input is not None:
+            violation('No API key belongs in this GUI fixture')
         if not self.gate.wait(min(timeout or 20, 20)):
             raise subprocess.TimeoutExpired(self.command, timeout)
         return self.output, None
@@ -123,11 +145,28 @@ class InterceptedProcess:
 
 
 def intercepted_launch(command, **kwargs):
-    assert Path(command[0]).resolve() in {(OFFLINE_BIN / name).resolve() for name in ('codex', 'claude')} | {
-        (OUT / 'intercepted-codex').resolve()}, 'Auth must resolve only fixture-owned executables'
-    assert 'login' in command or 'auth' in command, 'Unexpected auth command'
-    assert kwargs.get('keep_gui_programs') is True
-    assert '--with-api-key' not in command
+    # Runs on the product's worker, whose ``except Exception`` turns any error here into "Native runtime unavailable":
+    # every failure is recorded (the tick fails on the record) before the worker sees it.
+    try:
+        return _intercepted_launch(command, **kwargs)
+    except BaseException as error:
+        if not state['intercept_violations'] or state['intercept_violations'][-1] != str(error):
+            state['intercept_violations'].append('%s: %s' % (type(error).__name__, str(error)[:300]))
+        raise
+
+
+def _intercepted_launch(command, **kwargs):
+    if Path(command[0]).resolve() not in {(OFFLINE_BIN / name).resolve() for name in ('codex', 'claude')}:
+        violation('Auth must resolve only fixture-owned executables')
+    if 'login' not in command and 'auth' not in command:
+        violation('Unexpected auth command')
+    if '--with-api-key' in command:
+        violation('No API key belongs in this GUI fixture')
+    # Only a browser sign-in keeps the windowed programs it starts; a status check does not (46804fbd49c).
+    sign_in = 'login' in command and 'status' not in command
+    if kwargs.get('keep_gui_programs') is not authentication.browser_sign_in(sign_in, False):
+        violation('keep_gui_programs must be %s for a %s' % (authentication.browser_sign_in(sign_in, False),
+                                                            'browser sign-in' if sign_in else 'status check'))
     return InterceptedProcess(command, kwargs['env'])
 
 
@@ -239,6 +278,7 @@ def finish(error=None):
     state['auth_worker_threads'] = [dict(name=t.name, ident=t.ident, alive=t.is_alive()) for t in auth_threads]
     state['checks']['auth_worker_threads_recorded_and_joined'] = bool(auth_threads) and all(not t.is_alive() for t in auth_threads)
     state['checks']['no_non_auth_process_launch'] = state['unexpected_process_requests'] == 0
+    state['checks']['no_intercept_violation'] = not state['intercept_violations']
     ui.catalogs().close()
     if owned_team is not None:
         owned_team.cancel_sign_in()
@@ -259,6 +299,7 @@ def tick():
     global controller, record, owned_team, expected_profile, owned_connections
     try:
         assert time.monotonic() - STARTED < 120, 'Bounded GUI fixture expired'
+        assert not state['intercept_violations'], 'Intercept violation: ' + '; '.join(state['intercept_violations'])
         from angelo_agent import ui, director, chat_welcome, quick_connect, console, team_account_ui
         from angelo_agent.team_account import TeamAccount
         from angelo_agent.team_view import SIGNED_OUT, SIGNING_IN, OFFLINE
@@ -266,14 +307,24 @@ def tick():
         if phase == 'boot':
             if not director.is_director(window()) or not qa_boot.started():
                 return .2
-            if not wait(lambda: not ui._authentication.running, 20):
+            # Every start-up check's result applied (held late on purpose: LATE_STARTUP_SECONDS), so none can replace
+            # the status this suite sets below.
+            if not wait(lambda: qa_auth.startup_settled(ui._authentication), 20):
                 return .2
             assert state['unexpected_process_requests'] == 0, 'Blocked startup process; closed caller evidence retained'
+            startup = [c for c in state['auth_calls'] if c['kind'] == 'status' and not c['private_profile']]
+            # Every start-up check started and ran a fixture CLI, never a host one: codex_api's too, whose private profile
+            # C refused while the checks ran before install_app (ProfileOutside; test_native_startup_checks_order).
+            with ui._authentication.lock:
+                started = [mode for mode in qa_auth.STARTUP_MODES if mode in ui._authentication.modes]
+            state['startup_not_started'] = {mode: qa_auth.status_class(ui._authentication.status.get(mode))
+                                            for mode in qa_auth.STARTUP_MODES if mode not in started}
+            check('startup_checks_ran_the_fixture_clis', started == list(qa_auth.STARTUP_MODES)
+                  and len(startup) == len(started))
             bpy.context.preferences.view.language = 'en_US'
-            executable = OUT / 'intercepted-codex'
-            executable.write_text('#!/bin/sh\nexit 1\n')
-            executable.chmod(0o700)
-            ui.preferences().codex_path = str(executable)  # Real command construction, no login-shell path probe.
+            # No Preferences codex_path: a script's write of an executable path is refused (grant_guard.setting,
+            # f50e61c4669; only the person's click sets it). The CLI is found as a person's is, on PATH, where
+            # OFFLINE_BIN is first, and intercepted_launch refuses any other executable.
             controller = ui.get_controller()
             assert not controller.busy and not controller.pending
             record = ui.connections().add('OPENAI', 'SUBSCRIPTION', name='Isolated reconnect fixture', reuse_native=False)
@@ -295,6 +346,9 @@ def tick():
             controller.connection_error = False
             ui.catalogs().seed(record['id'], models)
             ui._authentication.status[record['id']] = 'Connected to ChatGPT'  # The stale cache that exposed the bug.
+            # The row "Sign in again" needs the mode's CLI found (first_run.connect_options): the suite owns that
+            # status, a signed-out CLI's, whatever the machine's own discovery or the start-up check said (recorded).
+            qa_auth.own_status(ui._authentication, {'codex_subscription': 'Not connected'}, state['startup_status'])
             controller.state['messages'][:] = [{'role': 'user', 'text': 'Synthetic expired sign-in request'},
                                                {'role': 'error', 'text': '401 Unauthorized: token expired'}]
             controller.version += 1

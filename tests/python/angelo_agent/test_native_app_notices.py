@@ -205,6 +205,7 @@ class CrashUiTests(NoticesCase):
         temp = temp or tempfile.mkdtemp(dir=self.folder.name)
         log = Path(temp) / "angelo.crash.txt"
         log.write_text(cfx.MAC, encoding="utf-8")
+        os.chmod(log, 0o600)   # As Angelo's crash handler writes it (creator_crash_log.cc), whatever the umask.
         os.utime(log, (time.time() - age, time.time() - age))
         found, records = crash_report.find_pending(temp, crash_state.load(self.folder.name), time.time(), cfx.MAC_ROOTS)
         self.assertIsNotNone(found)
@@ -281,6 +282,7 @@ class CrashUiTests(NoticesCase):
         temp = tempfile.mkdtemp(dir=self.folder.name)
         old = Path(temp) / "scene.crash.txt"
         old.write_text(cfx.MAC + "\n", encoding="utf-8")
+        os.chmod(old, 0o600)
         os.utime(old, (time.time() - 3600, time.time() - 3600))
         pending, records = self.pending(temp=temp)
         self.assertEqual([status for _, status in records], ["superseded"])

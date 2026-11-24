@@ -438,16 +438,16 @@ def publish_new_file(folder, temporary, name):
         os.link(temporary, name, src_dir_fd=folder, dst_dir_fd=folder, follow_symlinks=False)
 
 
-def make_directory(folder, name):
-    """Create one new child directory of an anchored folder; an existing name of any kind raises FileExistsError."""
+def make_directory(folder, name, mode=0o700):
+    """One new child directory of an anchored folder (``mode`` before the umask); a taken name: FileExistsError."""
     if isinstance(folder, anchored_windows.WindowsDirectory):   # ``entry_name``: never a path through the folder.
         folder.make_directory(entry_name(name))
     elif isinstance(folder, Path):
         if folder.resolve() != folder:
             raise ValueError("Snapshot storage changed during access")
-        (folder / entry_name(name)).mkdir(mode=0o700)
+        (folder / entry_name(name)).mkdir(mode=mode)
     else:
-        os.mkdir(entry_name(name), 0o700, dir_fd=folder)
+        os.mkdir(entry_name(name), mode, dir_fd=folder)
 
 
 def link_into(folder, name, target, new_name):

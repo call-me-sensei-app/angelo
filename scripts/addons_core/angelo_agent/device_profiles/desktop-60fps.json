@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "id": "desktop-60fps",
+  "name": "Desktop or laptop GPU, 60 fps",
+  "fps": 60,
+  "basis": "BC7 is core in Direct3D 11 and OpenGL 4.2 (ARB_texture_compression_bptc) and is read by desktop and laptop GPUs. Budgets are left unset: a team sets its own in its own profile.",
+  "texture_formats": {
+    "default": "BC7"
+  },
+  "passes_per_primitive": 1,
+  "budgets": {
+    "triangles": null,
+    "vertices": null,
+    "draw_calls": null,
+    "texture_memory_mb": null,
+    "bones": null,
+    "influences": null,
+    "morph_targets": null,
+    "file_mb": null,
+    "app_mb": null
+  }
+}

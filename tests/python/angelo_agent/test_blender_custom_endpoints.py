@@ -49,6 +49,7 @@ import qa_waits  # noqa: E402
 addon_utils.enable("angelo_agent", default_set=False, persistent=False)
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 import qa_input  # noqa: E402  (the person's press on the server's key control, which C mints a ticket for)
+import qa_hit  # noqa: E402  (surface points to window pixels)
 from angelo_agent import (chat_view, endpoint_connections, endpoint_ui, providers_page_host as page,  # noqa: E402
                           team_account_ui, ui, ui_kit_field)
 from angelo_agent.endpoint_sheet import EndpointSheet  # noqa: E402
@@ -211,7 +212,7 @@ def tick():
                         scroll()
                 return .2
             state["key_press"] = {"rect": list(rect), "region": [region.width, region.height]}
-            qa_input.press(prefs, region.x + rect[0] + rect[2] / 2, region.y + rect[1] + rect[3] / 2)   # The person's.
+            qa_input.press(prefs, *qa_hit.point(qa_hit.PIXELS, region, rect))   # The person's.
             state["phase"] = "key_sheet"
             return .5
         if phase == "key_sheet":

@@ -69,6 +69,8 @@ int judge_entry_path(PyObject *value, bool write)
       return refuse(STARTUP, "a native file entry point");
     case Refusal::ToolOutput:
       return refuse(TOOL_OUTPUT, "a native file entry point");
+    case Refusal::Network:
+      return refuse(NETWORK, "a native file entry point");
     case Refusal::None:
       break;
   }
@@ -124,17 +126,23 @@ static PyObject *method_entry(PyObject *self, PyObject *args, PyObject *kwargs, 
   return result;
 }
 
-#define METHOD_ENTRY(i) \
-  [](PyObject *self, PyObject *args, PyObject *kwargs) -> PyObject * { return method_entry(self, args, kwargs, i); }
+/** ``method_entry`` for ``path_entries[I]``: a named function, since stock MSVC refuses a C-style cast written onto
+ * a lambda expression (test_native_msvc_lambda_casts). */
+template<size_t I> static PyObject *method_entry_at(PyObject *self, PyObject *args, PyObject *kwargs)
+{
+  return method_entry(self, args, kwargs, I);
+}
+
 static PyMethodDef method_definitions[] = {
-    {}, {}, {"load_cert_chain", (PyCFunction)(void (*)(void))(PyCFunctionWithKeywords)METHOD_ENTRY(2),
-             METH_VARARGS | METH_KEYWORDS, nullptr},
-    {"load_verify_locations", (PyCFunction)(void (*)(void))(PyCFunctionWithKeywords)METHOD_ENTRY(3),
-     METH_VARARGS | METH_KEYWORDS, nullptr},
-    {"load_dh_params", (PyCFunction)(void (*)(void))(PyCFunctionWithKeywords)METHOD_ENTRY(4),
-     METH_VARARGS | METH_KEYWORDS, nullptr},
+    {},
+    {},
+    {"load_cert_chain", (PyCFunction)(void (*)(void))method_entry_at<2>, METH_VARARGS | METH_KEYWORDS, nullptr},
+    {"load_verify_locations",
+     (PyCFunction)(void (*)(void))method_entry_at<3>,
+     METH_VARARGS | METH_KEYWORDS,
+     nullptr},
+    {"load_dh_params", (PyCFunction)(void (*)(void))method_entry_at<4>, METH_VARARGS | METH_KEYWORDS, nullptr},
 };
-#undef METHOD_ENTRY
 
 static void install_path_entries()
 {
@@ -166,6 +174,7 @@ static void install_path_entries()
       PyObject *guarded = original ? PyDescr_NewMethod((PyTypeObject *)type, &method_definitions[i]) : nullptr;
       if (guarded != nullptr) {
         entry.original = Py_NewRef(original);
+        note_install_site(entry.module); /* The module imported here: never made again while confined. */
         PyDict_SetItemString(names, entry.name, guarded); /* Immutable to Python; changed here, in C. */
         PyType_Modified((PyTypeObject *)type);
       }
@@ -261,6 +270,7 @@ static void seal_sqlite()
     PyDict_SetItemString(names, "setlimit", guarded); /* The type is immutable to Python; C changes it here. */
     original_init = ((PyTypeObject *)type)->tp_init;
     ((PyTypeObject *)type)->tp_init = limited_init;
+    note_install_site("_sqlite3"); /* The module imported here, whatever its types say in `__module__`. */
     if (PyObject *init = PyDescr_NewMethod((PyTypeObject *)type, &init_definition)) {
       PyDict_SetItemString(names, "__init__", init); /* What a subclass's `super().__init__` reaches. */
       Py_DECREF(init);

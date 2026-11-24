@@ -38,6 +38,7 @@ import numpy as np
 
 assert '--enable-event-simulate' in sys.argv and not bpy.app.background
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')  # The default startup with its chat.
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-composer-qa"))
@@ -171,7 +172,6 @@ def primary():
 
 def scroll_steps(label):
     from angelo_agent import chat_composer
-    region = chat()[1]
     s = scale()
     set_text(LONG, len(LONG))
     yield 0.2
@@ -242,7 +242,7 @@ def scroll_steps(label):
     hidden_image = pixels(label + "-no-caret.png")
     blink(True)
     from qa_input import chat_rect   # The chat's points as window pixels at its scale; the text is never mirrored.
-    left, lo, wide, high = chat_rect(region, (24, row_y - 3, view_state()["composer"][2], size + 5), rtl=False)
+    left, lo, wide, high = chat_rect(chat()[1], (24, row_y - 3, view_state()["composer"][2], size + 5), rtl=False)
     left, right, lo, hi = int(left), int(left + wide), int(lo), int(lo + high) + 1
     differs = np.abs(shown_image[lo:hi, left:right, :3] - hidden_image[lo:hi, left:right, :3]).sum(axis=2) > 0.3
     columns = np.flatnonzero(differs.sum(axis=0) >= max(2, (hi - lo) // 2)) + left
@@ -269,7 +269,7 @@ def scroll_steps(label):
     px, py = at(chat_composer.column_x(value, 2, size, drawn) + 0.5, row_y + size * 0.35)
     from qa_input import chat_rect   # The chat's points as window pixels at its scale.
     box = view_state()["composer_view"]["rect"]
-    above = chat_rect(region, (0, box[1] + box[3] + 30, 0, 0), rtl=False)[1]
+    above = chat_rect(chat()[1], (0, box[1] + box[3] + 30, 0, 0), rtl=False)[1]
     qa_input.send(window(), qa_input.drag_path((px, py), (px, above), s, release=False))
     yield 0.6
     held = view_state()["composer_first"]

@@ -16,6 +16,7 @@ from types import SimpleNamespace
 import bpy
 
 import rail_positions_checks as geometry
+import qa_hit
 
 
 def window_region(window):
@@ -225,11 +226,12 @@ def obstacles(window, live=None):
         found.append(('navigation_gizmo', gizmo))
     pills = asset_shelf_add.places.get(area.as_pointer())
     for action, rect in (pills[1] if pills and pills[0] == window.as_pointer() else ()):
-        found.append(('shelf_pill_' + action, (rect[0] - region.x, rect[1] - region.y, rect[2], rect[3])))
+        found.append(('shelf_pill_' + action, qa_hit.from_window_rect(qa_hit.RAW, region, rect)))
     corner = chat_launcher._places.get(window.as_pointer())
     if corner and corner[0] == area.as_pointer() and window.as_pointer() in chat_launcher._shown:
         _area, cx, cy, radius = corner
-        found.append(('angelo_in_the_corner', (cx - region.x - radius, cy - region.y - radius, 2 * radius, 2 * radius)))
+        found.append(('angelo_in_the_corner',
+                      qa_hit.from_window_rect(qa_hit.RAW, region, (cx - radius, cy - radius, 2 * radius, 2 * radius))))
     if live is not None:
         found.append(('live_view_label', geometry.label_rect(region.width, region.height, found,
                                                              label_width(window, live), scale)))

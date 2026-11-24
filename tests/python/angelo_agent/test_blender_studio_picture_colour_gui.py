@@ -42,6 +42,7 @@ from angelo_agent import editor_types, studio  # noqa: E402
 from angelo_agent.studio_state import StudioLibrary  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 REPORT = OUT / "studio-picture-colour-gui.json"
 TOLERANCE = 4 / 255   # 8-bit output rounding, on either side; the pre-1.0.8 error was 0.1 to 0.4 here.
@@ -135,7 +136,7 @@ def picture_centre(area, identity):
         return None
     region = region_of(area)
     x, y, w, h = hit
-    return region.x + x + w / 2, region.y + y + 88 + (h - 90) / 2
+    return qa_hit.xy(qa_hit.mirrored_about(studio.view(area).get("mirror")), region, x + w / 2, y + 88 + (h - 90) / 2)
 
 
 def sample(path, xy, radius=4):

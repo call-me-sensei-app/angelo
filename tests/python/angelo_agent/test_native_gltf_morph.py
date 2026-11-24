@@ -101,8 +101,55 @@ class CallSiteTests(unittest.TestCase):
         importer = (ROOT / "scripts/addons_core/io_scene_gltf2/__init__.py").read_text(encoding="utf-8")
         merge = importer[importer.index("    merge_vertices: BoolProperty("):]
         self.assertIn("default=False,", merge[:merge.index(")\n") + 400])
-        self.assertIn("if not import_settings.get('merge_vertices') and unwelded_morph_targets(gltf_importer.data):",
-                      importer)
+        self.assertIn("unwelded_morph_targets(gltf_importer.data)", importer)
+
+
+IMPORTER = ROOT / "scripts/addons_core/io_scene_gltf2/__init__.py"
+
+
+def importer_class():
+    tree = ast.parse(IMPORTER.read_text(encoding="utf-8"))
+    return next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "ImportGLTF2")
+
+
+class PersonsImportTests(unittest.TestCase):
+    """The person's import (File > Import, the file browser, a dropped file) welds files with morph targets; a script's
+    call keeps Blender's default (maintainer, 2026-11-15: "Menu import merges; scripts keep old default")."""
+
+    def option(self):
+        cls = importer_class()
+        node = next(n for n in cls.body if isinstance(n, ast.AnnAssign)
+                    and getattr(n.target, "id", "") == "merge_vertices_for_morph_targets")
+        return {kw.arg: kw.value for kw in node.annotation.keywords}
+
+    def test_the_option_is_off_for_scripts_and_never_remembered(self):
+        option = self.option()
+        self.assertIs(ast.literal_eval(option["default"]), False)
+        self.assertIn("SKIP_SAVE", ast.unparse(option["options"]))
+
+    def test_invoke_turns_it_on_for_the_person(self):
+        invoke = next(n for n in importer_class().body if isinstance(n, ast.FunctionDef) and n.name == "invoke")
+        self.assertIn("self.merge_vertices_for_morph_targets = True", ast.unparse(invoke))
+
+    def test_the_file_browser_shows_it(self):
+        panel = next(n for n in ast.parse(IMPORTER.read_text(encoding="utf-8")).body
+                     if isinstance(n, ast.FunctionDef) and n.name == "import_mesh_panel")
+        self.assertIn("'merge_vertices_for_morph_targets'", ast.unparse(panel))
+
+    def test_each_file_decides_on_its_own_settings(self):
+        """A multi-file import must not let one morph file weld the next plain one: each file gets a copy."""
+        unit = next(n for n in importer_class().body if isinstance(n, ast.FunctionDef) and n.name == "unit_import")
+        text = ast.unparse(unit)
+        self.assertIn("glTFImporter(filename, dict(import_settings))", text)
+        self.assertIn("merge_vertices_for_morph_targets", text)
+
+    def test_its_text_is_in_angelo_s_catalogues(self):
+        sys.path.insert(0, str(ROOT / "scripts/angelo"))
+        from i18n import sources
+        option = self.option()
+        listed = {msgid for _ctxt, msgid, _origin in sources.EXTRA_MSGIDS}
+        for key in ("name", "description"):
+            self.assertIn(ast.literal_eval(option[key]), listed)
 
     def test_the_warning_is_in_angelo_s_catalogues(self):
         """The importer translates its warning through Blender's catalogue lookup, which falls through to Angelo's;

@@ -149,11 +149,15 @@ static PyObject *refuse(const char *message)
 
 static PyObject *guard_consent_regions(PyObject * /*self*/, PyObject *args)
 {
-  unsigned long long window = 0;
+  unsigned long long window = 0, owner = 0;
   PyObject *surface_object = nullptr, *regions_object = nullptr;
-  if (!PyArg_ParseTuple(args, "KUO!:consent_regions", &window, &surface_object, &PyTuple_Type,
-                        &regions_object))
+  if (!PyArg_ParseTuple(args, "KUO!K:consent_regions", &window, &surface_object, &PyTuple_Type,
+                        &regions_object, &owner))
   {
+    return nullptr;
+  }
+  if (owner == 0) { /* Without the region they are drawn in, no routing could ever give them input. */
+    PyErr_SetString(PyExc_ValueError, "consent regions need the region they are drawn in");
     return nullptr;
   }
   if (confined()) {
@@ -190,7 +194,7 @@ static PyObject *guard_consent_regions(PyObject * /*self*/, PyObject *args)
     }
     regions.push_back(std::move(spec));
   }
-  return PyBool_FromLong(authority().set_regions(uintptr_t(window), surface, regions, now()));
+  return PyBool_FromLong(authority().set_regions(uintptr_t(window), surface, regions, now(), owner));
 }
 
 static bool two_texts(PyObject *args, const char *format, std::string &a, std::string &b)
@@ -256,6 +260,7 @@ static PyObject *guard_grant(PyObject * /*self*/, PyObject *args, PyObject *kwar
   if (!authority().take(idname, digest, now())) {
     return refuse(NOT_CLICKED);
   }
+  const Scope::Control control(idname + "\n" + digest); /* Which control: Scope::control(). */
   return call_in_scope(args, 2, kwargs, Scope::PERSON);
 }
 
@@ -465,6 +470,38 @@ static PyObject *guard_close_surface(PyObject * /*self*/, PyObject *args)
     return refuse(SCRIPT_RUNS);
   }
   authority().close_surface(uintptr_t(window), s);
+  Py_RETURN_NONE;
+}
+
+static PyObject *guard_cover(PyObject * /*self*/, PyObject *args)
+{
+  unsigned long long window = 0, owner = 0;
+  PyObject *surface = nullptr, *rect = nullptr;
+  if (!PyArg_ParseTuple(args, "KUO|K:cover", &window, &surface, &rect, &owner)) {
+    return nullptr;
+  }
+  std::string s;
+  if (!text_of(surface, s, "surface")) {
+    return nullptr;
+  }
+  if (confined()) {
+    return refuse(SCRIPT_RUNS);
+  }
+  int x = 0, y = 0, width = 0, height = 0;
+  if (rect != Py_None) {
+    if (!PyTuple_Check(rect)) {
+      PyErr_SetString(PyExc_TypeError, "a cover is None or (x, y, width, height)");
+      return nullptr;
+    }
+    if (!PyArg_ParseTuple(rect, "iiii", &x, &y, &width, &height)) {
+      return nullptr;
+    }
+    if (owner == 0) { /* The region it is drawn in: the draw sync drops it once that region is gone. */
+      PyErr_SetString(PyExc_ValueError, "a cover needs the region it is drawn in");
+      return nullptr;
+    }
+  }
+  authority().surface_cover(uintptr_t(window), s, x, y, width, height, now(), owner);
   Py_RETURN_NONE;
 }
 
@@ -685,7 +722,8 @@ static PyObject *guard_seal(PyObject * /*self*/, PyObject *args)
 
 static PyMethodDef methods[] = {
     {"consent_regions", guard_consent_regions, METH_VARARGS,
-     "consent_regions(window, surface, regions): where a surface draws its controls that grant."},
+     "consent_regions(window, surface, regions, region): where a surface draws its controls that grant, in "
+     "``region`` (its pointer: only input Blender routes to that region reaches them)."},
     {"take", guard_take, METH_VARARGS,
      "take(idname, digest): the ticket an aimed press on that control minted, once."},
     {"grant", (PyCFunction)(void (*)(void))guard_grant, METH_VARARGS | METH_KEYWORDS,
@@ -731,6 +769,11 @@ static PyMethodDef methods[] = {
      "(False elsewhere); until it closes its focus is theirs and its arrows act."},
     {"close_surface", guard_close_surface, METH_VARARGS,
      "close_surface(window, surface): that popover or list closed (narrowing)."},
+    {"cover", guard_cover, METH_VARARGS,
+     "cover(window, surface, rect, region=0): the surface's own menu or popover is drawn over rect (x, y, "
+     "width, height window pixels) in region (its pointer, required with a rect), or rect None: gone. Other "
+     "surfaces' consent regions under it take no move or press, and start again when it goes or moves; it "
+     "goes by itself once its region does; it only ever refuses or restarts."},
     {"focus", guard_focus, METH_VARARGS,
      "focus(window, surface, idname, digest, moves=False): the control with focus now; the "
      "person's only right after their own Tab or press on it. moves: a movement key acts on it "
@@ -764,20 +807,21 @@ void BPY_angelo_guard_authority_add(PyObject *module)
   }
 }
 
-void BPY_angelo_guard_note_input(const void *window, int x, int y, int event_type, int event_value)
+void BPY_angelo_guard_note_input(
+    const void *window, int x, int y, int event_type, int event_value, const void *target)
 {
   if (BPY_angelo_guard_thread_confined()) {
     return; /* Input an agent script's own run feeds in never counts. */
   }
   const uintptr_t key = uintptr_t(window);
   if (event_type == MOUSEMOVE) {
-    authority().note_move(key, x, y, now());
+    authority().note_move(key, x, y, uint64_t(uintptr_t(target)), now());
   }
   else if (event_type == WINDEACTIVATE) {
     authority().note_deactivate(key, now());
   }
   else if (event_type == LEFTMOUSE && event_value == KM_PRESS) {
-    authority().note_press(key, x, y, now());
+    authority().note_press(key, x, y, uint64_t(uintptr_t(target)), now());
   }
   else if (event_type == LEFTMOUSE && event_value == KM_RELEASE) {
     authority().note_release(key, now()); /* A drag's hold ends at the next move. */
@@ -844,9 +888,83 @@ uint64_t BPY_angelo_guard_window_epoch(const void *window)
   return authority().epoch(uintptr_t(window));
 }
 
+void BPY_angelo_guard_set_cover(
+    const void *window, const void *key, const int x, const int y, const int width, const int height)
+{
+  authority().set_cover(uintptr_t(window), uint64_t(uintptr_t(key)), x, y, width, height, now());
+}
+
+void BPY_angelo_guard_clear_cover(const void *window, const void *key)
+{
+  authority().clear_cover(uintptr_t(window), uint64_t(uintptr_t(key)), now());
+}
+
+std::vector<BPY_AngeloUncovered> BPY_angelo_guard_sync_covers(const void *window,
+                                                              const void *const *keys,
+                                                              const int *rects,
+                                                              const bool *restart_only,
+                                                              const int count,
+                                                              const void *const *visible,
+                                                              const int visible_count)
+{
+  std::vector<angelo_guard::Authority::DrawnCover> drawn;
+  drawn.reserve(size_t(std::max(count, 0)));
+  for (int i = 0; i < count; i++) {
+    const int *rect = rects + 4 * i;
+    drawn.push_back({uint64_t(uintptr_t(keys[i])), rect[0], rect[1], rect[2], rect[3], restart_only[i]});
+  }
+  std::vector<BPY_AngeloUncovered> uncovered;
+  std::vector<uint64_t> shown;
+  shown.reserve(size_t(std::max(visible_count, 0)));
+  for (int i = 0; i < visible_count; i++) {
+    shown.push_back(uint64_t(uintptr_t(visible[i])));
+  }
+  for (const angelo_guard::Authority::Rect &rect :
+       authority().sync_covers(uintptr_t(window), drawn, shown, now()))
+  {
+    uncovered.push_back({reinterpret_cast<const void *>(uintptr_t(rect.key)),
+                         {rect.x, rect.y, rect.width, rect.height}});
+  }
+  return uncovered;
+}
+
+double BPY_angelo_guard_window_epoch_changed(const void *window)
+{
+  return authority().epoch_changed(uintptr_t(window));
+}
+
+double BPY_angelo_guard_window_restart_from(const void *window)
+{
+  return authority().restart_from(uintptr_t(window), now());
+}
+
 double BPY_angelo_guard_shown(const void *window, const uint64_t frame, const double drawn)
 {
   return authority().shown(uintptr_t(window), frame, drawn);
+}
+
+PyObject *BPY_angelo_guard_readout(const void *window)
+{
+  const angelo_guard::Authority::Readout r = authority().readout(uintptr_t(window));
+  if (!r.known) {
+    Py_RETURN_NONE;
+  }
+  return Py_BuildValue(
+      "{s:K,s:d,s:K,s:i,s:d,s:d,s:d,s:(ii),s:(ii),s:O,s:O,s:O,s:O,s:d}",
+      "epoch", static_cast<unsigned long long>(r.epoch),
+      "epoch_changed", r.changed,
+      "frame", static_cast<unsigned long long>(r.frame),
+      "presented", r.presented,
+      "last_present", r.last_present,
+      "activated", r.activated,
+      "real_move_at", r.real_move_at,
+      "real_xy", r.real_x, r.real_y,
+      "pointer_xy", r.px, r.py,
+      "active", r.active ? Py_True : Py_False,
+      "returning", r.returning ? Py_True : Py_False,
+      "activation_move", r.activation_move ? Py_True : Py_False,
+      "pointer_known", r.pointer_known ? Py_True : Py_False,
+      "now", now());
 }
 
 void BPY_angelo_guard_note_unarmed_button(const void *window,

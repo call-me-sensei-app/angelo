@@ -1083,7 +1083,21 @@ struct PopupButtonPlace {
   float xmin = 0.0f, ymin = 0.0f, xmax = 0.0f, ymax = 0.0f;
   /** Angelo: armed for a grant ticket by the person's move (`Button::angelo_armed`). */
   bool armed = false;
+  /** Angelo, for a GUI suite's failure details: the rest of the button's arming record (`Button::angelo_*`): where
+   * it was placed in window pixels, whether it is, its focus epoch, since when and from which frame it counts. */
+  bool placed = false;
+  int place_xmin = 0, place_ymin = 0, place_xmax = 0, place_ymax = 0;
+  uint64_t epoch = 0, frame = 0;
+  double since = 0.0;
 };
+/** Angelo: what `win` shows under `rect` (window pixels) was covered and is on screen again from now (the grant
+ * guard's arming, `ui_angelo_note_uncovered`): the startup cover lifting, an overlapping region hidden, shrunk or
+ * moved (`except`: that region, whose own buttons were never under it). Never a popup's buttons: popups are drawn
+ * above both. */
+void UI_angelo_note_uncovered(const wmWindow *win, const rcti &rect, const ARegion *except = nullptr);
+/** Angelo: what a temporary region (a menu, popover, dialog, pie, search box, tooltip) draws opaquely in window pixels,
+ * its shadow margin left out: what it covers for the grant guard, on screen and when it goes. */
+rcti UI_angelo_temporary_cover(const ARegion *region);
 /** Every button of every open popup in `screen`, in drawing order. */
 Vector<PopupButtonPlace> popup_button_places(const bScreen *screen);
 /** Every button drawn in the regions of `screen`'s editors (panels, headers, sidebars), in drawing

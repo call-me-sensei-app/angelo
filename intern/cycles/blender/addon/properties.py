@@ -275,8 +275,10 @@ enum_guiding_directional_sampling_types = (
 def enum_openimagedenoise_denoiser(self, context):
     import _cycles
     if _cycles.with_openimagedenoise:
+        # Angelo: Blender's "Use Intel OpenImageDenoise AI denoiser" read as Intel-only to people on other GPUs.
         return [('OPENIMAGEDENOISE', "OpenImageDenoise",
-                 n_("Use Intel OpenImageDenoise AI denoiser"), 4)]
+                 n_("Use the OpenImageDenoise AI denoiser. It runs on the CPU and on the GPU with supported AMD, "
+                    "Apple, Intel and NVIDIA graphics"), 4)]
     return []
 
 
@@ -284,8 +286,10 @@ def enum_dlss_denoiser(self, context):
     import _cycles
     if _cycles.with_dlss and (not context or bool(
             context.preferences.addons[__package__].preferences.get_devices_for_type('CUDA'))):
+        # Angelo: says what it needs and where it works, which Blender's "Use NVIDIA DLSS Ray Reconstruction" did not.
         return [('DLSS', "DLSS",
-                 n_("Use NVIDIA DLSS Ray Reconstruction"), 8)]
+                 n_("Use NVIDIA DLSS Ray Reconstruction on NVIDIA RTX graphics. It denoises and upscales the "
+                    "Rendered viewport only; final renders use OpenImageDenoise or OptiX"), 8)]
     return []
 
 
@@ -1896,6 +1900,21 @@ class CyclesPreferences(bpy.types.AddonPreferences):
                     return True
 
         return False
+
+    def oidn_gpu_state(self):
+        """Whether OpenImageDenoise can denoise on a GPU here (Angelo: says why "Use GPU" is greyed out).
+        'USED': a GPU in use supports it. 'AVAILABLE': a GPU of any backend here supports it (its driver too) but is
+        not chosen in Preferences > System. 'NONE': no GPU here supports it, so it runs on the CPU. Reads Cycles'
+        device listing only (``_cycles.available_devices``), never the preferences' device entries."""
+        import _cycles
+        if self.has_oidn_gpu_devices():
+            return 'USED'
+        for device_type in ('CUDA', 'OPTIX', 'HIP', 'METAL', 'ONEAPI'):
+            for device in _cycles.available_devices(device_type):
+                # (name, type, id, ..., [5] OpenImageDenoise support, ..., [8] meets the driver requirement)
+                if device[1] != 'CPU' and device[5] and device[8]:
+                    return 'AVAILABLE'
+        return 'NONE'
 
     def has_dlss_gpu_devices(self):
         compute_device_type = self.get_compute_device_type()

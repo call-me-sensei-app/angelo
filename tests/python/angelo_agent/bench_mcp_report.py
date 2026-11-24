@@ -429,6 +429,14 @@ def _invalid_lines(invalid):
             "usage limit was reached; those results say nothing about the code. Rerun them." % counts, ""]
 
 
+def _unverifiable_lines(counts):
+    """The visible count of trials whose Codex log could not show every throttle (eval_codex_logs), per side."""
+    if not counts:
+        return []
+    return ["Codex log unverifiable (no log, or a thread at Codex's log retention), so a hidden throttle could go "
+            "unseen: %s." % "; ".join("%s %d trial(s)" % item for item in sorted(counts.items())), ""]
+
+
 def markdown(report):
     summary, meta = report["summary"], report["meta"]
     contracts = {grading.record_contract(record) for record in report.get("records", [])}
@@ -441,6 +449,7 @@ def markdown(report):
              *gate.version_lines(summary.get("gate_versions")),
              *contract_lines,
              *_invalid_lines(summary.get("invalid_rate_limited")),
+             *_unverifiable_lines(summary.get("codex_log_unverifiable")),
              "## Head-to-head (%d tasks, same prompts, default-cube start)" % len(HEAD_TO_HEAD), "",
              "Wall seconds, median (p75) [min–max]; every attempted run, failed checks included.", "",
              "| Task | MCP wall s | Angelo wall s | MCP passed/runs | Angelo passed/runs | MCP API calls "

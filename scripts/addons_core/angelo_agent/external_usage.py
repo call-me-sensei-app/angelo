@@ -4,9 +4,10 @@
 
 * **Turns**: each finished model turn of the conversation (its receipt, ``telemetry``), newest first: the model
   requests it made, input (new), cache-read, cache-write and output tokens and the estimate at list price
-  (``usage_meter.receipt_entries``: each turn priced at its requests' mean prompt size, so a turn whose requests
-  averaged past a model's price step is priced above it; ``unpriced`` for a model the table doesn't know, never $0;
-  ``partial`` for a turn whose usage a runtime did not fully report).
+  (``usage_meter.receipt_entries``: each request at its own tier where the runtime reported the split, a single
+  request at its own prompt, and a sum of several without their split at the base rates, a lower bound marked
+  ``partial``; ``unpriced`` for a model the table doesn't know, never $0; ``partial`` also for a turn whose usage
+  a runtime did not fully report).
 * **Tasks**: each of the app's tasks (an ``angelo_send``) with what it spent, from the conversation's ledger total
   when it was sent to the next task's (``external_status.since``).
 * **Conversation**: the ledger's total plus the request in progress (lower bounds while ``live``).

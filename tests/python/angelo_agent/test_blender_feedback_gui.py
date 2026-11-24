@@ -37,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 import qa_input  # noqa: E402  (synthetic clicks)
 import qa_plus_menu  # noqa: E402  (the + menu's fold, read from the chat's canvas state)
+import qa_hit
 
 product_env.clear("DISABLE_DEFAULT_CHAT")
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-feedback-gui"))

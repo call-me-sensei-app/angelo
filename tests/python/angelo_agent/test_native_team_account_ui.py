@@ -89,6 +89,49 @@ class Controller:
         self.closed = True
 
 
+class Recorder:
+    """A layout that records every label drawn in it and in the boxes and rows it hands out."""
+
+    def __init__(self, labels=None):
+        self.labels = [] if labels is None else labels
+
+    def label(self, text="", **_):
+        self.labels.append(text)
+
+    def __getattr__(self, _name):
+        return lambda *args, **kwargs: Recorder(self.labels)
+
+
+class PolicyNotesDrawn(unittest.TestCase):
+    """The Angelo team section of Preferences shows what the person's own policy file couldn't set, in its own
+    sentence, with no managed policy at all; the organization's sentence stays the organization's (break-it re-read
+    of a92ed1bae16, S2)."""
+
+    def draw(self, policy):
+        glue = import_glue()
+        layout = Recorder()
+        with patch.object(glue.managed_policy, "current", lambda: policy), patch.object(glue, "_account", None):
+            glue.draw(layout, SimpleNamespace())
+        return layout.labels
+
+    def test_an_unmanaged_policy_shows_the_files_note(self):
+        from angelo_agent import managed_policy, policy_notes
+        policy = managed_policy.Policy(ignored=("ExtraCACertificates",))
+        self.assertFalse(policy.managed)
+        labels = " ".join(self.draw(policy))
+        self.assertIn("Your own policy file (ANGELO_POLICY_FILE)", labels)
+        self.assertIn("ExtraCACertificates", labels)
+        self.assertNotIn("managed by your organization", labels)
+        self.assertNotIn(policy_notes.MANAGED_PROBLEM.split("(")[0], labels)
+
+    def test_the_organizations_problem_keeps_its_sentence(self):
+        from angelo_agent import managed_policy
+        policy = managed_policy.combine([(managed_policy.LINUX_FILE, {"ConsoleURL": "ftp://nope"})])
+        labels = " ".join(self.draw(policy))
+        self.assertIn("Your organization's Angelo policy has unusable values", labels)
+        self.assertNotIn("Your own policy file", labels)
+
+
 class GlueTests(unittest.TestCase):
     def setUp(self):
         self.glue = import_glue()

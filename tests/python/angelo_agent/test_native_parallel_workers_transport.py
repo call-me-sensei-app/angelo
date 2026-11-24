@@ -267,7 +267,8 @@ class ProcessTests(unittest.TestCase):
         posix = worker_process.worker_environment(environ, "/p", platform="darwin")
         self.assertEqual(set(posix) - {"PATH", "HOME", "LC_ALL"}, {
             "ANGELO_HEADLESS", "ANGELO_STATE_DIR", "ANGELO_CONNECTIONS_DIR", "ANGELO_DISABLE_DEFAULT_CHAT",
-            "ANGELO_DISABLE_LOCAL_CLI", "ANGELO_DISABLE_KEYCHAIN", "ANGELO_WORKER_CHAT_HOST", "ANGELO_PARALLEL_WORKER"})
+            "ANGELO_DISABLE_LOCAL_CLI", "ANGELO_DISABLE_KEYCHAIN", "ANGELO_WORKER_CHAT_HOST", "ANGELO_PARALLEL_WORKER",
+            "ANGELO_STRICT_SCRIPT_PROTECTION"})   # Strict script protection as this Angelo has it (strict_flag).
         self.assertEqual(posix["ANGELO_WORKER_CHAT_HOST"], "1")   # The worker hosts its chat as Angelo decides.
         self.assertEqual(posix["ANGELO_PARALLEL_WORKER"], "1")    # Its chats are workers' own (parallel_access).
         lanes = worker_process.worker_environment(dict(environ, ANGELO_WORKER_CHAT_HOST="0"), "/p", platform="darwin")

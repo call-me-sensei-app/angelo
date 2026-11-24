@@ -66,6 +66,8 @@ class Plans:
         values["gateway"] = chat.mode in TEAM_MODES   # A team chat's WebFetch goes through the gateway, whatever was asked.
         from .claude_transport import model_overrides   # And the chat's own endpoint models, never the worker's list.
         values["overrides"] = model_overrides(chat.mode)
+        from .claude_transport import window_unknown   # The window rule from the chat's endpoint and this model too.
+        values["window_200k"] = window_unknown(chat.mode, values["model"])
         values.pop("hooks_blocked", None)   # And the administrator's hook policy as this host reads it (claude_managed).
         if values["resume"] and values["resume"] not in self._recorded(request.get("session")):
             values["resume"] = str(uuid.uuid4())   # Not one Angelo saw this chat open: a session that cannot exist.

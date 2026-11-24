@@ -25,6 +25,7 @@ OUT = Path(ARGS[ARGS.index("--fixture-root") + 1])
 ROUNDS = OUT / "rounds"
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import reply_stream_fixtures as fixtures  # noqa: E402
+import qa_hit
 
 report = {"phase": PHASE, "checks": {}, "observed": {}, "screenshots": [], "success": False}
 bpy.context.preferences.use_preferences_save = False
@@ -241,10 +242,10 @@ def open_welcome():
 
 
 def welcome_point(action, value=None):
-    from angelo_agent import canvas_rtl, intro
+    from angelo_agent import intro
     region = viewport()
     rect = next(r for r, a, v in intro._open["plan"]["hits"] if a == action and (value is None or v == value))
-    return region.x + canvas_rtl.pointer_x(rect[0] + rect[2] / 2, region.width), region.y + rect[1] + rect[3] / 2
+    return qa_hit.point(qa_hit.PIXELS, region, rect)
 
 
 def request_quit(then=None):

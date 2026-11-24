@@ -15,8 +15,10 @@
   tokens). Usage summed over several requests is priced at the base rates
   when the sum is within the step (then every request is), per request when
   each request's usage is given and adds up to the sum, at the request's own
-  tier when the usage says it is exactly one request, and otherwise not at
-  all: ``None``, never the long-context tier by default.
+  tier when the usage says it is exactly one request, with each request at
+  its own tier when the usage carries the runtime's per-request split
+  (``above_step``, the add-on's ``request_tiers``), and otherwise not at all:
+  ``None``, never the long-context tier by default.
 * ``cap_cost``: the cost cap's price, which falls back to an upper bound (every
   token at the higher of the two rate tables) when ``list_cost`` cannot tell
   the tier, so a cap never lapses; the bound is marked.
@@ -211,12 +213,35 @@ def _step_plan(usage, model, per_request=None):
         return "base", "every request within the %d-token price step (base rates)" % step
     if _one_request(usage):
         return "one", "one request above the %d-token price step (its higher rates)" % step
+    if _tiers(usage, step) is not None:
+        above = usage["above_step"].get(str(step), {}).get("requests", 0)
+        text = "each request at its own tier against the %d-token price step (%d above it)" % (step, above)
+        if sum(1 for _, key, _ in WRITE_TTLS if (usage.get(key) or 0) > 0) > 1:
+            # The runtime reports the TTL split for the whole sum, not per tier: _tiers shares it in proportion.
+            text += "; cache writes of both TTLs shared between the tiers in proportion (an estimate)"
+        return "tiers", text
     if _adds_up(usage, per_request):
         return "per_request", "priced per request against the %d-token price step (%d requests)" % (
             step, len(per_request))
     count = usage.get("requests") if type(usage.get("requests")) is int else "an unrecorded number of"
     return "unknown", ("unknown: %d prompt tokens over %s requests exceed the %d-token per-request price step, "
                        "and no per-request usage was recorded" % (prompt, count, step))
+
+
+def _tiers(usage, step):
+    """``(base, above)`` of a usage carrying the runtime's per-request split (``request_tiers.split``), each with its
+    share of a reported cache-write TTL split, or None."""
+    from angelo_agent import request_tiers
+    parts = request_tiers.split(usage, step)
+    if parts is None:
+        return None
+    written = usage.get("cache_write_input_tokens") or 0
+    for part in parts:
+        share = part["cache_write_input_tokens"] / written if written else 0
+        for _, key, _ in WRITE_TTLS:
+            if type(usage.get(key)) is int:
+                part[key] = round(usage[key] * share)
+    return parts
 
 
 def _rates(model, cache_ttl, prompt_tokens, upper=False):
@@ -229,10 +254,12 @@ def _rates(model, cache_ttl, prompt_tokens, upper=False):
     return {key: max(base[key], above[key]) for key in base}
 
 
-def _dollars(usage, model, cache_ttl, upper=False):
-    """Unrounded USD of one request (or a sum known to sit in one tier) at the tier of its own prompt."""
+def _dollars(usage, model, cache_ttl, upper=False, tier_prompt=None):
+    """Unrounded USD of one request (or a sum known to sit in one tier) at the tier of its own prompt, or of
+    ``tier_prompt`` when given (a sum of requests that all sit in that tier)."""
     prompt = usage["input_tokens"]
-    rates = {ttl: _rates(model, ttl, prompt, upper) for ttl, _, _ in WRITE_TTLS}
+    tier = prompt if tier_prompt is None else tier_prompt
+    rates = {ttl: _rates(model, ttl, tier, upper) for ttl, _, _ in WRITE_TTLS}
     read, write = usage.get("cached_input_tokens") or 0, usage.get("cache_write_input_tokens") or 0
     fresh = max(0, prompt - read - write)
     writes = sum(tokens * rates[ttl]["cache_write"] for ttl, tokens in cache_writes(usage, cache_ttl)[0].items())
@@ -260,6 +287,11 @@ def list_cost(usage, model, cache_ttl="5m", per_request=None):
         return None
     if plan == "per_request":
         return round(sum(_dollars(request, model, cache_ttl) for request in per_request), 4)
+    if plan == "tiers":
+        step = price_step(model)
+        base, above = _tiers(usage, step)
+        return round(_dollars(base, model, cache_ttl, tier_prompt=0)
+                     + _dollars(above, model, cache_ttl, tier_prompt=step + 1), 4)
     return round(_dollars(usage, model, cache_ttl), 4)
 
 

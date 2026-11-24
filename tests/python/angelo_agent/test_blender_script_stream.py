@@ -66,6 +66,7 @@ product_env.clear('DISABLE_DEFAULT_CHAT')  # This suite needs the default Direct
 from angelo_agent import script_overlay  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 script_overlay.SHOWN = True  # The well ships off in 1.0.4; this suite is of the well itself.
 
 ROUNDS = OUT / "rounds"

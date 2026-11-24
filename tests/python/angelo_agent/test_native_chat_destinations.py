@@ -20,6 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 ADDON = ROOT / "scripts/addons_core/angelo_agent"
+HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 from angelo_agent import chat_destinations as cd  # noqa: E402
 
@@ -33,6 +34,11 @@ def registrations():
                 if node.args and isinstance(node.args[0], ast.Constant):
                     found[node.args[0].value] = path.stem
     return found
+
+
+def empty_groups():
+    """The built-in groups (``chat_destinations.GROUPS``) with no member registered: the menu leaves them out."""
+    return {group for group in getattr(cd, "GROUPS", (cd.VIDEO_GROUP, cd.RENDER_GROUP)) if not cd.members(group)}
 
 
 class RegistryTests(unittest.TestCase):
@@ -69,17 +75,38 @@ class RegistryTests(unittest.TestCase):
         cd.register(cd.Feature("library", "Angelo Library", glyph="library", order=14, operator="angelo.library_open",
                                properties=(("mode", "BROWSE"),)))
         cd.register(cd.Feature("bake_maps", "Bake maps…", glyph="bake_maps", order=24, operator="angelo.bake_maps"))
+        cd.register(cd.Feature("camera_look", "Camera Look", glyph="look", order=25, operator="angelo.camera_look"))
         cd.register(cd.Feature("render_region", "Render region", glyph="region", order=23,
                                operator="angelo.render_region"))
+        cd.register(cd.Feature("scatter", "Scatter", glyph="scatter", order=30, section="Create",
+                               operator="angelo.scatter"))
         cd.register(cd.Feature("select_through", "Select Through", order=46, operator="angelo.select_through"))
         cd.register(cd.Feature("tension_map", "Tension map", glyph="tension", order=47, operator="angelo.tension_map"))
         cd.register(cd.Feature("uv_checker", "UV checker", glyph="uv_checker", order=48, section="Check",
                                operator="angelo.uv_checker"))
+        cd.register(cd.Feature("shape_cut", "Shape Cut", glyph="shape_cut", order=46, operator="angelo.shape_cut"))
+        cd.register(cd.Feature("uv_layout", "UV Layout", glyph="uv_layout", order=47, operator="angelo.uv_layout"))
         cd.register(cd.Feature("engine_skeleton", "Check a rig for a game engine", glyph="skeleton", order=49,
                                section="Inspect", operator="angelo.skeleton_check"))
+        cd.register(cd.Feature("splat_mesh", "Splats to mesh", order=24, section=cd.CREATE,
+                               operator="angelo.splat_to_mesh"))
+        cd.register(cd.Feature("collision_hulls", "Collision hulls", order=52, section="Share",
+                               operator="angelo.fit_collision"))
+        cd.register(cd.Feature("retopology", "Retopology", glyph="base_mesh", order=46, operator="angelo.retopology"))
+        cd.register(cd.Feature("markup", "Mark up a picture…", glyph="markup", order=2, section=cd.ATTACH,
+                               operator="angelo.markup_picture", placement="bar"))
+        for feature_id, operator, order in (   # The Rig group's rows (rigging_ops, ik_controls).
+                ("rig_retarget", "angelo.retarget_animation", 46), ("rig_game_rig", "angelo.make_game_rig", 47),
+                ("rig_root_motion", "angelo.extract_root_motion", 48), ("rig_clips", "angelo.export_action_clips", 49),
+                ("rig_ik_controls", "angelo.add_ik_controls", 50), ("rig_ik_fk", "angelo.set_ik_fk", 51)):
+            cd.register(cd.Feature(feature_id, feature_id, glyph="skeleton", order=order, operator=operator))
         cd.register(cd.Feature("web_export", "Web export", glyph="web", order=50, operator="angelo.web_export"))
         cd.register(cd.Feature("web_preview", "Live browser preview", glyph="web", order=51, operator="angelo.web_preview"))
         cd.register(cd.Feature("godot_link", "Game engine live link", glyph="link", order=52, children=lambda *_: []))
+        cd.register(cd.Feature("context_folder", "Folder as context…", glyph="feedback", order=87,
+                               operator="angelo.context_folder", placement="footer"))
+        cd.register(cd.Feature("rules", "Rules…", glyph="feedback", order=88, operator="angelo.chat_rules",
+                               placement="footer"))
         cd.register(cd.Feature("learn", "Learn", glyph="learn", order=89, section="Learn", operator="angelo.learn",
                                placement="footer"))
         cd.register(cd.Feature("report_bug", "Report a bug…", glyph="feedback", order=90, section="Feedback",
@@ -88,15 +115,33 @@ class RegistryTests(unittest.TestCase):
                                section="Feedback", operator="angelo.send_feedback", properties=(("kind", "FEATURE"),)))
         rows = cd.menu_rows()
         top = [row["value"] for row in rows if row["kind"] in {"row", "group"} and not row.get("depth")]
-        self.assertEqual(top, list(cd.TOP_LEVEL), "menu order is TOP_LEVEL's")
+        self.assertEqual(top, [item for item in cd.TOP_LEVEL if item not in empty_groups()],
+                         "menu order is TOP_LEVEL's (a built-in group with no member yet is left out)")
+        self.assertEqual(top, list(cd.shown()), "shown() is the top level the menu offers")
         # Every member is reachable: its group opens to it, and its row runs its own operator.
         opened = cd.menu_rows(open_groups=set(cd.PARENTS.values()))
         inside = {row["value"]: row for row in opened if row.get("depth")}
         for member, group in cd.PARENTS.items():
             self.assertIn(member, inside, member)
+            # Its own action where it has one (Work on hands chooses a tool; chat_add_nav.dispatch runs a row's
+            # action on any page), else its operator.
             self.assertEqual((inside[member]["kind"], inside[member]["action"], inside[member]["feature"]),
-                             ("row", "popup_add_open", member), member)
+                             ("row", cd.feature(member).action or "popup_add_open", member), member)
             self.assertEqual(inside[member]["operator"], cd.feature(member).operator, member)
+
+    def test_what_the_top_level_shows_is_read_from_one_place(self):
+        """A suite that checks the top level in view reads ``chat_destinations.shown()``, never ``TOP_LEVEL``: an
+        empty built-in group is left out of the menu by design, and a suite expecting it failed on every build where a
+        group had no member yet (the Model group on release/v2.1.0 b53a4ee9a8f, test_blender_plus_menu_fold)."""
+        import ast
+        readers = []
+        for path in sorted(list(HERE.glob("qa_*.py")) + list(HERE.glob("test_blender_*.py"))):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            readers += ["%s:%d" % (path.name, node.lineno) for node in ast.walk(tree)
+                        if isinstance(node, ast.Attribute) and node.attr == "TOP_LEVEL"]
+        self.assertEqual(readers, [], "read chat_destinations.shown()")
+        for group in cd.GROUPS:
+            self.assertEqual(group in cd.shown(), bool(cd.members(group)), group)
 
     def test_a_member_whose_group_is_missing_is_a_row_of_its_own_and_an_empty_group_is_left_out(self):
         cd.unregister(cd.RENDER_GROUP)
@@ -104,6 +149,40 @@ class RegistryTests(unittest.TestCase):
         top = [row["value"] for row in cd.menu_rows() if not row.get("depth") and row["kind"] != "section"]
         self.assertIn("ai_render", top)
         self.assertNotIn(cd.VIDEO_GROUP, top, "no video feature registered: no empty Video group")
+
+    def test_inspect_tools_are_one_group_and_model_is_a_group_for_modelling_tools(self):
+        """2.1.0's + menu (coordinator ruling, 2026-11-15): five lanes add tiles, and the top level at 1280 x 800 had
+        no room for one more (test_native_chat_add_layout's tile budget). The four inspection tools are one Inspect
+        tile; modelling tools (Shape Cut, UV layout, later import) share one Model tile. Each lane maps its own tool
+        into a group (``PARENTS``) alongside the tool."""
+        inspect, model = getattr(cd, "INSPECT_GROUP", None), getattr(cd, "MODEL_GROUP", None)
+        self.assertEqual((inspect, model), ("inspect", "model"))
+        for tool in ("select_through", "tension_map", "uv_checker", "engine_skeleton"):
+            self.assertEqual(cd.PARENTS.get(tool), inspect, tool)
+            self.assertNotIn(tool, cd.TOP_LEVEL, tool)
+        self.assertIn(inspect, cd.TOP_LEVEL)
+        self.assertIn(model, cd.TOP_LEVEL)
+        self.assertEqual(set(cd.GROUPS), {cd.VIDEO_GROUP, cd.RENDER_GROUP, inspect, model, cd.RIG_GROUP})
+        for group in cd.GROUPS:
+            self.assertIsNotNone(cd.feature(group), group)
+            self.assertEqual(cd.feature(group).owner, "chat_destinations", group)
+        # Both group tiles share one Tools heading, Model then Inspect, between Start from (hands, 45) and Share
+        # (web_export, 50): one heading where Inspect had one, and Create keeps its rows (v210-hardsurface's layout).
+        orders = {item.id: item.order for item in cd.features()}
+        self.assertLess(45, orders[model])
+        self.assertLess(orders[model], orders[inspect])
+        self.assertLess(orders[inspect], 50)
+        self.assertEqual((cd.feature(model).section, cd.feature(inspect).section), ("Tools", "Tools"))
+        self.assertEqual((cd.feature(model).title, cd.feature(inspect).title), ("Model", "Inspect"))
+        # Empty, Model is left out; one member makes it a tile that opens to that member.
+        self.assertNotIn(model, [entry["feature"] for entry in cd.entries()])
+        cd.PARENTS["probe_tool"] = model
+        self.addCleanup(cd.PARENTS.pop, "probe_tool", None)
+        cd.register(cd.Feature("probe_tool", "Probe", order=31, operator="angelo.probe"))
+        entry = next(entry for entry in cd.entries() if entry["feature"] == model)
+        self.assertEqual(entry["kind"], "group")
+        self.assertEqual([row["value"] for row in cd.group_rows(model)], ["probe_tool"])
+        self.assertNotIn("probe_tool", [entry["feature"] for entry in cd.entries()])
 
     def test_another_module_adds_an_entry_without_touching_the_menu(self):
         cd.register(cd.Feature("web_export", "Web export", "Publish the scene as a web page", glyph="web", order=50,
@@ -119,7 +198,10 @@ class RegistryTests(unittest.TestCase):
         """Chosen tools act on Angelo's own scene at Send (console.execute skips them in a worker's chat), so a
         worker's chat lists none of them; the rest of the menu is unchanged."""
         lead_only = {item.id for item in cd.features() if item.lead_only}
-        self.assertEqual(lead_only, {"base_mesh", "goal", "hands"})
+        self.assertEqual(lead_only, {"base_mesh", "goal", "hands", "plan"})
+        # A group whose every member is a chosen tool (Rig, with only hands registered here) is left out for a
+        # worker as an empty group is (v210-rigging, 2026-11-18: hands moved into the Rig group).
+        lead_only |= {group for group in cd.GROUPS if cd.members(group) and not cd.members(group, worker=True)}
         lead, worker = cd.menu_rows(open_groups={"base_mesh"}), cd.menu_rows(open_groups={"base_mesh"}, worker=True)
         self.assertFalse(any(row.get("feature") in lead_only or row.get("value") in lead_only for row in worker))
         self.assertEqual([row for row in lead if row.get("feature") not in lead_only and row.get("value") not in lead_only

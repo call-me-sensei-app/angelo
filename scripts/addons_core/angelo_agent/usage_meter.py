@@ -40,7 +40,7 @@ import uuid
 import weakref
 from pathlib import Path
 
-from . import kept_state, model_profiles, owned_replace, shared_replace, write_turn
+from . import kept_state, model_profiles, owned_replace, request_tiers, shared_replace, write_turn
 from .state_file_writes import encode_usage
 
 TOKEN_KEYS = ("input", "cache_read", "cache_write", "output")
@@ -89,13 +89,13 @@ def entry(route, usage):
     complete = None not in (prompt, output) and not usage.get("interrupted_turns")
     model = _model(route)
     requests = usage.get("requests") if type(usage.get("requests")) is int and usage["requests"] > 0 else 1
-    rates = model_profiles.rates(model, route.get("cache_ttl") or "5m",
-                                 prompt_tokens=(prompt or 0) // requests) if model else None
+    ttl = route.get("cache_ttl") or "5m"
     usd = None
-    if rates is not None and prompt is not None and output is not None:
-        usd = sum(tokens[key] * rates[rate] for key, rate in (
-            ("input", "input"), ("cache_read", "cache_read"), ("cache_write", "cache_write"),
-            ("output", "output"))) / 1e6
+    if model and model_profiles.resolve(model) and prompt is not None and output is not None:
+        usd = request_tiers.priced(usage, model, ttl, request_tiers.dollars)   # Each request at its own tier.
+        if usd is None:   # One request at its own prompt; several without their split: base rates, a lower bound.
+            complete, tier = complete and requests == 1, prompt if requests == 1 else 0
+            usd = request_tiers.dollars(usage, model_profiles.rates(model, ttl, prompt_tokens=tier))
     elif route.get("served_models") and _cost(usage.get("cost_usd")) is not None:
         usd = _cost(usage["cost_usd"])  # Claude Code's own list-price figure for a mixed-model turn.
     canonical = model_profiles.resolve(model) if model else None

@@ -88,6 +88,7 @@
 
 #include "wm.hh"
 #include "wm_angelo_consumed_input.hh"
+#include "wm_angelo_pointer_region.hh"
 #include "wm_event_system.hh"
 #include "wm_event_types.hh"
 #include "wm_surface.hh"
@@ -120,7 +121,15 @@ bool WM_angelo_in_agent_modal()
 static void angelo_note_input(const wmWindow *win, const wmEvent *event)
 {
 #ifdef WITH_PYTHON
-  BPY_angelo_guard_note_input(win, event->xy[0], event->xy[1], event->type, event->val);
+  /* A move or press reaches the region Blender's own handlers give it (the same two steps as
+   * `wm_event_do_handlers`): a consent region takes it only in that region, never under a
+   * sidebar, header, HUD, asset shelf or popup drawn over it (the review of f6b01a9..da9ba66,
+   * SHOULD 1). */
+  const ARegion *target = nullptr;
+  if (event->type == MOUSEMOVE || (event->type == LEFTMOUSE && event->val == KM_PRESS)) {
+    target = WM_angelo_pointer_region(win, event->xy);
+  }
+  BPY_angelo_guard_note_input(win, event->xy[0], event->xy[1], event->type, event->val, target);
 #else
   UNUSED_VARS(win, event);
 #endif
@@ -4211,17 +4220,6 @@ static eHandlerActionFlag wm_handlers_do(bContext *C,
  * Utilities used by #wm_event_do_handlers.
  * \{ */
 
-static bool wm_event_inside_rect(const wmEvent *event, const rcti *rect)
-{
-  if (wm_event_always_pass(event)) {
-    return true;
-  }
-  if (BLI_rcti_isect_pt_v(rect, event->xy)) {
-    return true;
-  }
-  return false;
-}
-
 static ScrArea *area_event_inside(bContext *C, const int xy[2])
 {
   wmWindow *win = CTX_wm_window(C);
@@ -4553,8 +4551,8 @@ static eHandlerActionFlag wm_event_do_handlers_area_regions(bContext *C,
     return action;
   }
 
-  /* Case 2. */
-  ARegion *region_hovered = ED_area_find_region_xy_visual(area, RGN_TYPE_ANY, event->xy);
+  /* Case 2. Angelo: the step the grant guard's input feed asks too (`wm_event_pointer_region`). */
+  ARegion *region_hovered = wm_event_area_region_xy(area, event->xy);
   if (!region_hovered) {
     return WM_HANDLER_CONTINUE;
   }
@@ -4750,12 +4748,9 @@ void wm_event_do_handlers(bContext *C)
             ED_area_azones_update(area, event->xy);
           }
 
-          /* Angelo: a 3D view under a worker's live view never takes input (`wm_angelo_input_hold.cc`). */
-          if (!wm_event_always_pass(event) && WM_angelo_input_held(&win, area)) {
-            continue;
-          }
-
-          if (wm_event_inside_rect(event, &area->totrct)) {
+          /* Angelo: a 3D view under a worker's live view never takes input (`wm_angelo_input_hold.cc`).
+           * The step the grant guard's input feed asks too (`wm_event_pointer_region`). */
+          if (wm_event_always_pass(event) || wm_event_area_takes_xy(&win, area, event->xy)) {
             CTX_wm_area_set(C, area);
 
             action |= wm_event_do_handlers_area_regions(C, event, area);

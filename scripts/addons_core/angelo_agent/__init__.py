@@ -38,6 +38,7 @@ def register():
     if bpy.app.background and os.environ.get("ANGELO_HEADLESS") == "1":   # The headless child registers its own.
         return
     import sys
+    from . import qa_environment  # noqa: F401  First: the QA switches as Angelo started (worker_process).
     from . import tls_distrust
     tls_distrust.install()   # First: every TLS connection in the app refuses compromised CA keys (tls_distrust).
     from . import change_clock
@@ -68,6 +69,9 @@ def register():
             if outcome in ("revealed", "kept"):   # One Angelo per state folder: the hidden session's window is the
                 print("Angelo: the Angelo already running is this launch's window (%s)." % outcome)   # person's now.
                 os._exit(0)
+    if sys.platform.startswith("linux") and not bpy.app.background:
+        from . import desktop_linux   # Its bus worker starts here, on the main thread at registration, never from a
+        desktop_linux.service()       # later caller's thread, which could be a script's (desktop_linux.service).
     timer_jobs.register()   # A load or a quit closes every running timer job before Blender's data goes (timer_jobs).
     layout_hold.register()   # A lock whose timer a load discarded is released.
     sys.modules["_console_angelo"] = console
@@ -76,6 +80,9 @@ def register():
     from . import script_confinement_blender   # Before any agent script: they run confined (script_confinement.rst).
     script_confinement_blender.install_app(bpy)
     script_confinement_blender.register_fixed_folders()   # Before any script region: C refuses it after.
+    ui.start_native_checks()   # After install_app: a check's private runtime profile is judged by C's folders.
+    from . import wrapped_ops
+    wrapped_ops.registry()   # Typed operations' declarations, frozen before any agent script can edit them.
     from . import document_identity
     document_identity.register()   # The document's saved id (save_pre) and a failed load (load_post_fail).
     from . import restored_document   # Only a file under the state folder's checkpoints is a Restore's working copy.
@@ -113,8 +120,26 @@ def register():
     render_region.register()   # A region rendered over the last render (doc/angelo/render_region.rst).
     from . import uv_checker
     uv_checker.register()   # The viewport UV checker's toggle, card and + menu row (doc/angelo/uv_checker.rst).
+    from . import rigging_ops
+    rigging_ops.register()   # Retarget by role, game rig, root motion, action clips (doc/angelo/rigging.rst).
+    from . import ik_controls
+    ik_controls.register()   # IK controls and the IK/FK switch on any humanoid, by role (doc/angelo/rigging.rst).
+    from . import uv_layout_ui
+    uv_layout_ui.register()   # UV Layout: unwrap and pack for one texture set (its page in doc/angelo).
+    from . import loops_menu
+    loops_menu.register()   # The Loops menu: native LoopTools tools under LoopTools' names (doc/angelo/features.rst).
+    from . import shape_cut_tool
+    shape_cut_tool.register()   # Shape Cut: draw a shape on a surface to cut it, live (doc/angelo/shape_cut.rst).
+    from . import collision_fit
+    collision_fit.register()   # Convex collision hulls as Game Physics colliders for every engine (game_physics.rst).
+    from . import splat_mesh
+    splat_mesh.register()   # Gaussian splats to collision and visual meshes, and splat PLY export (features.rst).
     from . import skeleton_check_ui
     skeleton_check_ui.register()   # Check a rig for a game engine: + menu row and card (doc/angelo/engine_skeleton.rst).
+    from . import scatter_ui
+    scatter_ui.register()   # Scatter: assets on a surface by rules, as Geometry Nodes (doc/angelo/scatter.rst).
+    from . import look_ui
+    look_ui.register()   # Camera Look: lens and film look, Render tools row (doc/angelo/camera_look.rst).
     chat_launcher.register()   # Angelo in the 3D view's corner while the chat is hidden; a click opens it.
     asset_shelf_add.register()   # Generate on every Asset Shelf: Media Studio on the shelf's tab.
     media_shelf.register()   # Object mode's Asset Shelf: models and materials, Media Studio's included.
@@ -124,6 +149,10 @@ def register():
     photo_drop.register()   # A photo dropped on the 3D view: Angelo's drop card (doc/angelo/photo_drop.rst).
     from . import tension_map
     tension_map.register()   # Tension map: stretch and compression on the 3D view (doc/angelo/tension_map.rst).
+    from . import retopology_ui
+    retopology_ui.register()   # Retopology's row in the + menu's Model group (doc/angelo/retopology.rst).
+    from . import markup_ui
+    markup_ui.register()   # Mark up a picture for the agent (doc/angelo/attachment_markup.rst).
     from . import shelf_empty
     shelf_empty.register()   # A shelf that lists nothing says so and offers Media Studio.
     from . import export_baked, web_export_ui, web_shader_ui
@@ -145,6 +174,11 @@ def register():
     feedback_ui.register()   # Report a bug / Request a feature: the + menu's Feedback rows (app_identity.rst).
     from . import learn_ui
     learn_ui.register()   # Learn: the + menu's page and Teach me as you work (doc/angelo/learn_mode.rst).
+    from . import planning_ui
+    planning_ui.register()   # Plan mode's Go and Stop planning (doc/angelo/plan_mode.rst).
+    from . import context_folder_ui, rules_ui
+    context_folder_ui.register()   # Folder as context: the + menu footer (agent_chat.rst).
+    rules_ui.register()   # Rules: standing instructions, the + menu footer's page (doc/angelo/agent_chat.rst).
 
 
 def unregister():
@@ -157,8 +191,11 @@ def unregister():
     from . import asset_shelf_add, chat_launcher, chat_toggle, media_shelf, studio_toggle, web_export_ui, web_shader_ui
     from . import game_physics_ui
     from . import director_select_through, engine_link_ui, engine_suggest_ui, library_ui, shelf_empty, shot_capture_ui
-    from . import feedback_ui, grant_hints, learn_ui
+    from . import context_folder_ui, feedback_ui, grant_hints, learn_ui, planning_ui, rules_ui
+    planning_ui.unregister()
     grant_hints.unregister()   # No hint or draw handler outlives the add-on.
+    rules_ui.unregister()
+    context_folder_ui.unregister()
     learn_ui.unregister()
     feedback_ui.unregister()
     director_select_through.unregister()
@@ -166,6 +203,10 @@ def unregister():
     library_ui.unregister()   # Its workers stop; nothing is downloading after the add-on.
     engine_link_ui.unregister()   # Stops the engine link: its server and record never outlive the add-on.
     shot_capture_ui.unregister()
+    from . import markup_ui
+    markup_ui.unregister()
+    from . import retopology_ui
+    retopology_ui.unregister()
     from . import tension_map
     tension_map.unregister()
     from . import photo_drop
@@ -180,11 +221,28 @@ def unregister():
     media_shelf_cover.unregister()
     media_shelf.unregister()
     asset_shelf_add.unregister()
-    from . import ai_render_card, bake_maps_card, render_engines, render_region, skeleton_check_ui, uv_checker
+    from . import (ai_render_card, bake_maps_card, look_ui, render_engines, render_region, scatter_ui,
+                   skeleton_check_ui, uv_checker)
+    scatter_ui.unregister()
+    look_ui.unregister()
     skeleton_check_ui.unregister()
     bake_maps_card.unregister()
     render_region.unregister()
     uv_checker.unregister()
+    from . import ik_controls
+    ik_controls.unregister()
+    from . import rigging_ops
+    rigging_ops.unregister()
+    from . import loops_menu
+    loops_menu.unregister()
+    from . import shape_cut_tool
+    shape_cut_tool.unregister()
+    from . import splat_mesh
+    splat_mesh.unregister()
+    from . import collision_fit
+    collision_fit.unregister()
+    from . import uv_layout_ui
+    uv_layout_ui.unregister()
     ai_render_card.unregister()
     render_engines.unregister()
     studio_toggle.unregister()

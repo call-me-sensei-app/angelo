@@ -102,7 +102,7 @@ class FakeWriteBack:
     def __init__(self):
         self.requests, self.done, self.running, self.baked, self.saved = [], [], False, [], []
 
-    def request(self, key, blend, target, exporter, options, baked=(), stamp=None, saved=None):
+    def request(self, key, blend, target, exporter, options, baked=(), stamp=None, saved=None, engine=None):
         self.requests.append((key, blend, target, exporter, options))
         self.saved.append(saved)
         self.baked.append(list(baked))

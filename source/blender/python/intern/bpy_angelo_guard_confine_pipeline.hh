@@ -50,6 +50,7 @@ enum class Special : char {
   None,
   Refuse,           /* Refused outright while confined (native code: `Plug.Registry.RegisterPlugins`). */
   RefuseGlobal,     /* Refused outright while confined (a process-wide setting outliving the script). */
+  RefuseProgram,    /* Refused outright while confined (opening it can start a program: a sound server). */
   SearchName,       /* arg 0 a name searched for in arg 1's folders (oslquery: `name`, `name.oso`). */
   MxRead,           /* MaterialX readers: arg 0/1 judged against the search path; XIncludes judged. */
   MxXInclude,       /* MaterialX: the read options' XInclude reader judged (readOptions position in args[1]). */

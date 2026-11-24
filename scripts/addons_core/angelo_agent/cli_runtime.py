@@ -4,7 +4,8 @@
 
 A Finder-launched macOS app inherits the minimal ``/usr/bin:/bin:/usr/sbin:/sbin``
 PATH, so ``shutil.which`` alone misses Homebrew, npm-global and nvm/Volta/asdf
-installs. Codex is Angelo's agent runtime when the app has one (``agent_runtime``);
+installs; a Linux desktop launcher's PATH likewise often lacks ``~/.local/bin``,
+Homebrew on Linux, Snap and Nix profiles. Codex is Angelo's agent runtime when the app has one (``agent_runtime``);
 otherwise discovery tries, in order: the configured path, PATH, the
 fixed app-bundle path, a bounded list of well-known directories (no process is
 spawned) and, only when all of those miss, the PATH a login shell exports (one
@@ -37,23 +38,29 @@ from . import agent_runtime, child_process, cli_windows, owned_paths
 from .protocol import RpcError
 
 
-def _process_path():
-    """PATH as the process environment holds it (the C environment C's may_run reads), never os.environ's Python
+def _process_env(name):
+    """``name`` as the process environment holds it (the C environment C's may_run reads), never os.environ's Python
     copy, which a script can rewrite in place (os.environ._data) without the environment: a runtime is never searched
-    for on a PATH a script rewrote (the break-it review of 29b385a6645, SHOULD-2). C puts the real environment back
-    after every script region; os.environ's own changes (putenv) reach it."""
+    for on a PATH or prefix a script rewrote (the break-it review of 29b385a6645, SHOULD-2; of the Linux runtime,
+    NIT-1). C puts the real environment back after every script region; os.environ's own changes (putenv) reach it."""
     try:
         import ctypes
         if os.name == "nt":
             buffer = ctypes.create_unicode_buffer(32767)
-            length = ctypes.windll.kernel32.GetEnvironmentVariableW("PATH", buffer, len(buffer))
+            length = ctypes.windll.kernel32.GetEnvironmentVariableW(name, buffer, len(buffer))
             return buffer.value if 0 < length < len(buffer) else ""
         libc = ctypes.CDLL(None)
         libc.getenv.restype = ctypes.c_char_p
-        value = libc.getenv(b"PATH")
+        value = libc.getenv(os.fsencode(name))
         return os.fsdecode(value) if value is not None else ""
     except (OSError, AttributeError, ValueError):
-        return os.environ.get("PATH", "")
+        return os.environ.get(name, "")
+
+
+def _process_path():
+    """PATH from the process environment (``_process_env``), with only its absolute folders: an empty or relative
+    entry (``PATH=$PATH:`` is common) would make ``shutil.which`` search the current folder."""
+    return os.pathsep.join(entry for entry in _process_env("PATH").split(os.pathsep) if os.path.isabs(entry))
 
 RUNTIMES = {
     # Moved at every release (doc/angelo/ai_providers.rst, "Claude Code's range"): the floor is the newest release
@@ -70,15 +77,26 @@ RUNTIMES = {
 }
 INSTALL = {"claude": "npm install -g @anthropic-ai/claude-code, or brew install --cask claude-code",
            "codex": "npm install -g @openai/codex, or brew install --cask codex"}
+# Linux has no Homebrew casks: Claude Code's own installer or npm, and npm for Codex (a release bundles its own).
+LINUX_INSTALL = {"claude": "curl -fsSL https://claude.ai/install.sh | bash, or npm install -g @anthropic-ai/claude-code",
+                 "codex": "npm install -g @openai/codex"}
+LINUX_UPDATE = {"claude": "claude update, or npm install -g @anthropic-ai/claude-code",
+                "codex": "npm install -g @openai/codex"}
 CODEX_BUNDLE = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"
 
 PROBE_SECONDS = 2.0          # The login-shell probe is killed after this long, once per process.
 PROBE_OUTPUT_LIMIT = 16384   # Bytes of its output read; a profile that prints more is ignored.
 VERSION_DIRECTORIES = 6      # Newest nvm/fnm node versions searched; never an unbounded walk.
 # Under ~: version managers and package-manager prefixes, then the CLIs' own install locations.
+# ``.claude/local`` is Claude Code's own per-user install; ``.linuxbrew`` and ``.nix-profile`` are Homebrew on Linux
+# and Nix's per-user profile.
 HOME_DIRECTORIES = (".local/bin", ".npm-global/bin", ".volta/bin", ".asdf/shims", ".local/share/mise/shims",
-                    ".nodenv/shims", ".bun/bin", ".yarn/bin", "Library/pnpm", ".local/share/pnpm", ".cargo/bin")
-SYSTEM_DIRECTORIES = ("/opt/homebrew/bin", "/usr/local/bin", "/opt/local/bin", "/usr/bin")
+                    ".nodenv/shims", ".bun/bin", ".yarn/bin", "Library/pnpm", ".local/share/pnpm", ".cargo/bin",
+                    ".claude/local", ".linuxbrew/bin", ".nix-profile/bin")
+# Then Snap and Nix's shared profiles: a Linux desktop launcher's PATH often lacks them. Homebrew on Linux is found
+# through HOMEBREW_PREFIX (its shellenv exports it) or ~/.linuxbrew.
+SYSTEM_DIRECTORIES = ("/opt/homebrew/bin", "/usr/local/bin", "/opt/local/bin", "/usr/bin", "/snap/bin",
+                      "/nix/var/nix/profiles/default/bin", "/run/current-system/sw/bin")
 VERSION_HOMES = (".nvm/versions/node", ".local/share/fnm/node-versions", "Library/Application Support/fnm/node-versions")
 
 _login_path = None
@@ -110,12 +128,15 @@ def _version_directories(home):
 
 def known_directories(environ=None, home=None):
     """Existing, de-duplicated directories where these CLIs are normally installed (no process spawned)."""
-    environ, home = os.environ if environ is None else environ, Path.home() if home is None else Path(home)
+    home = Path.home() if home is None else Path(home)
+    lookup = _process_env if environ is None else (lambda name: environ.get(name, ""))
     configured = []
-    for variable, relative in (("NPM_CONFIG_PREFIX", "bin"), ("npm_config_prefix", "bin"), ("VOLTA_HOME", "bin"),
+    for variable, relative in (("NPM_CONFIG_PREFIX", "bin"), ("npm_config_prefix", "bin"), ("HOMEBREW_PREFIX", "bin"),
+                               ("VOLTA_HOME", "bin"),
                                ("ASDF_DATA_DIR", "shims"), ("PNPM_HOME", ""), ("BUN_INSTALL", "bin"), ("N_PREFIX", "bin")):
-        if environ.get(variable) and os.path.isabs(environ[variable]):
-            configured.append(Path(environ[variable]) / relative)
+        value = lookup(variable)
+        if value and os.path.isabs(value):
+            configured.append(Path(value) / relative)
     candidates = [*configured, *(home / relative for relative in HOME_DIRECTORIES), *map(Path, SYSTEM_DIRECTORIES),
                   *_version_directories(home)]
     unique = []
@@ -195,11 +216,14 @@ def _tilde(directory):
 
 def not_found_message(name, configured="", searched=(), platform=None):
     """What to do when a CLI cannot be found: install it, or point Angelo at it."""
-    spec, windows = RUNTIMES[name], (platform or sys.platform) == "win32"
+    platform = platform or sys.platform
+    spec, windows, linux = RUNTIMES[name], platform == "win32", platform.startswith("linux")
     shown = ", ".join(_tilde(directory) for directory in searched[:8]) + (", ..." if len(searched) > 8 else "")
-    lookup = f"`where.exe {name}` in PowerShell" if windows else f"`which {name}` in Terminal"
+    lookup = (f"`where.exe {name}` in PowerShell" if windows else f"`which {name}` in a terminal" if linux
+              else f"`which {name}` in Terminal")
+    install = cli_windows.INSTALL[name] if windows else LINUX_INSTALL[name] if linux else INSTALL[name]
     return (f"{spec['label']} was not found" + (f" at the configured path {configured}" if configured else "")
-            + f". Install the official CLI ({cli_windows.INSTALL[name] if windows else INSTALL[name]}), then reconnect. "
+            + f". Install the official CLI ({install}), then reconnect. "
             f"If it is already installed, run {lookup} and choose that file as the connection's Executable. "
             + (f"Searched PATH and {shown}." if shown else "Searched PATH."))
 
@@ -325,7 +349,10 @@ def _find_node(env):
 
 
 def runtime_command(command, env, windows=None):
-    """``command`` as Windows starts it without cmd.exe (an npm shim becomes node.exe and its script); else unchanged."""
+    """``command`` as Windows starts it without cmd.exe (an npm shim becomes node.exe and its script); else unchanged.
+    A start of the agent runtime is checked first (``agent_runtime.check_start``), before a shim's rewrite hides
+    which program it starts."""
+    agent_runtime.check_start(list(command), {"env": env})
     if not (os.name == "nt" if windows is None else windows):
         return command
     try:
@@ -366,8 +393,9 @@ def format_version(version):
 
 
 def too_old_message(name, found=None, platform=None):
-    spec = RUNTIMES[name]
-    update = cli_windows.INSTALL[name] if (platform or sys.platform) == "win32" else spec["update"]
+    spec, platform = RUNTIMES[name], platform or sys.platform
+    update = (cli_windows.INSTALL[name] if platform == "win32" else LINUX_UPDATE[name] if platform.startswith("linux")
+              else spec["update"])
     return (f"Angelo requires {spec['label']} {format_version(spec['floor'])} or newer ("
             + (f"found {format_version(found)}" if found else "its version could not be read")
             + f"). Update the official CLI ({update}), or choose a supported executable in the connection's settings.")

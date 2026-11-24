@@ -36,8 +36,9 @@ import scenario_specs as specs  # noqa: E402
 
 PNG = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" + (2560).to_bytes(4, "big") + (1440).to_bytes(4, "big") + b"\x08\x02\x00\x00\x00"
 # 1,000,000 fresh prompt tokens and 100,000 output tokens of GPT-6 Astra at list prices: 10 + 5 dollars.
+# Five model requests of 200K prompt tokens, none above GPT's 272K price step (request_tiers): base rates.
 ASTRA_USAGE = {"input_tokens": 1_000_000, "cached_input_tokens": 0, "cache_write_input_tokens": 0,
-               "output_tokens": 100_000}
+               "output_tokens": 100_000, "requests": 5, "above_step": {}}
 
 
 class Controller:
@@ -217,15 +218,16 @@ class CapTests(unittest.TestCase):
         self.assertEqual(controller.stops, 0)
         self.assertIsNone(unknown.state["watch"]["cost_usd"])     # Recorded as unknown, not as zero.
 
-    def claude_line(self, identity, output_tokens):
+    def claude_line(self, identity, output_tokens, input_tokens=250_000):
         return (0.0, {"type": "assistant", "message": {"id": identity, "usage": {
-            "input_tokens": 500_000, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0,
+            "input_tokens": input_tokens, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0,
             "output_tokens": output_tokens}}})
 
     def test_mcp_side_is_interrupted_at_the_cost_cap(self):
         with tempfile.TemporaryDirectory() as folder:
-            slices = [([self.claude_line("m1", 10_000)], None, "deadline"),      # 5.5 USD: under the cap.
-                      ([self.claude_line("m2", 60_000)], None, "deadline"),      # 13.5 USD in total: over it.
+            # GPT-6 Astra: two requests of 250K prompt tokens, each within the 272K price step (base rates).
+            slices = [([self.claude_line("m1", 10_000)], None, "deadline"),      # 3.0 USD: under the cap.
+                      ([self.claude_line("m2", 150_000)], None, "deadline"),     # 13.0 USD in total: over it.
                       ([(0.0, {"type": "result", "subtype": "error_during_execution"})],
                        {"type": "result", "subtype": "error_during_execution"}, None)]
             stream, calls = OneMessageTests.stream(self, slices)
@@ -234,7 +236,7 @@ class CapTests(unittest.TestCase):
             mcp_scenario.guard(stream, config, Path(folder), output)
             events, result, problem = stream.collect(time.monotonic() + 600, "brief")
         self.assertEqual(calls["interrupts"], 1)
-        self.assertEqual(output["oneshot"]["stop"], {"reason": "cost_cap", "cost_usd": 13.5, "cap_usd": 10.0})
+        self.assertEqual(output["oneshot"]["stop"], {"reason": "cost_cap", "cost_usd": 13.0, "cap_usd": 10.0})
         self.assertEqual((len(events), result["subtype"], problem), (3, "error_during_execution", None))
         record = {"status": "failed", "result": {"subtype": "error_during_execution"}, "tool_calls": []}
         self.assertEqual(metrics.mcp_path(record, [], output["oneshot"])["stop"]["reason"], "cost_cap")

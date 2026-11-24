@@ -200,7 +200,7 @@ class GroupTests(unittest.TestCase):
     def test_summary_and_live_titles(self):
         steps = [step("angelo_inspect_scene"), step("angelo_scene_program"), step("angelo_execute_python"),
                  step("angelo_view")]
-        self.assertEqual(text.group_title(steps, live=True), "Working on the scene · 4 steps")
+        self.assertEqual(text.group_title(steps, live=True), "Working · 4 steps")
         self.assertEqual(text.group_status(steps, live=True), "running")
         self.assertEqual(text.group_title(steps, live=False), "Made 2 changes · Checked 2 things")
         self.assertEqual(text.group_status(steps, live=False), "done")
@@ -260,12 +260,24 @@ class GroupTests(unittest.TestCase):
         jobs = [step("angelo_job_start"), step("angelo_job_start")]
         self.assertEqual(text.group_title(jobs, live=False), "Ran 2 background jobs")
 
+    def test_a_running_group_never_names_what_its_steps_have_not_shown(self):
+        # While a turn runs, the header can't know what its steps change: a library search, a web export or a
+        # background job changes no scene. It says only that work is under way; each step row names what it does.
+        for steps in ([step("angelo_library_search"), step("angelo_web_export", "running")],
+                      [step("angelo_job_start"), step("angelo_memory_update", "running")],
+                      [step("angelo_scene_program"), step("angelo_view", "running")]):
+            with self.subTest(steps=[s["tool"] for s in steps]):
+                title = text.group_title(steps, live=True)
+                self.assertEqual(title, "Working · 2 steps")
+                self.assertNotIn("scene", title)
+        self.assertEqual(text.group_title([step("angelo_view", "running")], live=True), "Working · 1 step")
+
     def test_a_live_group_keeps_its_newest_step_in_view(self):
         blocks = [self.block("user", "u"), self.block("activity", "a1"), self.block("activity", "a2", status="running")]
         folded = chat_rows.group_blocks(blocks, set(), live=True)
         self.assertEqual([b[0] for b in folded], ["user", "activity_group", "activity"])
         self.assertTrue(folded[1][1]["live"])
-        self.assertEqual(folded[1][1]["title"], "Working on the scene · 2 steps")
+        self.assertEqual(folded[1][1]["title"], "Working · 2 steps")
         self.assertEqual(folded[2][4], "a2")
 
 

@@ -53,6 +53,7 @@ from angelo_agent import (chat_launcher, connect_hero, console, live_view, live_
                           session_rail_draw, worker_request, worker_routing, worker_sessions)
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
 from hosted_worker_chat import connect, hosted, install_stand_in  # noqa: E402
+import qa_hit
 
 REQUEST = "A tea set on a wooden table: a kettle and a mug. Build it."
 REPLY = "Glazed or plain mug?"   # The lead's: never in a worker's brief.
@@ -107,9 +108,7 @@ def tile_point(session):
     tile = next((t for t in placed[1].tiles if t.session == session), None) if placed else None
     if tile is None:
         return None
-    region = view_region()
-    x, y, w, h = tile.rect
-    return int(region.x + x + w / 2), int(region.y + y + h / 2)
+    return qa_hit.ipoint(qa_hit.RAW, view_region(), tile.rect)   # The rail reads region pixels.
 
 
 def worker_chat():

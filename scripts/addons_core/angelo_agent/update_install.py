@@ -3,8 +3,8 @@
 """Handing a prepared update to its installer, and reading back what the installer did.
 
 Contract: doc/angelo/updates_and_reports.rst, "Installing updates". The
-installers are two small scripts shipped with the add-on
-(``update_helpers/install_update_macos.sh`` and ``install_update_windows.cmd``, with its
+installers are small scripts shipped with the add-on
+(``update_helpers/install_update_macos.sh``, ``install_update_linux.sh`` and ``install_update_windows.cmd``, with its
 ``other_copies_windows.ps1``).
 Angelo copies the platform's script into the update's own folder, so it never
 runs from the app it replaces, and starts it detached with every input in an
@@ -17,7 +17,7 @@ The next launch reads the result (``results``).
 
 The relaunched app keeps the variables that chose how Angelo was started
 (``ANGELO_*``, ``BLENDER_*``, a fixed home folder): on macOS they are passed
-with ``open --env``, on Windows the script's own environment carries them. The
+with ``open --env``, on Windows and Linux the script's own environment carries them. The
 values Angelo sets for itself while it runs (its bytecode cache, the bundled
 colour configuration, graphics layers) are left out, so the new build sets its
 own, and so is any variable named like a secret (``SECRET_PARTS``): ``open``'s
@@ -36,7 +36,8 @@ from pathlib import Path
 
 from . import essential_environment, owned_paths, product_env
 
-HELPERS = {"macos": "install_update_macos.sh", "windows": "install_update_windows.cmd"}
+HELPERS = {"macos": "install_update_macos.sh", "windows": "install_update_windows.cmd",
+           "linux": "install_update_linux.sh"}
 # Files a script runs beside it, copied out with it: the Windows script's check for another copy of this install.
 COMPANIONS = {"windows": ("other_copies_windows.ps1",)}
 HELPER_FOLDER = Path(__file__).resolve().parent / "update_helpers"
@@ -63,7 +64,7 @@ CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW, CREATE_BREAKAWAY_FROM_JOB = 0x200, 0
 
 @dataclass(frozen=True)
 class Request:
-    """What the installer needs. ``family`` is ``macos`` or ``windows``; unused fields stay empty."""
+    """What the installer needs. ``family`` is ``macos``, ``windows`` or ``linux``; unused fields stay empty."""
 
     family: str
     work: Path            # This update's folder (the script, its marker, result and log).
@@ -73,10 +74,14 @@ class Request:
     relaunch: bool = True
     open_file: str = ""   # The file the relaunched app opens.
     app: str = ""         # macOS: the installed bundle.
-    new: str = ""         # macOS: the verified new bundle.
+    new: str = ""         # macOS: the verified new bundle; Linux: the checked release folder.
     msi: str = ""         # Windows: the verified installer.
-    root: str = ""        # Windows: the install folder.
-    launcher: str = ""    # Windows: the program the shortcuts start.
+    root: str = ""        # Windows and Linux: the install folder.
+    launcher: str = ""    # Windows: the program the shortcuts start; Linux: what to start, its path inside the folder.
+    program: str = ""     # Linux: the running executable's path inside the folder (another copy running it stops).
+    kept: str = ""        # Linux: where the two-rename fallback keeps the previous folder (translated, unused name).
+    note: str = ""        # Linux: the fallback's recovery note beside the install, and its text (translated).
+    note_text: str = ""
     requirement: str = ""  # macOS: the code requirement the new bundle must meet, checked again before the swap.
     sha256: str = ""       # Windows: the installer's digest from the signed feed, checked again before msiexec.
     invocation: str = ""   # Exact private committed-quit channel identity (32 lowercase hex characters).
@@ -130,6 +135,10 @@ def inputs(request, environ):
         values.update(APP=request.app, NEW=request.new, RELAUNCH="1" if request.relaunch else "0",
                       REQUIREMENT=request.requirement, GATEKEEPER="1" if request.gatekeeper else "0",
                       ENV="\n".join("%s=%s" % item for item in sorted(carried.items())))
+    elif request.family == "linux":
+        values.update(ROOT=request.root, NEW=request.new, PROGRAM=request.program, KEPT=request.kept,
+                      NOTE=request.note, NOTE_TEXT=request.note_text,
+                      RELAUNCH=request.launcher if request.relaunch else "")
     else:
         values.update(MSI=request.msi, ROOT=request.root, SHA256=request.sha256,
                       RELAUNCH=request.launcher if request.relaunch else "")
@@ -174,7 +183,7 @@ def start(request, environ=None, popen=subprocess.Popen):
     script = prepare_folder(request)
     env = helper_environment(request, environ)
     quiet = dict(stdin=subprocess.PIPE, bufsize=0, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=str(request.work))
-    if request.family == "macos":
+    if request.family in ("macos", "linux"):
         return popen(["/bin/bash", "--noprofile", "--norc", str(script)], env=env, start_new_session=True, close_fds=True, **quiet)
     flags = CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
     command = [os.path.join(environ.get("SystemRoot", r"C:\Windows"), "System32", "cmd.exe"), "/d", "/c", str(script)]
@@ -219,10 +228,12 @@ def needs_reboot(result):
 
 
 def family(platform_key=None):
-    """``macos``, ``windows`` or "" for a feed platform key (``update_feed.platform_key``)."""
+    """``macos``, ``windows``, ``linux`` or "" for a feed platform key (``update_feed.platform_key``)."""
     key = platform_key if platform_key is not None else sys.platform
     if key.startswith("macos") or key == "darwin":
         return "macos"
     if key.startswith("win"):
         return "windows"
+    if key.startswith("linux"):
+        return "linux"
     return ""

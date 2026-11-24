@@ -13,6 +13,7 @@
 #include "BLI_threads.hh"
 
 #include "GPU_context.hh"
+#include "GPU_init_exit.hh"
 
 #include "IMB_colormanagement_intern.hh"
 #include "IMB_filetype.hh"
@@ -44,6 +45,11 @@ void IMB_ensure_gpu_context()
   BLI_assert(BLI_thread_is_main());
 
   if (g_gpu_context.gpu_context) {
+    return;
+  }
+  /* No GPU context was ever created (a machine without a usable GPU, #WM_gpu_is_available): there
+   * is nothing to share, and image work stays on the CPU. */
+  if (!GPU_is_init()) {
     return;
   }
 

@@ -1299,6 +1299,10 @@ static void wm_file_read_post(bContext *C,
       }
       if (reset_all) {
         const char *imports[] = {"bpy", "addon_utils", nullptr};
+        /* Angelo: a preference read may turn Strict script protection off (its sync, from reset_all). */
+        if (use_userdef) {
+          BPY_angelo_guard_preferences_read(true);
+        }
         BPY_run_string_exec(
             C,
             imports,
@@ -1309,6 +1313,9 @@ static void wm_file_read_post(bContext *C,
             "bpy.utils.refresh_script_paths()\n"
             /* Sync add-ons, these may have changed from the defaults. */
             "addon_utils.reset_all()");
+        if (use_userdef) {
+          BPY_angelo_guard_preferences_read(false);
+        }
       }
       if (use_data) {
         BPY_python_reset(C);
@@ -1838,6 +1845,9 @@ bool WM_file_read(bContext *C,
   if (!wm_file_restore_admit(reports)) {
     return false;
   }
+#ifdef WITH_PYTHON
+  BPY_angelo_guard_connections_ready(); /* The start snapshot first: the document's paths may connect shares. */
+#endif
   /* Assume automated tasks with background, don't write recent file list. */
   const bool do_history_file_update = (G.background == false) &&
                                       (CTX_wm_manager(C)->op_undo_depth == 0);
@@ -2251,6 +2261,9 @@ bool wm_homefile_read_ex(bContext *C,
 
   if (!use_factory_settings || (filepath_startup[0] != '\0')) {
     if (BLI_access(filepath_startup, R_OK) == 0) {
+#ifdef WITH_PYTHON
+      BPY_angelo_guard_connections_ready(); /* The start snapshot first: the file's paths may connect shares. */
+#endif
       BlendFileReadParams params{};
       params.is_startup = true;
       params.is_factory_settings = use_factory_settings;

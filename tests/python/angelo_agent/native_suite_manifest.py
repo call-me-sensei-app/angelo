@@ -209,6 +209,24 @@ SUITES = (
           "one Undo step for all), the stale-fix refusal, and .glb and .fbx round trips that find units, leaf bones, "
           "dropped weights and local paths and leave nothing in the file",
           Report("results.json"), timeout=240, notes="No provider, account or network."),
+    Suite("test_blender_shape_cut.py", BACKGROUND,
+          "Shape Cut's Booleans in Blender: every operation's volume, a thin shell, an open mesh, a curved face, "
+          "live cutters and arrays, the finishing order, apply-and-clean with a Mirror before and a slice piece",
+          Report("results.json"), timeout=240, notes="No provider, account or network."),
+    Suite("test_blender_uv_layout.py", BACKGROUND,
+          "UV Layout and Pack Islands' Search in Blender: search never looser and repeatable, density on target and "
+          "spilling to tiles, mip-safe gaps, stacked congruent parts, a tile per group, kit.uv_layout's receipt",
+          Report("results.json"), timeout=300, notes="No provider, account or network."),
+    Suite("test_blender_uv_layout_gui.py", GUI,
+          "UV Layout by hand: each pack runs as Pack Islands' job while the interface keeps going, and Esc stops "
+          "the layout and puts every UV back",
+          Report("uv-layout-gui.json", require_complete_phase=True), timeout=300, event_simulate=True,
+          notes="No provider, account or network."),
+    Suite("test_blender_uv_layout_job.py", GUI,
+          "The agent's UV_LAYOUT job: admission, progress, the scene guard, a done receipt with the person's mode, "
+          "selection and settings back, one Undo, and a cancel that puts every UV back",
+          Report("uv-layout-job.json", require_complete_phase=True), timeout=300,
+          notes="Stand-in conversation; no provider, account or network."),
     Suite("test_blender_script_booleans.py", BACKGROUND,
           "A script's Booleans measured where the executor runs it: applied and live rows, the facts at the extremes, "
           "bpy.ops put back, and the kit's crowded and retried cuts proving the volume they removed",
@@ -460,11 +478,54 @@ SUITES = (
           platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
           notes="Stand-in claude/codex CLIs (fake_provider_cli.py) answer start-up sign-in checks; no account or inference.",
           harness=True),
+    Suite("test_blender_markup_director_gui.py", GUI,
+          "Mark up a picture in Director: the + menu row opens the 3D view in the viewer; a pen stroke and an arrow, "
+          "Undo and Redo, a comment pin with its note, typed instructions, Send to Angelo with both pictures",
+          Report("markup-director.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          timeout=420, platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
+          notes="Stand-in claude/codex CLIs (fake_provider_cli.py) answer start-up sign-in checks; no account or inference.",
+          harness=True,
+          variants=(Variant("en", (), "English"),
+                    Variant("ar", (("ANGELO_MARKUP_QA_LANGUAGE", "ar_EG"),), "Arabic: the bars mirror, the picture never"),
+                    Variant("narrow", (), "A narrow 1024 x 700 window", (1024, 700)))),
     Suite("test_blender_uv_checker_director_gui.py", GUI,
           "Viewport UV checker in Director: F3 turns it on, the + menu's row opens its card, clicks choose patterns, "
           "repeats, objects and a named UV map, Edit Mode stays live, heavy-scene draw time off/on, F3 turns it off",
           Report("uv-checker-director.json", require_complete_phase=True), event_simulate=True, default_chat=True,
           timeout=600, platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
+          notes="Stand-in claude/codex CLIs (fake_provider_cli.py) answer start-up sign-in checks; no account or inference.",
+          harness=True),
+    Suite("test_blender_agent_ux_director_gui.py", GUI,
+          "2.1.0 chat features in Director: + menu Rules (this project, all projects), an @ mention picked and sent, a "
+          "script card's Always run this exact script (remembered, run, removed from Rules > Scripts), Folder as "
+          "context through Blender's file browser, each of those grants refused to a script and to code with no "
+          "press, the vetted folders refused even to the person, chat search finding a word of Angelo's reply",
+          Report("agent-ux-director.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          timeout=480, platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
+          notes="The stand-in claude CLI (fake_provider_cli.py) plays scripted rounds; no account, network or "
+                "inference.", harness=True),
+    Suite("test_blender_loops_menu.py", GUI,
+          "Loops menu in Director: each item (Bridge, Circle, Curve, Flatten, Gstretch, Relax, Space) from the "
+          "right-click menu by keyboard on a real loop changes it as that tool does; the Edge menu's Loops runs "
+          "Relax; F3 'gstretch' runs Gstretch to Annotation",
+          Report("loops-menu.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          timeout=600, platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
+          notes="Stand-in claude/codex CLIs (fake_provider_cli.py) answer start-up sign-in checks; no account or inference.",
+          harness=True),
+    Suite("test_blender_splat_export_director_gui.py", GUI,
+          "Export Splats in the confined app, Director: the person's export opens the save browser in the document's "
+          "folder with one clean name whatever the object is called, Return writes it, nothing where the name pointed; "
+          "an assistant script's path outside Angelo's folders, or an existing file of the person's, is refused with "
+          "nothing written; the browser asks before replacing; a typed name keeps .ply",
+          Report("splat-export-director.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          timeout=300, platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
+          notes="Stand-in claude/codex CLIs (fake_provider_cli.py) answer start-up sign-in checks; no account or inference."),
+    Suite("test_blender_retopology_director_gui.py", GUI,
+          "Retopology in Director: the + menu's Model group lists it, its row without a mesh changes nothing, with a "
+          "scan selected it opens the options and Return runs the job; an all-quad result near the face target with "
+          "its facts, the scan unchanged; Ctrl+Z / Ctrl+Shift+Z",
+          Report("retopology-director.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          timeout=420, platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
           notes="Stand-in claude/codex CLIs (fake_provider_cli.py) answer start-up sign-in checks; no account or inference.",
           harness=True),
     Suite("test_blender_voxel_remesh_guard_gui.py", GUI,
@@ -478,6 +539,14 @@ SUITES = (
           timeout=300, platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
           notes="Stand-in claude/codex CLIs (fake_provider_cli.py) answer start-up sign-in checks; no account or inference.",
           harness=True),
+    Suite("test_blender_clip_export_director_gui.py", GUI,
+          "Export Action Clips in the confined app, Director, before and after a script region: the browser opens in "
+          "the document's folder with one clean name whatever the armature is called; a clip file of the person's is "
+          "listed in it and replaced only with Replace ticked in that run; after a cancel no script writes the picked "
+          "file, nor a path outside Angelo's folders, nor over the person's clip",
+          Report("clip-export-director.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          timeout=300, platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
+          notes="Stand-in claude/codex CLIs (fake_provider_cli.py) answer start-up sign-in checks; no account or inference."),
     Suite("test_blender_branding.py", GUI, "Native menu/logo branding",
           Report("branding.json", require_complete_phase=True)),
     Suite("test_blender_window_chrome.py", GUI,
@@ -515,6 +584,14 @@ SUITES = (
           platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
           notes="Stand-in claude CLI (fake_provider_cli.py) for the connection; steps requested as a provider's MCP "
                 "call requests them; the app's own tool pump; no account, network or inference.", harness=True),
+    Suite("test_blender_covered_approve.py", GUI,
+          "A menu over a chat card's armed Approve: a double-click whose first press is on the menu's item grants "
+          "nothing (the guard's consent region takes no move or press under a popup and starts again when it goes); "
+          "the person's own move and click then approves",
+          Report("covered-approve-gui.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
+          notes="Stand-in claude CLI (fake_provider_cli.py) for the connection; a step requested as a provider's MCP "
+                "call requests it; the app's own tool pump; no account, network or inference."),
     Suite("test_blender_codex_turn_errors.py", GUI,
           "A Codex turn a throttle or usage limit ends: its notice card at once, one automatic resend, an idle chat",
           Report("codex-turn-errors.json", require_complete_phase=True), event_simulate=True, default_chat=True,
@@ -568,6 +645,18 @@ SUITES = (
           "Every confinement attack (aliases, private paths, programs, native code, the network, unhooking, work "
           "left for later) against the C confinement in the app; the guard module exposes no state or settable "
           "attribute", Report("confinement-attacks.json"), timeout=300),
+    Suite("test_blender_confinement_subinterpreter.py", BACKGROUND,
+          "A sub-interpreter makes every confinement hot path ask for good: unconfined, importing _interpreters sets "
+          "it (create() raises no event of its own), create() and code run there keep it, and a script still runs",
+          Report("confinement-subinterpreter.json"), timeout=120,
+          variants=(Variant("import", (("ANGELO_SUBINTERP_ROUTE", "import"),), "Unconfined import of _interpreters"),
+                    Variant("alias", (("ANGELO_SUBINTERP_ROUTE", "alias"),),
+                            "Unconfined _imp creation of _interpreters as x._interpreters"),
+                    Variant("builtin_direct", (("ANGELO_SUBINTERP_ROUTE", "builtin_direct"),),
+                            "Unconfined _imp creation of _interpreters under its own name, no import"),
+                    Variant("confined_alias", (("ANGELO_SUBINTERP_ROUTE", "confined_alias"),),
+                            "A confined script makes x._lsprof and x._interpreters: both refused")),
+          notes="One process per variant: the 'always' state can't be turned off, so no other suite shares it."),
     Suite("test_blender_confinement_escapes.py", BACKGROUND,
           "Nothing a script leaves behind runs unconfined (every trigger x carrier: destructors, the read-back, "
           "finalizers, weak-reference and gc callbacks, class attributes, module names and registries, held "
@@ -600,7 +689,14 @@ SUITES = (
           "Agent-script confinement in the app: operators that open programs, install code, save preferences, "
           "grant or write private or startup files are refused; timers, draw handlers, handlers, driver functions "
           "and load-time texts a script leaves are confined; Angelo keeps its access; cost measured",
-          Report("script-confinement.json"), timeout=300),
+          Report("script-confinement.json"), timeout=300,
+          # Its Strict cases turn Strict script protection off again as the person (confinement_link_cases).
+          harness=True,
+          # Both bytecode layouts: which .pyc a loader names, and which of it is installed code, differ
+          # (confinement_loader_cases; break-it-confine-reparse SHOULD-4/5).
+          variants=(Variant("pycache_prefix", (), "the app's bytecode cache prefix, as a release runs"),
+                    Variant("no_pycache_prefix", (("PYTHONPYCACHEPREFIX", "off"),),
+                            "no prefix (a relative one turns it off): bytecode beside each source, never written"))),
     Suite("test_blender_runtime_symlink.py", BACKGROUND,
           "A CLI runtime reached through a symbolic link (an installer's ~/.local/bin/claude -> versions/X), on PATH or "
           "as the Preferences pick, still starts after an agent script ran; a link retargeted later is refused; a "
@@ -611,6 +707,19 @@ SUITES = (
           "name Angelo's state removes nothing when withdrawn, a script writes nothing in the updates folder, and "
           "Angelo still writes in a version's folder",
           Report("update-confined.json"), timeout=300, notes="No provider, account or network."),
+    Suite("test_blender_strict_script_protection.py", BACKGROUND,
+          "Strict script protection: off by default, C's flag follows the preference, every confined route to it "
+          "(attribute, property_unset, ID properties, its definition, the C setter and sync, Angelo's sync) changes "
+          "nothing, the run-end sweep puts a reset back, off takes the person (harness child), a preference read "
+          "brings the flag along, and a worker takes the lead's value",
+          Report("strict-protection.json"), timeout=600, notes="Three child Angelos; no provider, account or network.",
+          harness=True),
+    Suite("test_blender_strict_person_click.py", GUI,
+          "Strict script protection turned off by the person's real press, on its AI Providers switch and on its own "
+          "checkbox: preference, C's flag, the confinement's reader, the saved choice, the page's switch and os.stat "
+          "all say off, with no refusal; Angelo's own code without a press can't",
+          Report("strict-person-click.json"), event_simulate=True, timeout=240,
+          notes="The person's path itself (build3 on 1f95324). No provider, account or network."),
     Suite("test_blender_trusted_scripts.py", GUI,
           "Trusted scripts: exact review runs once, chat consent runs automatically, revoked or Read-only never runs",
           Report("trusted-scripts.json", require_complete_phase=True), timeout=120,
@@ -628,6 +737,14 @@ SUITES = (
                 "runs, a stale card is refused. The stand-in codex (hosted_codex_stand_in.py) plays the model; no "
                 "account or inference. The lanes variant records the hosted cases skipped.",
           variants=WORKER_CHAT_HOST, harness=True),
+    Suite("test_blender_forget_changes_reach.py", GUI,
+          "Forget Agent Changes in a Folder from the + menu (Apps and settings) and the AI Providers page (Agent "
+          "permissions) by the person's presses: each opens the folder browser and Return forgets the folder; a "
+          "script's call refused first",
+          Report("forget-changes-reach.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          timeout=240, serial=True,
+          notes="2.1.0 (coordinator's ruling of 2026-11-17). Captures forget-*.png for review. No provider, account "
+                "or network."),
     Suite("test_blender_grant_surfaces.py", GUI,
           "Grants by the person's real presses, end to end: Auto from the composer's popover, a script's Review, a "
           "connection's key saved in the AI Providers sheet; each refused first from a script",
@@ -718,6 +835,9 @@ SUITES = (
     Suite("test_blender_guard_tickets.py", GUI, "Grant tickets only from an aimed press on a region Angelo "
           "registered: never within the shield, from keys or keymap items, on overlapping or vanished regions",
           Report("guard-tickets.json"), event_simulate=True),
+    Suite("test_blender_guard_overlap.py", GUI, "A consent control under the 3D view's open N panel takes none of "
+          "the person's input there; its transparent part passes it on; hiding it restarts what it covered",
+          Report("guard-overlap.json"), event_simulate=True),
     Suite("test_blender_chat_hit_testing.py", GUI, "Scissored approval/preview controls and composer input",
           Report("chat-hit-testing.json"), event_simulate=True),
     Suite("test_blender_chosen_tools.py", GUI, "The composer's + menu and Start from a base mesh: menu, chip, fit, "
@@ -1214,6 +1334,47 @@ SUITES = (
     Suite("test_blender_batch.py", BACKGROUND,
           "batch: rows, positions, paths, scatter, units of parts, mirror and variation; copies check, bounds, Undo",
           Report("batch.json")),
+    Suite("test_blender_bake_check.py", BACKGROUND,
+          "Bake check pictures: the same material at exactly 0, a changed half seen with its worst tile, a larger "
+          "source's silhouette, the person's Render Result slot kept, materials untouched, nothing left behind",
+          Report("bake-check.json"), timeout=300,
+          notes="Cycles on the CPU at the check's own 128 px; no GPU, account or network."),
+    Suite("test_blender_scatter.py", BACKGROUND,
+          "Scatter with biomes: every rule (slope, height, relative height, mask, keep away, near) held by every "
+          "instance on a known terrain, spacing across layers, seeds, density scale, proxy, viewport share, camera "
+          "and distance culling, surface unchanged, angelo.scatter's object and node group and its refusals, the six "
+          "biome presets",
+          Report("scatter.json"), timeout=600,
+          notes="No account, network or GPU: Geometry Nodes evaluated in the background."),
+    Suite("test_blender_scatter_card.py", GUI,
+          "The Scatter card in Director: the + menu row, a biome's layers filled by Use Selection and by Library "
+          "models found and added (hidden in the viewport and renders), Scatter placing every layer on the unchanged "
+          "surface, the view showing it, one Undo removing the system and keeping the imports",
+          Report("scatter-card.json"), timeout=480, event_simulate=True, default_chat=True,
+          notes="The Library is a mirror served by the suite (qa_library_mirror); no account or network."),
+    Suite("test_blender_look.py", BACKGROUND,
+          "Camera look: the natural vignette's cos^4 for two lenses, NOIR without colour, grain by amount and frame, "
+          "the look before the compositing output keeping the person's nodes, one look on reapply, drivers without "
+          "Python, focus breathing and its refusal on an animated lens, CLEAN restores, angelo.camera_look's refusals",
+          Report("look.json"), timeout=600,
+          notes="Cycles on the CPU at 96 x 54, one sample: no GPU, account or network."),
+    Suite("test_blender_gpu_unavailable.py", BACKGROUND,
+          "Without a usable GPU (a QA knob makes the context refuse): gpu.init, EEVEE, Workbench, grease pencil over "
+          "Cycles, light probe bake and Image.gl_load refuse with one message; preview jobs, a camera-thumbnail save "
+          "and render.render INVOKE_DEFAULT end without a crash; Cycles with compositing still writes its image",
+          Report("gpu-unavailable.json"), timeout=300,
+          variants=(Variant("main_first", (("ANGELO_QA_REFUSE_GPU_CONTEXT", "1"),),
+                            "The first GPU start on the main thread"),
+                    Variant("thread_first", (("ANGELO_QA_REFUSE_GPU_CONTEXT", "1"),
+                                             ("ANGELO_QA_GPU_UNAVAILABLE_ORDER", "thread")),
+                            "The first GPU start on a thread, nothing GPU on the main thread before")),
+          notes="Runs on every machine, GPU-less builders included; no account or network."),
+    Suite("test_blender_look_card.py", GUI,
+          "The Camera Look card in Director: the + menu row on the scene's camera, Anamorphic with Match Exposure "
+          "two stops over, one look node, the oval bokeh, film exposure +2 and the camera view's compositor, the view "
+          "showing it, Take Off putting everything back, one Undo bringing the look back",
+          Report("look-card.json"), timeout=480, event_simulate=True, default_chat=True,
+          notes="EEVEE Material Preview in the camera view; no account or network."),
     Suite("test_blender_subdivision_levels.py", BACKGROUND,
           "Subdivision render levels to 6 and adaptive settings: typed fields, the render ceiling, no lock-out, Undo",
           Report("subdivision-levels.json")),
@@ -1301,6 +1462,13 @@ SUITES = (
           variants=PLUS_MENU_WINDOWS,
           notes="Real default startup and simulated input; drawn at each variant's window (checked), and also laid out "
                 "by the draw's own code for both sizes from that window's chat proportions (1.0.8)."),
+    Suite("test_blender_chat_hit_scale.py", GUI,
+          "The chat draws, hit-tests and is clicked in one place at chat scales 1.0, 1.5 and 2.0 and right to left: "
+          "real clicks where qa_hit puts the + button and a group tile open them, and the + menu's drawn edges are "
+          "where qa_hit puts its popup_rect",
+          Report("chat-hit-scale.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          notes="Real default startup and simulated input; each pass sets Resolution Scale from what the display adds "
+                "(2.1.0: the mapping every GUI suite clicks through, test_native_qa_hit)."),
     Suite("test_blender_plus_menu_audit.py", GUI,
           "Every state of the chat bar's + menu in Director, captured and checked in English, German, Japanese, "
           "Swedish and Arabic: the top level, keyboard focus, every group's page scrolled to its top, middle and end, "
@@ -1622,6 +1790,21 @@ SUITES = (
     Suite("test_blender_update_crash.py", GUI, "Crash dialog, What's New and update notice: states, input, pixels and what is sent",
           Report("update-crash.json", require_complete_phase=True), event_simulate=True, default_chat=True, timeout=720,
           notes="Loopback feed and crash endpoint, throwaway signing key, synthetic crash logs; no network, account or inference."),
+    Suite("test_blender_gltf_import_person_gui.py", GUI, "A person's glTF import welds a file with morph targets; a script's keeps the default",
+          Report("gltf-import-person.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          timeout=300, notes="Director start; a GLB written in the run's own temporary folder. No network, account or "
+                             "inference."),
+    Suite("test_blender_denoiser_help_gui.py", GUI, "Cycles' Denoise panels say who OpenImageDenoise is for and why Use GPU is greyed",
+          Report("denoiser-help.json", require_complete_phase=True), default_chat=True, timeout=300,
+          notes="Director start, then Manual's Render Properties; changes Cycles' compute device in this run's own "
+                "preferences only. No network, account or inference."),
+    Suite("test_blender_firsthour_cases.py", GUI, "Each first-hour case's start fails its checks and its reference fix passes",
+          Report("firsthour-cases.json", require_complete_phase=True), timeout=300,
+          notes="No model: the eval cases' starting states, checks and reports, from Blender's factory scene."),
+    Suite("test_blender_update_addons.py", GUI, "The update card names the add-ons not yet known to work on the new version",
+          Report("update-addons.json", require_complete_phase=True), event_simulate=True, default_chat=True, timeout=600,
+          notes="Loopback signed feed, throwaway key, three add-ons written into the run's own user folders; no network, "
+                "account or inference."),
     Suite("test_blender_ui_kit_gallery.py", GUI, "Every shared UI kit component in every state, English, Arabic and narrow",
           Report("ui-kit-gallery.json", require_complete_phase=True), event_simulate=True,
           notes="A gallery card in the real card_host and synthetic input; no network, account or inference."),
@@ -1719,6 +1902,14 @@ SUITES = (
           host_args=("--binary", "{binary}", "--out", "{qa}/fixture"),
           notes="Host-Python driver; launches two window processes (--enable-event-simulate) and one background "
                 "process itself, sharing one Blender config folder inside its fixture directory."),
+    Suite("test_blender_crash_continue_gui.py", GUI,
+          "Continue after Angelo closes: killed (SIGKILL) inside an approved script, relaunched in Director on the "
+          "same project, the card's journal counts, the person's Continue, the model reads first, nothing replayed",
+          Report("fixture/crash-continue.json"), timeout=600, default_chat=True,
+          host_args=("--binary", "{binary}", "--out", "{qa}/fixture"), output_root=SHORT_TEMP_ROOT,
+          platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
+          notes="Host-Python driver; launches two GUI processes itself, kills the first with SIGKILL. The stand-in "
+                "claude CLI (fake_provider_cli.py) plays scripted rounds; no account, network or inference."),
     Suite("test_blender_memory_project_resume.py", GUI, "Saved-project brief continuity across launches",
           Report("fixture/memory-project-resume.json"), timeout=420,
           host_args=("--binary", "{binary}", "--out", "{qa}/fixture"), output_root=SHORT_TEMP_ROOT,
@@ -1986,6 +2177,12 @@ SUITES = (
           "material, the person's materials unchanged, no stall",
           Report("bake-maps-agent-start.json"), timeout=480,
           notes="A real Cycles CPU bake at 128 px; stand-in conversation, no provider or account."),
+    Suite("test_blender_bake_delta_job.py", GUI,
+          "The 2.1.0 bake additions end to end: a high-to-low BAKE_MAPS job for Unreal through angelo_job_start from "
+          "Blender's default bake distances; Unreal's packing, the measured distances used, the bake check's facts and "
+          "the baked material in the receipt; the person's settings, materials and Render Result unchanged; no stall",
+          Report("bake-delta-job.json"), timeout=600,
+          notes="A real Cycles CPU bake at 256 px; stand-in conversation, no provider or account."),
     Suite("test_blender_long_jobs.py", GUI, "Background jobs on Blender's own jobs: renders, bakes and exports with "
           "progress, cancel, restore, queue, time budget, file load and crash recovery",
           Report("long-jobs.json", require_complete_phase=True), timeout=600,
@@ -2139,11 +2336,92 @@ SUITES = (
           "(a Python keyword, or keys, values, items, get)",
           Report("reserved-property-names.json"),
           notes="Background; the add-on enabled; no account, provider or network."),
+    Suite("test_blender_54_clean_set_1.py", BACKGROUND,
+          "Blender 5.4 features taken early (clean set 1): workspace tabs reorder left/right, FBX imports through a "
+          "collection importer and an unsupported handler is refused, pose bones selected by deform, Select Mirror "
+          "moves only the selection, NLA sound strips, the OpenXR runtime name and Grease Pencil's linked pick and "
+          "stroke/fill image users in the API",
+          Report("54-clean-set-1.json"),
+          notes="Background; exports and re-imports one FBX in its QA folder; no account, provider or network."),
     Suite("test_blender_export_internal_properties.py", BACKGROUND,
           "No exporter that writes custom properties (glTF extras, FBX, USD, Alembic) writes Angelo's own saved "
           "angelo_* and _angelo_* keys, held-out keys included; the person's own property is still written",
           Report("export-internal-properties.json"),
           notes="Background; real exports of a small scene it builds; no add-on of Angelo's, account or network."),
+    Suite("test_blender_ik_controls.py", BACKGROUND,
+          "IK controls by role on unlike humanoids: adding them moves nothing, feet and hands reach their "
+          "effectors with knees bending forward, feet stay planted when the hips drop, reruns replace, controls "
+          "never deform; IK/FK switch keeps the pose both ways; retargeting onto the rig follows in FK and IK; a "
+          "driven limb is refused; a hidden armature stays hidden",
+          Report("ik-controls.json"),
+          notes="Background; procedural rigs (qa_humanoid); no account, provider or network."),
+    Suite("test_blender_retarget.py", BACKGROUND,
+          "Retarget by role between unlike humanoids (T/A pose, names, clavicles, root): limbs follow, hips scale, "
+          "in place and root motion, feet slide no more; a turned target turns the motion; planted feet stay "
+          "planted; control rig to an Unreal game rig that passes the rig check; root motion extracted; one glTF "
+          "clip per action",
+          Report("retarget.json"),
+          notes="Background; procedural rigs and walk; no account, provider or network."),
+    Suite("test_blender_game_rig.py", BACKGROUND,
+          "Control rig (walk + an NLA wave, a prop bone named pelvis, a skinned mesh, moved after parenting) to "
+          "game rigs: Unreal names under the Mannequin's parents with fillers, each action baked alone, mesh copy "
+          "in place in its own collection, the control unchanged; Unity and Godot pass; glTF clips exactly the "
+          "actions with an existing track; Unity model@clip FBX set; a multi-strip track refused",
+          Report("game-rig.json"),
+          notes="Background; procedural rigs (qa_humanoid); writes glb/fbx under ANGELO_QA_DIR; no network."),
+    Suite("test_blender_clip_export.py", BACKGROUND,
+          "Export Action Clips' clips in both formats: each lasts its own frames (strip trim and scale included), "
+          "glTF and FBX carry the same clips (muted ones in neither, unique names), clip files hold the armature "
+          "and only the meshes whose shape keys play, a strip's own slot, no slot added, a failed export changes "
+          "nothing, hidden or excluded objects refused",
+          Report("clip-export.json"),
+          notes="Background; procedural rigs (qa_humanoid); writes glb/fbx under ANGELO_QA_DIR; no network."),
+    Suite("test_blender_clip_export_edges.py", BACKGROUND,
+          "Export Action Clips at its edges: a clip keyed before frame 0 keeps its frames in both formats, a "
+          "bone-driven corrective shape key plays in its clip and the person's driver is untouched, linked and "
+          "overridden armatures refused by name, a failed restore step leaves the others, subframe and long names "
+          "kept, strip blend and animated influence staged, the FBX model in the first clip's first pose",
+          Report("clip-export-edges.json"),
+          notes="Background; procedural rigs (qa_humanoid); writes glb/fbx and a library .blend under ANGELO_QA_DIR; "
+                "no network."),
+    Suite("test_blender_body_pose.py", BACKGROUND,
+          "Full-body posing by role on unlike humanoids: a hand past the arm's reach reaches with the feet "
+          "planted, knees forward, the hips taking part, rotation modes kept; out of reach is reported",
+          Report("body-pose.json"),
+          notes="Background; procedural rigs (qa_humanoid); no account, provider or network."),
+    Suite("test_blender_root_motion.py", BACKGROUND,
+          "Root motion on Euler-keyed walks with a root: in place leaves the root alone, on the root keeps the "
+          "body and a prop under the root in place, limbs and rotation modes unchanged, reruns change nothing, "
+          "a 90-degree turn goes to the root",
+          Report("root-motion.json"),
+          notes="Background; procedural rigs (qa_humanoid); no account, provider or network."),
+    Suite("test_blender_ripple_delete_report.py", BACKGROUND,
+          "Ripple Delete names every unselected strip it removes, trims or splits in a warning, reports nothing when "
+          "it cuts nothing, keeps every frame with Clear Ranges off, and never cuts silently on the person's path",
+          Report("ripple-delete-report.json"),
+          notes="Background; colour strips only, no media file; no account, provider or network."),
+    Suite("test_blender_ripple_delete_default.py", BACKGROUND,
+          "Ripple Delete's Clear Ranges starts off in new scenes and the startup scene (All Channels and Markers "
+          "unchanged), and a saved file keeps its own setting, on or off",
+          Report("ripple-delete-default.json"),
+          notes="Background; saves and reopens two files in its QA folder; no account, provider or network."),
+    Suite("test_blender_collision_fit.py", BACKGROUND,
+          "Collision for every engine: convex-hull decomposition of an L block, a torus and a U channel within the "
+          "hull and vertex budgets, covering the solid, tight, keeping the inner corner, hole and gap empty; one hull "
+          "for CONVEX; one per loose part of an open mesh; reruns replace; Unreal UCX_ names",
+          Report("collision-fit.json"),
+          notes="Background; no account, provider or network."),
+    Suite("test_blender_collision_conventions.py", BACKGROUND,
+          "Collision in each engine's form on the exported copy: Unreal UCX_<owner>_NN siblings at the same place, "
+          "concave collision left out with a note; Unity _ConvexCollider_NN / _MeshCollider names; Godot unchanged",
+          Report("collision-conventions.json"),
+          notes="Background; saves and reopens one .blend in its QA folder; no account, provider or network."),
+    Suite("test_blender_splat_mesh.py", BACKGROUND,
+          "Gaussian splats (sphere, room, torus, two objects, each with faint floaters) become a closed collision "
+          "mesh within budget on the surface without floater geometry, and a visual mesh with the splats' colour; "
+          "the splat PLY export round-trips through Blender's importer; time per million splats recorded",
+          Report("splat-mesh.json"), timeout=900,
+          notes="Background; writes its own splat PLY files in its QA folder; no account, provider or network."),
     Suite("test_blender_media_drop.py", BACKGROUND,
           "Media Studio items where they land: models at a point at their GLB's size (append, link, several), "
           "references, materials, the drop operator, the menu actions, writing at once, the library off",
@@ -2254,6 +2532,39 @@ SUITES = (
           "the stand-in codex (Angelo's round sent as its own request, two unchanged rounds end it stalled, nothing "
           "more sent), a draft holding a round, Stop goal, and the chip and card in five languages",
           Report("goal-gui.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS, timeout=300),
+    Suite("test_blender_context_folder_script_gui.py", GUI,
+          "A folder attached as context is still read after an agent script has run, in Director: one folder outside "
+          "the temporary folder attached through + > Folder as context… and Blender's file browser, a script approved "
+          "on its card, then LIST, READ, SEARCH and VIEW of the folder by stand-in turns",
+          Report("context-folder-script-gui.json", require_complete_phase=True), event_simulate=True,
+          default_chat=True, timeout=360, platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
+          notes="The stand-in codex app-server (fake_provider_cli.py) makes scripted tool calls; no account, network "
+                "or inference."),
+    Suite("test_blender_share_notice_director_gui.py", GUI,
+          "The network share an agent script was refused, named to the person in Director: a confined script with "
+          "the default chat's call key opens a file on a .invalid UNC share, the open is refused and the agent's "
+          "text names no share, C records it, the chat gets one person-only card for it, drawn in English, Arabic "
+          "and a narrow chat",
+          Report("share-notice-director-gui.json", require_complete_phase=True), event_simulate=True,
+          default_chat=True, timeout=240, platforms=("win32",),
+          platform_reason="Only Windows refuses a script by its share and records which (network_shares_refused); "
+                          "elsewhere no card can appear.",
+          notes="No provider, account, network or inference: the share's host ends in .invalid (RFC 6761)."),
+    Suite("test_blender_context_folders_gui.py", GUI,
+          "Several folders in one chat in Director: two folders attached through + > Folder as context… and "
+          "Blender's file browser, the reference folder's Make working folder and back, a stand-in turn's checklist written "
+          "into the working folder without a question in Auto, a write into the reference folder refused, and an "
+          "update of a file that was there before waiting on its card until the person's Approve",
+          Report("context-folders-gui.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          timeout=420, platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
+          notes="The stand-in codex app-server (fake_provider_cli.py) makes scripted tool calls; no account, network "
+                "or inference."),
+    Suite("test_blender_plan_gui.py", GUI,
+          "Plan mode in Director Mode: the + menu's Plan first row, a stand-in turn's angelo_plan PROPOSE drawing the "
+          "plan card, a scripted Go, a direct Go and agent code ending planning all refused, the person's aimed press "
+          "on Then and Go sending the chosen approach in Ask, Revise plan and Stop planning, the card in Japanese and "
+          "Arabic", Report("plan-gui.json", require_complete_phase=True), event_simulate=True, default_chat=True,
           platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS, timeout=300),
     Suite("test_blender_goal_measure.py", GUI, "A held goal's host measurement: a drawn reference disc against a "
           "cube (pi / 4) and a sphere (0.95 or more), target rules resolved per measurement (an object added later, a "

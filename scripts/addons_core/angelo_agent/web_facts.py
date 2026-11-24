@@ -55,7 +55,7 @@ def _web_shader(material):
     settings = web_shader.settings_of(material)
     if settings is None:
         return None
-    problem = web_shader.file_problem(settings, material) if settings.kind == "FILE" else None
+    problem = web_shader.source_problem(settings, material) if settings.kind == "FILE" else None
     return {"kind": settings.kind, "problem": problem}
 
 

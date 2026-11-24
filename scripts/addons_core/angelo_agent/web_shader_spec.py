@@ -16,6 +16,7 @@ Three.js TSL files run only on its WebGPU renderer, which the preview does not u
 (doc/angelo/web_export.rst).
 """
 
+import os
 import re
 
 FLOAT, COLOR = "FLOAT", "COLOR"
@@ -59,6 +60,104 @@ def language(path):
     if lowered.endswith(TSL_SUFFIXES):
         return "TSL"
     return None
+
+
+MAX_INCLUDE_DEPTH = 16
+_INCLUDE = re.compile(r'^\s*#\s*include\s+"([^"\n]+)"\s*(?://.*)?$')
+
+
+def _inside(path, root):
+    return path == root or path.startswith(root.rstrip(os.sep) + os.sep)
+
+
+def expand_includes(path, root, read=None):
+    """A GLSL file with its ``#include "file.glsl"`` lines replaced by those files' text, recursively.
+
+    An include is a quoted path relative to the including file's folder. It must stay inside ``root`` (the project
+    folder) after links are resolved, name a GLSL file and exist; a file already pasted is pasted once; a cycle, a
+    chain deeper than ``MAX_INCLUDE_DEPTH`` or an expansion over ``MAX_SOURCE`` is refused. An ``#include`` in a
+    comment is left alone. Returns {"source", "files" (every file read, first visit order), "problem", "detail"};
+    on a problem ``source`` is None and ``detail`` names the file relative to ``root`` and the line, never a path
+    outside it."""
+    read = read or _read
+    root = os.path.realpath(root)
+    files, pasted, total = [], set(), [0]
+
+    def name_of(real):
+        return os.path.relpath(real, root).replace(os.sep, "/") if _inside(real, root) else os.path.basename(real)
+
+    class Refused(Exception):
+        def __init__(self, problem, detail):
+            super().__init__(detail)
+            self.problem, self.detail = problem, detail
+
+    def expand(real, stack):
+        files.append(real)
+        pasted.add(real)
+        try:
+            text = read(real)
+        except (OSError, UnicodeError):
+            raise Refused("unreadable", "%s can't be read" % name_of(real)) from None
+        total[0] += len(text)
+        if total[0] > MAX_SOURCE:
+            raise Refused("too_large", "the shader and its includes are over %d KB" % (MAX_SOURCE // 1024))
+        lines, block = text.splitlines(keepends=True), False
+        out = []
+        for number, line in enumerate(lines, 1):
+            match = None if block else _INCLUDE.match(line)
+            block = _block_after(line, block)
+            if match is None:
+                out.append(line)
+                continue
+            where = "line %d of %s" % (number, name_of(real))
+            written = match.group(1)
+            if os.path.isabs(written) or written.startswith(("/", "\\")) or ":" in written.split("/", 1)[0]:
+                raise Refused("include_outside", where + ": the included file is outside the project folder")
+            target = os.path.realpath(os.path.join(os.path.dirname(real), written))
+            if not _inside(target, root):
+                raise Refused("include_outside", where + ": the included file is outside the project folder")
+            if language(target) != "GLSL":
+                raise Refused("include_language", where + ": %s is not a GLSL file" % name_of(target))
+            if not os.path.isfile(target):
+                raise Refused("include_missing", where + ": %s doesn't exist" % name_of(target))
+            if target in stack:
+                raise Refused("include_cycle", where + ": %s includes itself through other files" % name_of(target))
+            if len(stack) >= MAX_INCLUDE_DEPTH:
+                raise Refused("include_depth", where + ": includes nest deeper than %d files" % MAX_INCLUDE_DEPTH)
+            if target in pasted:
+                continue
+            body = expand(target, stack + (target,))
+            out.append(body if body.endswith("\n") or not body else body + "\n")
+        return "".join(out)
+
+    real = os.path.realpath(path)
+    try:
+        source = expand(real, (real,))
+    except Refused as refused:
+        return {"source": None, "files": files, "problem": refused.problem, "detail": refused.detail}
+    return {"source": source, "files": files, "problem": None, "detail": ""}
+
+
+def _read(path):
+    with open(path, "r", encoding="utf-8") as handle:
+        return handle.read(MAX_SOURCE + 1)
+
+
+def _block_after(line, block):
+    """Whether a /* */ comment is still open after ``line`` (a // comment ends the line's code)."""
+    index = 0
+    while index < len(line):
+        if block:
+            end = line.find("*/", index)
+            if end < 0:
+                return True
+            block, index = False, end + 2
+            continue
+        start, comment = line.find("/*", index), line.find("//", index)
+        if start < 0 or (0 <= comment < start):
+            return False
+        block, index = True, start + 2
+    return block
 
 
 def file_uniforms(source):

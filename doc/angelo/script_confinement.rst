@@ -1,9 +1,10 @@
 Agent scripts run confined
 ==========================
 
-While any agent script runs, Angelo enforces at run time, never by reading the script's text, that it can't change
-Angelo's private state or step outside Angelo. This covers every tool that runs a script (``angelo_execute_python``, a worker's script) and every review mode, Always allow scripts
-and Trust scripts for this chat included.
+While any agent script runs, Angelo checks what it does at run time (not by reading the script's text) and refuses
+the actions listed under "What a confined script is refused". This covers every tool that runs a script
+(``angelo_execute_python``, a worker's script) and every review mode, Always allow scripts and Trust scripts for this
+chat included. The checks leave some routes open; the first section names each of them.
 
 The maintainer's rulings:
 
@@ -11,6 +12,34 @@ The maintainer's rulings:
 * 2026-11-15: "C guard in 2.0.0", and "Deny network to scripts".
 
 The operator and authority side is :doc:`grant_operators`; this document is the runtime side.
+
+What agent scripts can still reach
+----------------------------------
+
+Every place Angelo offers to run agent scripts without asking (the script card's Allow for this session and Always
+allow, Trust scripts for this chat, the Always allow scripts switch in Preferences and in AI Providers) says that
+scripts run with your access and links here. An agent script can reach:
+
+* **Your scene, and files your later writes make or remove.** A script reads and changes the open scene. A render, bake or save you start later writes where data
+  the script set points, and a delete you start (Delete Asset, a bake's or cache's clear) removes what such data
+  names ("Known limits in 2.0.0" lists how).
+* **Files other apps run or read.** After you connect an AI app, a script can rewrite that app's MCP settings file;
+  an engine asset Angelo opened for its editor can be overwritten the same way.
+* **Your documents, with no Angelo window open.** When an external app has Angelo run a script headless, the script
+  can write over your original document and Angelo's working copy through Blender's own writers.
+* **Secrets Angelo holds in memory.** A script can read a provider key or token Angelo has loaded and return it: it
+  reaches the model provider as the tool result. Refusing the network does not stop this.
+* **Angelo's own running state, until it restarts.** A script can change objects Angelo and installed add-ons hold in memory, so Angelo
+  can misbehave or show wrong state until it restarts, and aim one of Angelo's own writes at another file in a folder
+  Angelo made ("What is not covered" lists how).
+* **Audio servers on Linux.** Opening sound can make the audio library start a JACK or PulseAudio server.
+* **Network shares, through a path.** With Strict script protection off (the default), a script's lookup of a share
+  nobody connected (``os.stat``, ``os.path.exists``), or of a folder under ``/net``, connects to it, and so does an
+  open through a link already in a readable folder whose target is such a share; a name Angelo loads later from data
+  a script set does the same. Turn on Strict script protection to refuse the lookups and the links.
+
+Every limit below names the route it falls under, or why it is not one. So allow scripts only as you would run them yourself. Everything below describes how the checks work and what they
+refuse; "What is not covered" and "Known limits in 2.0.0" describe each limit in detail.
 
 How it works
 ------------
@@ -39,7 +68,8 @@ decides with lives in Python.
   (``types.coroutine``). ``marshal.loads`` and ``_imp._fix_co_filename`` run only inside importlib's own bytecode
   loader (its code object held in C), on an installed ``.pyc``'s exact bytes or beside a module that is not
   installed, and in ``_imp.get_frozen_object`` for a module Python ships frozen (its bytes compiled into the binary:
-  ``runpy``, ``zipimport``, ``os``; bytes a caller passes stay judged).
+  ``runpy``, ``zipimport``, ``os``; bytes a caller passes stay judged). While confined, ``_fix_co_filename`` refuses a
+  tree whose nested code carries a name other than its root's (the compiler never makes one; GUARD).
 * **Regions and provenance.** A confined stretch of a thread (``run_confined``, a trampoline, a confined work item,
   a confining descriptor) is a region (``bpy_angelo_guard_confine_region``). While one runs, the object allocator
   records every block that thread allocates (``bpy_angelo_guard_confine_record``), and with it who made it: the
@@ -89,7 +119,8 @@ translated (``activity_text.friendly_error``; every catalogue has it):
 * "An agent script can't start other programs. Ask the person to run it, or to approve it as its own step outside
   the script."
 * "An agent script can't load native code."
-* "An agent script can't use the network. Downloads go through Angelo's download tool."
+* "An agent script can't use the network. Downloads go through Angelo's download tool." (Bundled ffmpeg makes
+  no connection of its own: every FFmpeg open allows only the ``file`` protocol.)
 * "An agent script can't change files Angelo's tools saved for it to read. Write a copy somewhere else."
 * "An agent script can't make code run when a file opens."
 * "An agent script can't change how Angelo checks scripts."
@@ -131,7 +162,9 @@ translated (``activity_text.friendly_error``; every catalogue has it):
      queries, Audaspace, Mantaflow) at every file entry point, and USD's own composition through a confined asset
      resolver (:doc:`script_confinement_pipeline`);
    * modules with no file entry point to judge (``NATIVE_FILE_MODULES``: dbm, readline, Tk, curses, the
-     subinterpreter modules and ``_lsprof``) are refused on import, however they are imported;
+     subinterpreter modules and ``_lsprof``) are refused on import, however they are imported; an extension under
+     whatever name (by the last name it is initialized by, or its file: ``x._dbm`` is ``_dbm``), a pure-Python
+     module by its full name (the bundled ``_pyrepl.readline`` is not ``readline``);
    * ``mmap`` of a descriptor, and ``os.open`` with a folder descriptor (wrapped in C, because the event does not
      carry it);
    * Blender's own file operations (``BLI_open``, ``BLI_fopen``, ``BLI_gzopen``, rename, delete, copy, touch and
@@ -178,12 +211,20 @@ translated (``activity_text.friendly_error``; every catalogue has it):
 2. **Startup folders, for changes.** These are Blender's user config (``userpref.blend``, ``startup.blend``), the
    user script, add-on, preset and extension folders, the script directories in Preferences, and the app's own
    folders. A script may read them. Python's bytecode cache (``PYTHONPYCACHEPREFIX``, set by a release) is one too: what
-   Python loads for installed modules, so scripts can't change it, and an installed source's cached bytecode there
-   is accepted, byte for byte, as beside its source.
+   Python loads for installed modules, so scripts can't change it. Only its mirrors of the installed folders
+   (``pycache_mirrors``, named by importlib's own ``cache_from_source``) count as installed: an installed source's
+   cached bytecode there is accepted, byte for byte, as beside its source. Bytecode the cache keeps for any other
+   source (a document's folder, a script's) is that source's, never installed code.
 
    So are the places the operating system or a shell runs later on its own (``os_startup``): shell startup files,
    macOS ``LaunchAgents``, the XDG autostart and systemd user folders, the Windows Startup folder, and the user's
-   Python site-packages (``usercustomize`` and ``.pth`` files run in every Python). Changes to the Windows registry,
+   Python site-packages (``usercustomize`` and ``.pth`` files run in every Python). And the audio stack's per-user
+   configuration, read when a sound device opens: ALSA's ``~/.asoundrc``, ``~/.asoundrc.asoundconf`` and
+   ``$XDG_CONFIG_HOME/alsa``, OpenAL Soft's ``~/.alsoftrc`` and ``alsoft.conf`` (``alsoft.ini`` on Windows),
+   PulseAudio's ``$XDG_CONFIG_HOME/pulse`` and legacy ``~/.pulse``, PipeWire's ``$XDG_CONFIG_HOME/pipewire`` and
+   JACK's ``~/.jackdrc``. These are the same on macOS as on Linux (``$XDG_CONFIG_HOME``, else ``~/.config``): a
+   library reads the same places on both. The list names where these libraries read today; an environment variable
+   pointing one elsewhere is the person's, set before Angelo starts. Changes to the Windows registry,
    whose Run keys start programs at login, are refused; reads stay. Angelo's updates folder (``<cache>/updates``,
    ``update_ready.directory``) is refused for changes and never trusted: what Restart to update runs is staged
    there (the helper script ``sh`` or ``cmd`` reads as it runs, the Windows installer, ``ready.json``).
@@ -207,18 +248,42 @@ translated (``activity_text.friendly_error``; every catalogue has it):
      a plain ``read_homefile`` or ``open_mainfile`` reloads no add-on and ends as ``DOCUMENT_REPLACED``;
    * quitting Blender.
 
+   Registering an operator or macro whose ``bl_options`` include ``LOCK_BYPASS`` (it would run while a render,
+   bake or other job locks the interface) is refused in ``rna_wm.cc`` before an operator of the same name is
+   replaced, so the refusal changes nothing. Timers a script leaves already run during a lock, confined; this keeps
+   a script from making a second route. Blender's, add-ons' and Angelo's own operators may bypass the lock
+   (UV Layout's runner does: :doc:`uv_layout`).
+
+   Once an operator or macro type is registered, its registration properties (``bl_idname``, ``bl_label``,
+   ``bl_translation_context``, ``bl_description``, ``bl_undo_group``, ``bl_options``, ``bl_cursor_pending``) never
+   change, from any caller, confined or not: every setter refuses. Upstream they stayed writable through any instance
+   (``self`` in a modal, an entry of ``WindowManager.operators``), so one assignment would give any operator,
+   Blender's own included, ``LOCK_BYPASS`` for the rest of the session past the refusal above, clear a flag an Angelo
+   policy reads, or write an empty ``bl_undo_group`` past its single byte. A write to the flags (``bl_options``,
+   ``bl_cursor_pending``) raises (read-only); one to a string is upstream's silent no-op, so add-ons that set a dialog
+   title in ``self.bl_label`` keep working. Only the type registration validates is editable, so a type the check
+   cannot place counts as registered (``test_native_operator_registration_properties``).
+
+   Known limit: ``Macro.define`` still adds a step to a macro already registered (upstream's API). A macro's steps
+   run with the macro's own options, and no registered macro has ``LOCK_BYPASS`` (a script may not register one), so
+   no step a script adds runs while a job locks the interface.
+
    An agent script cannot change Angelo's grant ledger in either direction: C refuses its ``set()`` and ``remove()``,
    so it can neither give nor withdraw an approval, an approval mode or a trust, its own chat's or another's (the
    Fusion audit, 2026-11-15, G2). The function behind each grant is sealed in C (``_angelo_guard.seal``): what an
    entry holds runs only from the entry's own code, which judges the call first (G3); a script can't read an
    installed function's closure either (below). Python that is not agent code, Angelo's own or an add-on's, keeps
-   Blender's full privileges until the helper process (2.1 or 2.2; :doc:`grant_operators`, "Residuals").
+   Blender's full privileges until the helper process (the release after 2.1.0; :doc:`grant_operators`,
+   "Residuals").
 
 4. **Other programs.** Every audited start is refused: ``subprocess``, ``os.system``, ``exec*``, ``spawn*``,
    ``posix_spawn``, ``fork``, ``forkpty``, ``startfile``, ``_winapi.CreateProcess`` and ``webbrowser``. Other
    processes can't be reached either: ``_winapi.OpenProcess``, ``TerminateProcess`` and WMI queries (``_wmi``,
    which read every process's command line) are refused.
-   ``_posixsubprocess.fork_exec``, which Python 3.13 does not audit, is wrapped in C.
+   ``_posixsubprocess.fork_exec``, which Python 3.13 does not audit, is wrapped in C. So are ``os.mkfifo``,
+   ``os.mknod`` and ``os.chroot``, which raise no event of their own: each raises one of Angelo's
+   (``angelo.os.mkfifo``...) that the hook judges, a FIFO or device node as a write with the link walk, and
+   ``chroot`` refused as the process's state (M7 read, MUST-1).
 
    **Compatibility:** a script that needs another program is refused. The person runs it, or approves it as its own
    step.
@@ -237,10 +302,11 @@ translated (``activity_text.friendly_error``; every catalogue has it):
    * ``PyOpenColorIO.SetCurrentConfig(config)`` makes a copy of the configuration current, one that reads its LUTs
      through the confinement's check: the same colors, but not the same object.
 
-6. **The network.** Every socket event (connect, bind, resolve, send) is refused, along with ``urllib``,
+6. **The network.** Every socket event Python raises (connect, bind, resolve, send) is refused, along with ``urllib``,
    ``http.client`` and the mail and FTP clients. ``socket.socketpair`` (a connected pair inside the process, which
    ``asyncio``'s event loop wakes itself through) is allowed with the socket events it raises itself. Downloads go through an Angelo tool that runs outside the script,
-   with its own approval.
+   with its own approval. Bundled ffmpeg's own opens (a movie or sound read from a URL) raise no Python event, so
+   every FFmpeg open allows only the ``file`` protocol ("Network through FFmpeg" under "Fixed in 2.1.0").
 
 7. **Taking the guard off.** All of these are refused:
 
@@ -251,8 +317,15 @@ translated (``activity_text.friendly_error``; every catalogue has it):
    * making functions from code (``FunctionType``), and making code that looks installed (above);
    * changing an installed function's ``__code__``, ``__defaults__`` or ``__kwdefaults__`` from the agent's own
      frame (a script's own functions stay free: ``namedtuple`` defaults);
-   * re-initializing a loaded built-in module, which would hand back the originals the wrappers replaced. The
-     originals live only in C, and every other reference to them (a ``from`` import, a ``__wrapped__``) is replaced;
+   * re-initializing a loaded built-in module, which would hand back the originals the wrappers replaced, and making
+     one again whose functions a wrapper replaced, whether or not it is still in ``sys.modules`` (``del
+     sys.modules["posix"]; import posix``), or the same extension file under another package name (M7 read,
+     MUST-2). Every install site notes the module it imported, and every replacement its original's module and a heap
+     type's defining module (``_sqlite3``, whose ``Connection`` says ``sqlite3``; head 14) in
+     ``bpy_angelo_guard_confine_wrap_owners``, so the list is never written by hand; the outermost ``_imp`` wrapper
+     reads the script's spec once into a spec of Angelo's own that every check and the call itself are given, so what
+     is checked is what is made. The originals live only in C, and every other reference to them (a
+     ``from`` import, a ``__wrapped__``) is replaced;
    * reading an installed function's ``__closure__`` (its cells), by the script or any helper it calls
      (``inspect.getclosurevars``): installed code keeps what a script must not call directly there. A script's own
      functions' closures stay readable. An installed function's ``__defaults__``, ``__kwdefaults__`` and
@@ -358,8 +431,9 @@ translated (``activity_text.friendly_error``; every catalogue has it):
     device than the record says: a removable or network drive), and the file is rewritten whole (a new file put in
     place, never half-written); content records stay. A script making a path again records it again. Another
     session's additions are read again when the file changes (a load looks at most every 200 ms; a change recorded
-    here looks first). **Preferences > Forget Agent Changes in a Folder…**
-    (``agent_changes_forget``; a grant: refused to an agent script and to Angelo's automatic decisions, and its C door
+    here looks first). **Forget Agent Changes in a Folder…** (since 2.1.0 in the chat bar's + menu under Apps and
+    settings, and on the AI Providers page under Agent permissions, as well as in the add-on's preferences;
+    ``agent_changes_forget``; a grant: refused to an agent script and to Angelo's automatic decisions, and its C door
     ``forget_changes`` refuses any caller outside the person's own grant scope) forgets the path records in that
     folder and above it, and the files now in it by identity (a link in it is not followed), so the person's
     reviewed code there loads as theirs; a copy of the same content elsewhere still counts as the script's, and a
@@ -856,7 +930,31 @@ its re-read of f9f24cc6ffd, round 3: "the data decides, not the place").
   ===============================================  ================================================================
 
   FFmpeg opens its files itself, past Blender's file operations: the movie writer and the proxy builder ask the
-  confinement's file gate before ``avio_open`` as Blender's own file operations do.
+  confinement's file gate before ``avio_open`` as Blender's own file operations do. So does reading a sequencer strip:
+  ``strip_add.cc`` asks the gate before a movie strip's ``openanim`` (each view of a multiview movie) and a sound
+  strip's audaspace open, for the Python API, the add-strip operators and C alike. ``strips.new_movie``,
+  ``new_sound`` and ``new_image`` take their ``filepath`` as a file path, as ``bpy.data.*.load`` do, so the call is
+  judged first. A plain-string path parameter would escape that judge: ``test_native_rna_path_parameters.py``
+  classifies every one.
+* **Strings that name a place** (Ruling 11). Every RNA string a script can set that names a file, a folder or an
+  address Angelo's own process later reads, scans or fetches is judged when it is set.
+
+  * Files and folders are typed as such:
+
+    * the project and Preferences asset libraries' ``new(directory=)``;
+    * an extension repository's ``custom_directory``;
+    * ``CacheFile.layers.new(filepath=)``;
+    * ``RenderResult`` and ``RenderLayer`` ``load_from_file``;
+    * ``StudioLights.load`` and ``new``.
+  * Strings no path subtype fits are listed in ``PLACE_STRINGS`` (``bpy_angelo_guard_confine_ops.cc``):
+
+    * an address (every ``remote_url``, as a property or a ``new()`` parameter): any value a confined script gives
+      it is the network, refused;
+    * the file browser's folder, a byte string: judged as a path (``bpy_rna.cc`` asks for byte strings as for
+      text).
+  * ``test_native_rna_path_parameters.py`` scans every RNA string property and function parameter named like a
+    place. Each must be a path subtype, a listed place, or classified as no place with why (a data path, an archive's
+    object path, a value Blender hands to an add-on's callback, a button the person clicks). A new one fails it.
 * **Writers that need no gate.** Exporter jobs (Alembic, USD), sound mixdown and every operator whose path is its own
   property write that property's value, judged at the call. The sequencer's disk cache and autosave write to folders
   from Preferences, which scripts can't change. No bundled Python code writes a file from data in a handler, so none
@@ -879,7 +977,7 @@ What is not covered (residual risk)
   holds (a provider key loaded from its record, an access token, a local endpoint's key) and print or return it:
   the result goes to the model provider as the tool result. Refusing the network does not stop this. It is
   inherent while keys live in the Blender process; the helper-process design moves them out
-  (helper-process-design-2026-11-15).
+  (helper-process-design-2026-11-15). (Route: Secrets Angelo holds in memory.)
 * **Objects shared in place.** The journal sees namespaces, classes, registries and the lists named above; an
   installed object's own attributes and contents (a third-party add-on's settings object, an instance's list) are not
   watched, so a script can change them in place, in the same process. Angelo's modules, classes and instances stay
@@ -893,42 +991,50 @@ What is not covered (residual risk)
   can aim one of Angelo's own writes at another file in that same folder, never at one with another name elsewhere.
   It can make Angelo misbehave or show wrong state until it restarts. Full isolation (agent scripts in a helper
   process, where nothing of
-  Angelo's is in reach) is planned for 2.1.0.
+  Angelo's is in reach) is planned for the release after 2.1.0. (Route: Angelo's own running state, until it restarts.)
 * **Writers judged by their data (above).** Mantaflow writes its own files below the cache folder: the folder is
   judged, not each file. Python writers (an add-on's code in a render handler, such as the Freestyle SVG exporter) are
   not Blender's C writers and are not asked. Only RNA property sets are recorded (with the data-blocks a region
   made); the routes this leaves open are listed under "Known limits in 2.0.0" below. A writer thread no job made and
   no task pushed (a raw thread a library starts) writes with no job: its writes are judged by their inputs only.
   Python writers an add-on the person installed runs (a render handler of theirs) are not asked.
+  (Route: Your scene, and files your later writes make or remove.)
 * **Angelo's code acting on what a script gave it.** Angelo's code a script calls (``kit``) may look up its own state
   by a name the script supplied; it acts as Angelo's code does, with Angelo's checks.
+  (Not a route: Angelo's code acts with Angelo's own checks.)
 * **Import resolution the path finder doesn't do.** A module a script's region gained through a loader other than
   the path finder's, the interpreter's, or a finder the region found on ``sys.meta_path`` loading it itself (a zip
   import, setuptools' ``distutils`` shim, an editable install's finder) doesn't resolve on the file system without
   running that finder: it is dropped at the region's end and imported again, outside the script, when next needed.
+  (Route: Angelo's own running state, until it restarts.)
 * **Native code already loaded**: hostile code in an extension module loaded before the script. (The pipeline
   libraries are gated whenever they load, before a script or during one.)
+  (Not a route: code loaded before the script, the person's own.)
 * **Libraries' own I/O for paths no gate saw** (OpenVDB, Alembic, ffmpeg writers inside Blender). Their paths come
   from operator or RNA properties, which are checked; USD's go through the confined resolver.
+  (Route: Your scene, and files your later writes make or remove.)
 * **An existing callable placed in an object Angelo holds**: a builtin such as ``exec`` assigned to an attribute of
   an Angelo object (not a module, a registry or a class: those are journaled) stays, and runs with the arguments
   Angelo gives it. Script-made callables there are confined (above).
+  (Route: Angelo's own running state, until it restarts.)
 * **Installed code's own objects built from a script's values**: a callable installed code made on the script's
   behalf (a cache's bound method over an object it built from the script's arguments) stays unconfined. It runs
   installed code with those values, as any installed function the script calls does; script code it holds is
-  confined.
+  confined. (Route: Angelo's own running state, until it restarts.)
 * **Data a script changes in place** inside an Angelo object it reaches without a module (see "Objects shared in
   place" above): grant decisions read the C ledger (:doc:`grant_operators`), and what Angelo destroys, signals or
   sends its credentials to is checked against C's facts ("Angelo's own code"; every write, replace and removal by
   "Every write by C's facts"), but other behavior can follow the changed data until restart.
+  (Route: Angelo's own running state, until it restarts.)
 * **Defaults and attributes of Angelo's functions.** A script reading ``__kwdefaults__`` of a function that isn't
   its own gets a copy (changing a keyword default in place reaches nothing; setting it is judged as any attribute);
   a mutable value inside a ``__defaults__`` tuple, or another attribute an Angelo function holds, is shared in place
-  ("Objects shared in place" above).
+  ("Objects shared in place" above). (Not a route: a copy or a judged set reaches nothing.)
 * **A GPU-less machine.** The escape checks render and composite on the CPU (Cycles, and the compositor, whose own
   default device is the GPU): on a Windows machine with no GPU, a background render that started a GPU context (a
   Workbench render on 9dcfb883ebb, a GPU composite on d106e84e26d) ended the process. GPU-less
   machines are out of scope by policy; 2.1.0's capability gate is where that crash is handled.
+  (Not a route: a test machine's limit.)
 * **Where C's write check stops.** On Windows a path is named as the file system spells it, every junction and
   link above resolved (``winpath.cc``), and a path with a junction or link in any component, or naming an NTFS
   stream (``name:stream``), is refused outside Angelo's sealed private folders; a confined script makes no link or
@@ -940,15 +1046,17 @@ What is not covered (residual risk)
   (the checkpoint store's and a job's staging descriptors) is checked when anchored: an object a script reached
   could hold another descriptor in its place. Code outside Angelo's package (another add-on) writes as it always
   did. The write audit reads the source: a target reached through dynamic dispatch it can't follow is not checked.
+  (Not a route: a stricter refusal.)
 * **A script-made callable held where it can't be replaced** (a tuple or another immutable holder Angelo keeps):
-  counted in ``confinement_restored``.
+  counted in ``confinement_restored``. (Route: Angelo's own running state, until it restarts.)
 * **Work a script left suspended** runs each later step as a region (above). If ``sys.monitoring`` has no free tool
   id (a debugger and a profiler both attached), it is closed at the region's end instead (it can't run again). An
   installed generator a script left (``os.walk``) is not watched: its steps run installed code (next item but two).
+  (Not a route: the script's own work, still confined.)
 * **While a script runs, Angelo's other threads see its in-region changes**: a rebinding in an installed module is
   journaled and goes back when the region ends, not before. Code the script put there runs confined whoever calls
   it, but what it returns is used by the caller (a rebound function that returns a proxy address, read by a request
-  Angelo makes on another thread during the script).
+  Angelo makes on another thread during the script). (Route: Angelo's own running state, until it restarts.)
 * **Data a script leaves in installed modules**: by the journal's rule, data a script sets stays (a new value that
   is not code), and so do entries it adds in place to a list Angelo's Python holds (the warning filters inside a
   region; a ``gc.callbacks`` entry, whose callable runs confined when it is the script's). The import system's
@@ -957,53 +1065,73 @@ What is not covered (residual risk)
   script's end. What such state can steer an import to is refused when it is a file a script wrote, in this
   session or an earlier one, or a rename or copy of one; a file a person later replaces at a path a script wrote
   stays refused to Angelo's own imports, until the person removes it or forgets the folder in Preferences.
+  (Route: Angelo's own running state, until it restarts.)
 * **The record of what scripts wrote is bounded**: a script's file whose content record was among the oldest past
   the newest 8,192 is known by its path only, and a copy of it elsewhere is not. A file the person writes with
   exactly the content of one a script wrote (outside installed folders) is the script's until the person forgets
   that folder. A file a script wrote that another thread of Angelo's renames while the script's region still
   runs is known by its old path only (identity and content are taken when the region ends).
+  (Route: Your scene, and files your later writes make or remove.)
 * **A library that sets an environment variable as it loads is refused in a script** (USD's ``usdGenSchema``, a
   schema generator: its variable would change USD's prim definitions for the whole process). The refusal names it a
   developer tool to run outside Angelo; such tools are not scene work. (``usdGenSchema`` also needs ``jinja2``,
-  which Angelo doesn't ship.)
+  which Angelo doesn't ship.) (Not a route: a refusal.)
 * **The environment view reads the process's environment with the interpreter lock held**; native code that sets a
   variable on another thread at the same moment races the read, as it races CPython's own use of it.
+  (Not a route: a race of native code, not a script's.)
 * **A ``tempfile.TemporaryDirectory`` a script makes** is removed when it is collected (confined), not at interpreter
   exit: its finalizer, like every finalizer a script registers, never runs at exit.
+  (Not a route: when a script's own folder is removed.)
 * **Installed callables with a script's arguments**: a callable installed code made on the script's behalf and keeps
   in its own state (a bound method of an object it built from the script's values) runs unconfined with those
   values, as any installed function the script calls does. What the script itself made from installed parts (a
   ``partial``, a ``weakref.finalize``, an ``atexit`` or thread-exit callable) is confined at the region's end.
+  (Route: Angelo's own running state, until it restarts.)
 * **Process state another thread of Angelo's changes while a script runs** is put back with the script's at its end.
+  (Not a route: Angelo's state put back.)
 * **Preferences**: a script can't change any, by design (a GPU device, a theme). It asks the person.
+  (Not a route: a refusal by design.)
 * **A driver's Python in a linked library** stays in that library file; it runs confined wherever it runs.
+  (Not a route: it runs confined.)
 * **Drivers' Python is not judged by the trust list.** It always runs confined, whoever wrote it and however it
   arrived (its code is ``<bpy driver>``, and its first evaluation arms the checks), so it can do nothing a script
   can't; and driver Python is common in rigs, where asking for every expression would break files that work today.
   A driver a script set or brought in keeps its expression but not its Python until the person edits it (above).
+  (Not a route: it runs confined.)
 * **The person's consent is theirs to give**: a script can open a file whose scripts are held back, so the auto-run
-  warning appears; what the person allows there runs as theirs.
+  warning appears; what the person allows there runs as theirs. (Not a route: the person's own consent.)
 * **Trusted content runs as trusted**, whatever file it is in and whatever data it reads: a text the person
   trusted that executes another text's content (or a file's) runs that too. The list holds digests, not files.
+  (Not a route: the person's own trust.)
 * **Library overrides** (``BKE_blendfile_override``) make local copies of data already linked through the link
   function (entry rules above): a text can't be overridden, a style module's text stays linked (the trust list
   judges it at render), and an overridden driver's Python runs confined.
+  (Not a route: judged as the link function judges.)
 * **A local pipe a script makes for itself** (one instance, a fresh name) could be connected to by another local
   program in the moment before the process connects to it; the process's own connection then fails.
+  (Not a route: a risk to the script's own pipe.)
 * **Undo** restores texts through the same read (their mark is judged again by digest) and runs no Python itself;
   the background suite exercises the read and the execution gate, not the undo key in the UI. An **asset drop**
   goes through the same append and link functions as ``bpy.data.libraries.load``, which the suite drives.
+  (Not a route: judged as an append is.)
 * **OSL shader scripts** in a project are not Python; Cycles compiles them through a gated path entry.
+  (Not a route: a gated path, not Python.)
 * **The downloads of an unsaved document** are a tool-output folder: read, not changed, by scripts
   (``tool_output_folders``; registering it fails loudly rather than leaving it out).
+  (Not a route: a refusal, read only.)
 * **Threads that already exist**: Angelo's own pools and consumers run only ``guard_work`` items
   (``test_native_guard_work`` inventories them). An add-on's own pools are full trust.
-* **Hard links another program made** to a private file.
+  (Not a route: add-ons' own pools are full trust, not a script's.)
+* **Hard links another program made** to a private file. (Route: Secrets Angelo holds in memory.)
 * **A module a script reloads** gets back what it held at the region's end where the reload replaced code (a reload
   defines nothing: the script can seed the namespace it runs in), and so does a namespace a script had the import
-  system's internals run an installed module's file into.
+  system's internals run an installed module's file into. (Route: Angelo's own running state, until it restarts.)
 * **The Python stand-in** (host tests, a build without the C module) implements the path, program, network and
-  journal rules, not provenance: its closures can be walked.
+  journal rules, not provenance: its closures can be walked. (Not a route: test-only.)
+
+* **Audio servers on Linux.** Opening sound (a speaker, a sound strip, playback) has the audio library
+  connect to JACK or PulseAudio, which can start that server for the person's session: a program a script did not
+  start itself. (Route: Audio servers on Linux.)
 
 Known limits in 2.0.0
 ---------------------
@@ -1012,22 +1140,23 @@ Known limits in 2.0.0
 sets through RNA properties, which Blender's writers judge when they write (above). A few *indirect* routes remain,
 where a script prepares data and a write the person starts later (a render, a bake, a save, a copy) writes the file,
 unconfined; stock Blender has no confinement at all. The maintainer chose to ship 2.0.0 with these documented (the
-fourth and fifth re-reads of piece 10, 2026-11-17). 2.1.0 runs agent scripts in a helper process, out of Angelo's
+fourth and fifth re-reads of piece 10, 2026-11-17). The release after 2.1.0 runs agent scripts in a helper process,
+out of Angelo's
 process, changing Blender's data only through requests C records in full; its design must show how each one below is
 closed (the 2.1.0 backlog lists them). Until then, review what an agent changed (output paths, image and cache paths,
 names, File Output nodes) before you render, bake or save a document an agent edited.
 
-Routes a script can use itself (closed in 2.1.0):
+Routes a script can use itself (closed by the helper process, in the release after 2.1.0):
 
 * **With no Angelo window open, a script can overwrite your documents.** When an external app has Angelo run a
   script headless (no window), the script can write over your original document, the working copy Angelo edits and
   a resumed session's output through Blender's own writers whose path it sets (an image save, an unpack of packed
   data). These files are named for Angelo's own saves, and 2.0.0 does not yet tell those saves apart from a
-  script's writers.
+  script's writers. (Route: Your documents, with no Angelo window open.)
 * **After you connect an AI app, a script can rewrite that app's MCP settings file.** Once Connect has written an
   app's settings (``~/.codex/config.toml``, Claude's or Cursor's MCP settings), an agent script can rewrite that
   file the same way, for example to add a server the app then starts. Disconnect, or check the file, if an agent
-  ran scripts you did not review.
+  ran scripts you did not review. (Route: Files other apps run or read.)
 * **Other files Angelo vouched for its own use, the same way.** An engine asset whose editor opened it in Angelo
   (``engine_link_assets``) can be overwritten by a script's writers in the session that vouched it. The coding CLI
   Angelo found and runs (Codex, Claude Code: ``cli_runtime.find_executable``) is not: it is recorded to start only
@@ -1036,7 +1165,7 @@ Routes a script can use itself (closed in 2.1.0):
   unchanged since it was recorded (identity, size and its times), so a write that reached it some other way, and a
   file a script made, is refused until Angelo restarts (the break-it reviews of 29b385a6645 and 4be92cfb84f). A
   program in an installed folder or a folder on PATH starts by those rules, with no such check; gltfpack, for the
-  web export's KTX2 textures, is recorded the same way.
+  web export's KTX2 textures, is recorded the same way. (Route: Files other apps run or read.)
 
 Routes that need your later write:
 
@@ -1047,55 +1176,399 @@ Routes that need your later write:
   writes later). A writer whose path is built from such data does not judge the write, so your later render, bake or
   image save can write where the script steered it, over an existing file too. Rule 4 (no ``..``, leading
   separator, drive or share in a name) applies to property sets only, not to ``ID.rename()``.
+  (Route: Your scene, and files your later writes make or remove.)
 * **Tags do not travel with the data.** They last for the running session, on the data-block a script changed.
   After you save and reopen, revert or recover the file, or copy the data (Full Copy, duplicate, node copy and
   paste, append from your saved file), the values a script set count as yours.
+  (Route: Your scene, and files your later writes make or remove.)
 * **A path you typed with a template accepts the template's values.** An output path you typed covers its own
   expansions: each ``{name}`` any one part, the last part extra digits and an extension. A script that renames the
   scene (``contract.pdf`` with file extensions off), sets a view's suffix or a project variable chooses which of
   your files it names. Project variables (``bpy.data.project`` variables, ``{blend_dir_lib}`` from a library's
-  path) are not tagged at all.
+  path) are not tagged at all. (Route: Your scene, and files your later writes make or remove.)
 * **Which File Output node runs, and its own name, are not inputs.** A script can unmute or link one of your
   dormant File Output nodes or switch the scene's compositor node group, and rename the node a ``{node_name}``
-  template uses: your next render writes there.
+  template uses: your next render writes there. (Route: Your scene, and files your later writes make or remove.)
 * **Some data is tagged under another type than the writer asks about.** A set through ``ImagePackedFile.filepath``
   (unpack to the original location writes there) or through ``PointCacheItem`` (``point_cache.point_caches[i]``,
   the same cache) is not seen by those writers. A rigid-body world's cache is set through its scene while the cache
   names an object: a script-set external disk cache there is not judged (your bake can clear files named like it).
+  (Route: Your scene, and files your later writes make or remove.)
 * **Asset library files.** Save Brush or Pose Asset writes, and Delete Asset deletes, the file an editable asset
   library's ``Library.filepath`` names, ungated: a script that repoints it chooses which file your save overwrites
-  or your delete removes.
+  or your delete removes. (Route: Your scene, and files your later writes make or remove.)
 * **Writers not yet inventoried.** ``c_write_sinks`` scans the common file-writing calls only: ``.blend`` writes
   (``BLI_open_replacing``), renames and deletes, OpenEXR and OpenImageIO writes, the render texture cache
   (``blender_tx`` folders beside images), Cycles' compiled shaders beside their sources and the callers of the
-  helpers it lists are not checked site by site.
+  helpers it lists are not checked site by site. (Route: Your scene, and files your later writes make or remove.)
 * **Angelo's own writes below a folder it may write** are checked by folder: a file name from Angelo's state
   joined below it (a Windows device name, a stream) is not checked as a name.
+  (Route: Angelo's own running state, until it restarts.)
 * **A file browser's folder lists.** A script can set a browser's bookmark, system and recent folder entries
   (``bookmarks_active`` and the others move the open browser's folder; ``FileBrowserFSMenuEntry.path`` edits a
   bookmark), so your next confirm may land in a folder it chose.
+  (Route: Your scene, and files your later writes make or remove.)
 
 * **A Save As path an agent filled in.** A file browser's path is the person's pick once they confirm it: an
   agent that set an operator's path before the browser opened (a property's default, the last-used path) chooses
-  what the person confirms without reading it.
+  what the person confirms without reading it. (Route: Your scene, and files your later writes make or remove.)
 * **A geometry-nodes bake's default folder.** The object's and modifier's names are inputs only while the modifier
   has no bake folder; a bake or unpack that falls back to its default node folder otherwise is not judged by them.
+  (Route: Your scene, and files your later writes make or remove.)
 
 Usability limits:
 
 * **An image or text an agent loaded from your folder counts as the agent's.** Saving it to its own file is
-  refused; Save As and pick the path (your pick in a file browser is yours).
+  refused; Save As and pick the path (your pick in a file browser is yours). (Not a route: usability.)
 * **After an agent opens your project, "render beside my file" works only after your own save** (or your own open):
-  a document a script opened is no create-beside anchor until then.
+  a document a script opened is no create-beside anchor until then. (Not a route: usability.)
 * **A refused multires file on a mesh an agent made.** After Save External, each later save of the document whose
   external write is refused keeps the displacements inline in the .blend instead (nothing is lost), with only a
-  line in the log saying so.
+  line in the log saying so. (Not a route: usability.)
 * **Animation evaluated while a script runs** on the main thread can mark your data as set by the script (an
   evaluated copy shares its original's id), so a later save or render of that data may be refused.
+  (Not a route: usability.)
+
+Fixed in 2.1.0 (found by review after 2.0.1 shipped; each was in 2.0.0 and 2.0.1):
+
+* **Network through FFmpeg** (BREAKIT reread-r210-1c2c4edaf48 M-1). The bundled FFmpeg has network protocols, and
+  every open took the path as given, so a script's ``aud.Sound("http://...")`` (or a movie, a strip, a movie
+  clip, an encoder) connected out as native traffic no audit event sees, and a URL left in data did the same when
+  Angelo loaded it later. Every FFmpeg open in Blender and audaspace now allows only the ``file`` protocol, and a
+  confined script's path that names a URL or protocol is refused before anything native runs, so no URL's host is
+  looked up. On Windows a file name is a network name too (``\\host\share``, ``//host/share``, ``\\?\UNC\``,
+  WebDAV's ``@SSL``): the confinement used to resolve it, which is itself the lookup and the SMB connection that
+  sends the person's NTLM hash. The judge now refuses such a name by its text (NETWORK; break-it-confine-fixes-
+  b31e34840ca MUST-2). Every other lookup the confinement makes on a name (whose a file is, which installed file a
+  compile or a code object names, whether a module a region gained resolves where it claims, at a region's end too)
+  goes through one opener or the stat-family helpers beside it, which never touch a share nobody connected; the few
+  direct file calls left are listed with their reasons in ``test_native_remote_lookups``
+  (``bpy_angelo_guard_confine_remote``; review-confine-fixes-3cb71ae002d MUST-1, review-confine-fixes-eddf9bcda75
+  MUST-1). Each name is decoded once, strictly: a name that isn't well-formed UTF-8 is refused, because a decoder
+  that drops bad bytes reads ``\x80\\host\s\x`` as ``\\host\s\x`` (review-confine-fixes-7a1bcdb652d MUST-1).
+  The opener, the helpers and the identity lookups give the system that very decoding; the few calls left at their
+  own sites give Blender the UTF-8, which its decoder reads the same way only because the check already proved it
+  well-formed. A share counts as connected when Angelo's own folders were on it before any script ran, or when the
+  system named it for a handle already open (a mapped drive). A private, startup or tool-output folder named later
+  on a share nobody connected is still held, by its text, so a mapped drive's spelling of it is refused when it
+  names the server the same way (SHOULD-2 of that review). Another spelling of that server (its full domain name, an
+  address) is not matched: learning it would mean looking the folder up, which is the connection itself. A project
+  on a UNC path is refused to scripts by its text; one on a mapped drive letter works. A link already in a folder
+  (a symbolic link, junction or mount point, its 8.3 name, a chain, a relative one, a stream of one) whose target is
+  a share nobody connected is refused as the network before anything follows it, in the judge and in every lookup
+  (``open_for_lookup``), with Strict script protection on ("Known limits in 2.1.0": off by default), because opening a
+  path through such a link is the connection itself (the iso-win probe on a544c4b4b4d: SMB 0 -> 2). The walk
+  (``bpy_angelo_guard_confine_links``, its Windows probe in ``reparse.cc``) keeps a real, resolved prefix and never
+  probes through a link it has not resolved: each existing component is opened in ``\\?\`` form without following it and
+  its reparse data read, every offset checked; a target is followed only
+  when it is a drive (``\??\X:\``), a share (``\??\UNC\``, judged by ``lookup_may_open``) or a volume
+  (``\??\Volume{G}\``), a relative one against the link's real folder; ``\\.\X:`` is the drive as ``\\?\X:`` is.
+  A target with ``..`` after a name (``J2\..\evil``), or any ``..`` in a target with a root of its own, is refused:
+  Windows reads that ``..`` by the target's text, the walk by the folder the name really is, so the two could differ
+  (MUST-A); a relative target's leading ``..`` is the real folder's parent either way and is walked, unless it climbs
+  past its root, where Windows goes on into the object namespace (``C:\..\UNC\host\s``): refused (MUST-A'). A drive
+  root is walked as what it stands for (``QueryDosDeviceW``): a ``subst`` drive as the folder or share it names, a
+  volume or a drive letter mapped to a share as itself, a letter Windows can't name refused.
+  Cost: a path on a local drive is first opened once, whole, with ``OBJ_DONT_REPARSE`` over the volume's device
+  path; when that open succeeds, or stops at a missing name after folders that held no reparse point, nothing on the
+  way is a link and the component walk is skipped (it cost ~4.3x the baseline at 12 folders on build3); any reparse
+  point, any other answer, a ``subst`` drive, a share or a volume path is walked component by component as above.
+  Every other target or device form, any error but "not found", unreadable reparse data, a name surrogate of another
+  kind, more than 64 probes or 32 links: refused (break-it-confine-reparse-b7d499c M1-M4, S4, S5). Folders found plain
+  are kept per thread by their exact text until a region starts or anything judged is moved, linked, made or removed
+  (M5). A person's folder linked to a share they use, met while Angelo resolves its own folders before the first
+  region, notes that share as connected (S3). On macOS and Linux a name inside a folder of the automounter's maps of
+  any host (``/net``, and every folder a master map, what it includes or the mount table gives to ``-hosts``, to a
+  program map or to a file map whose wildcard entry takes its host from the key, by its real spelling too:
+  ``/System/Volumes/Data/net``; ``bpy_angelo_guard_confine_automount``) is remote by its text when its key is not
+  connected (refused as the network; S6), and with Strict script protection on resolving never steps into one through
+  a link (off, the default, an open through such a link is followed as in 2.0.1: "Known limits in 2.1.0"). A key
+  mounted before the first script region, or holding one of the person's roots (noted before the first region, as Windows notes shares),
+  is connected and stays usable: a studio's ``/jobs/show``, the person's own ``/net/nas``. A key mounted later stays
+  remote whoever mounted it (Angelo's own later load of an image path a script set would mount one). The maps are
+  read again only when their files or the mount table change, outside the lock lookups take. Maps that name their servers (``auto_home``, ``-fstab``, a file map with a fixed host) are the
+  administrator's choice of host and stay as they are. With Strict script protection on ("Known limits in 2.1.0": off
+  by default, as is the per-component check of a judge's resolve), the stat family, which raises no audit event, asks
+  the same network check (M7; ``bpy_angelo_guard_confine_wrap_lookup``):
+  ``os.stat``, ``lstat``, ``access``, ``readlink``, ``statvfs``, ``pathconf``, Windows' ``nt._path_*`` (behind
+  ``os.path.exists``, ``isdir``, ``isfile``, ``islink``), ``_getfinalpathname`` (``realpath``),
+  ``_getvolumepathname``, ``_getdiskusage``, and ``os.DirEntry``'s ``is_dir``, ``is_file`` and ``stat`` (``os.walk``,
+  ``glob``, ``pathlib``), each following its last component as it does, and Windows' ``nt.listmounts``. Windows'
+  ``_winapi.GetLongPathName``, ``GetShortPathName`` and ``nt._findfirstfile`` (``ntpath.realpath``) also read a
+  folder's names, so they are judged as reads of it too (a private folder's names stay private) and refuse ``*`` and
+  ``?``; ``_winapi.WaitNamedPipe`` waits only for this machine's pipes (``\\.\pipe\`` with no ``..``): another
+  host's opens its ``IPC$`` share and sends the person's NTLM hash. On POSIX every ``DirEntry``
+  call asks (``stat`` always calls the system, ``is_dir`` and ``is_file`` when the listing gave no type, and a name
+  may have become a link since); Windows answers a plain entry from the listing and walks only a link. Blender's C
+  lookups ask it through the file gate: every exported ``BLI_`` function taking a path that looks a name up
+  (``BLI_exists``, ``BLI_stat``, ``BLI_is_dir``, ``BLI_is_file``, ``BLI_file_stat_mode``, ``BLI_file_attributes``,
+  ``BLI_file_alias_target``, whose Windows shortcut target is asked before ``Resolve`` looks it up,
+  ``BLI_dir_free_space``, ``BLI_access`` and so ``BLI_file_is_writable``, ``BLI_file_identity_hold``,
+  ``BLI_filelist_dir_contents``), found by a scan of the class. A refused lookup raises the network refusal, or
+  answers false where the function never raises (``os.path.isdir``); no private folder is judged by these, as before.
+  The inventory finds which path-taking (and descriptor- or handle-first) functions of ``posix``/``nt``, ``os``,
+  ``_winapi``, ``_overlapped`` and ``msvcrt`` CPython audits by calling each in a plain interpreter, with a name in a
+  folder that does not exist or a descriptor of its own file, and stopping it at its first event; every event it
+  finds, and every event the standard library's shipped source raises (``sys.audit``), must be one the hook judges
+  or one that names no file (with its reason): an event the hook does not know passes it, as ``_winapi.CopyFile2``
+  did. Every event CPython's own source raises is in a table generated from the
+  release tarball (``tests/python/angelo_agent/cpython_audit_table.py``, by
+  ``scripts/angelo/generate_cpython_audit_table.py``; the tarball checked against python.org's SHA-256, never
+  committed), so a C event no call reaches counts too: ``fcntl``'s descriptor calls are judged as the descriptor's
+  file, ``sys._current_exceptions`` (every thread's traceback) and ``signal.pthread_kill`` (one of this process's
+  threads) are refused, and so are ``winreg``'s reflection switches. CPython raises
+  ``sys.set_asyncgen_hook_firstiter``/``_finalizer``, not the documentation's ``hooks`` names: asyncio sets them in
+  every confined loop, and the callable a confined thread sets runs confined whoever calls it. A descriptor by
+  number (break-it-confine-reparse head-12 read): ``os.close``, ``dup2``, ``lseek``, ``set_blocking``,
+  ``set_inheritable``, ``lockf`` judge the file it names as a read, ``posix_fallocate`` as a write and macOS's
+  ``_fcopyfile`` as a copy, so a script never closes, replaces, moves or locks one of Angelo's private files (a later
+  open would reuse its number); ``os.closerange`` is refused, as are ``os.login_tty``, ``tcsetpgrp`` and ``setns``
+  (the process's state); ``msvcrt.get_osfhandle`` judges the descriptor and ``msvcrt.open_osfhandle`` (a handle by
+  number) is refused, ``msvcrt.setmode`` and ``locking`` judge the descriptor. Windows' raw handles by number:
+  ``_winapi.ReadFile``, ``WriteFile``, ``CloseHandle``, ``DuplicateHandle`` (its source handle), ``PeekNamedPipe``,
+  ``ConnectNamedPipe``, ``SetNamedPipeHandleState`` and ``_overlapped.CreateIoCompletionPort`` judge the file the
+  handle has open (``GetFinalPathNameByHandleW``; a file whose name can't be told is refused; a pipe's, a process's or
+  an event's handle passes). The methods of ``_overlapped.Overlapped`` that take a handle (``ReadFile``,
+  ``WriteFile``, the ``WSA`` receives and sends, ``AcceptEx``, ``ConnectEx``, ``DisconnectEx``, ``TransmitFile``,
+  ``ConnectNamedPipe``) judge each handle the same way. A handle or descriptor that names no file (a pipe, a socket,
+  a terminal, an event) is used, and any number closed, replaced, moved or locked, only while it is the very number
+  a maker handed confined code while regions run (``os.pipe``, ``os.open``, ``os.dup``, ``socket.socketpair``,
+  ``_winapi.CreatePipe``...) and nothing has ended or passed it on since: ``os.close``, a ``dup2`` onto it,
+  ``FileIO.close`` (every ``io`` close and finalizer), ``CloseHandle``, and a socket's own close end it; a socket's
+  ``detach`` hands it on as a bare number. The object's identity (device and inode, a handle's type) is only a second
+  check: macOS reuses a pipe's at once and Linux gives every eventfd one, so it proves nothing alone (head-16 read),
+  and nothing is held open, so the script's pipes and sockets reach their end. A file descriptor the script doesn't
+  own may still be moved or locked when it may write the file, never closed or replaced. The script's own pipes,
+  sockets, ``multiprocessing`` and asyncio pipes work; Angelo's (its stdio to the agent runtime, its IPC pipes,
+  anything open before the region or made by its own threads meanwhile) are refused; ``print``, ``sys.stdout`` and
+  ``logging`` write in C and keep working. An original captured before the install in a function's defaults or a
+  class (``multiprocessing.connection.Connection``'s ``os.write``, ``os.close``) is replaced like every other
+  reference. ``fcntl.ioctl`` allows only ``FIONREAD`` and ``TIOCGWINSZ`` while confined (``TIOCSTI`` would type into a
+  terminal).
+  Cost: on POSIX the real path of each absolute folder resolved without the
+  network is kept until the next region, the next judged move, removal or link a script makes, or the next change
+  Blender's C makes to which folders exist or where they are (a folder made, anything removed, a move:
+  ``BLI_FileGate::folders_changed``; a content write such as a render frame keeps it), a new generation, as on
+  Windows; so a stat in a folder already resolved costs a lookup, not one ``lstat`` per component. What a kept entry
+  can miss is a link that appears after it was resolved. A confined script makes none (``link_refused``: no
+  ``os.symlink``, junction or CopyFile2 link, no move of a link or of a folder holding one) and Blender's C makes none
+  for it (``BLI_copy`` copies a link's content, ``BLI_create_symlink`` is compiled out); a link the person, Angelo's
+  own unconfined threads or another process makes while a region runs is seen at the next region, exactly as before
+  (the old clear on every C write never saw those either: they make no C write through the gate); what another
+  process changes between the check and the call is the race of every check before a call (above). A traceback
+  Angelo formats after the script stats the code's file name, which a script can set (``compile(...,
+  r"\\host\s\x.py")``): data a script left, the class below.
+  Nothing a script does makes a link appear at a path another operation already judged (M6): a confined move or
+  rename of a folder that holds a link at any depth is refused, as is moving a link itself, so no confined move
+  can put a link where a judged, lazy or derived path (an image's pixels read later, a UDIM tile, a cache, a
+  native library's open) will be read; no lock is held between a judge and its open. The walk follows nothing
+  (``bpy_angelo_guard_confine_tree``): a symbolic link, a name-surrogate reparse point (junction, mount point, WSL link;
+  a cloud placeholder or deduplicated file is not one) or another file system mounted inside refuses the move, and so
+  does a tree of more than 100000 entries or nested more than 128 deep (about 30 ms for 100000 on macOS, warm) or
+  one it can't read; each refusal says which. The folder's own path is asked of the network check first. A share a drive letter is mapped to (``NetUseEnum``) counts as connected at any time,
+  and a deviceless connection only if it was listed, OK, when the first script region began and is OK now: a
+  connection made later may be one a script caused indirectly (Angelo opening a path it left in data, Explorer reading
+  a planted ``desktop.ini``), so it never counts, and nothing is noted for good from the list or from an open handle's
+  name (head-7 MUST-4). So a person's own link to a share they use keeps working, below a project folder and in a
+  project opened after a script ran too, when the share is mapped or was connected at start; A share the document the person opens lies on is
+  theirs too: Blender's own file read notes it, only while no thread is confined and no Python is on its stack (an
+  event, the file browser, drag and drop, Recent Files, the command line; never an agent tool's open), so a UNC project
+  they open after a script ran keeps working (a script's open, or one it queued, notes nothing; Angelo's own roots on a
+  share are noted before the first region, and their setters refuse while confined). The agent's refusal is the plain network one and
+  never names the share (it could otherwise ask the person to connect a share a script chose). Every network refusal
+  names nothing, from every route (a path, a URL, a share, a host, a pipe, an entry point): its text is the reason
+  alone and its ``what`` is empty, in C's ``refuse()`` and in the Python stand-in, since the script reads both and
+  the agent reads what the script reads; the script knows what it asked for. Other refusals still name their path.
+  (The 2.1.0 Windows share-notice proof on 1e19738 read the share in the agent's text when ``what`` was echoed.) The
+  share is told to the person, on the console and through ``_angelo_guard.network_shares_refused()`` (``[(serial, share), ...]``,
+  latest last, a serial per refusal; refused while confined) for the UI. The walk re-checks each folder it cached (its own attributes)
+  before trusting it. Moves by other processes between a look and the open stay outside a script's reach.
+  **Still open**: a remote name a script left in data (an image or sound path) is opened when Angelo loads that data
+  later, unconfined, because FFmpeg's and Blender's file opens follow UNC names and 2.1.0 keeps no record of which
+  read paths a script set (the helper process's records close it).
+  The bundled libraries were swept for network calls (Linux build, 2026-11-20): no shared library
+  Angelo ships imports one; the executable's come from FFmpeg (now files only) and libspnav, which connects only to
+  the 3D mouse daemon's local socket at startup; Tracy and LLVM's socket code have network symbols in the library
+  folder but are not linked into what ships. The macOS and Windows builds are not yet swept.
+  (Route: Network shares, through a path.)
+* **A program started through a sound server** (found by the coordinator's review, 2026-11-20; Linux builds, which
+  ship JACK and PulseAudio). A script's ``aud.Device("JACK")`` let libjack start a server by running the first line of
+  ``~/.jackdrc``, and PulseAudio could autospawn the ``daemon-binary`` its ``client.conf`` names; a script could
+  write both files. audaspace now never asks either to start (``JackNoStartServer``, ``PA_CONTEXT_NOAUTOSPAWN``),
+  for any caller, a confined script can't open an output device at all (PROGRAMS), and a script can no longer write
+  either file or the rest of the audio stack's configuration (startup folders above; break-it-confine-fixes-
+  b31e34840ca MUST-3). A person who relied on Angelo starting JACK starts it themselves now.
+  (Not a route: closed in 2.1.0.)
+* **Code deeper than 64 levels, and nested code under another name, ran unconfined after its region**
+  (break-it-confine-count-14a2d702b19 MUST-1, break-it-confine-depth-5dc512c07e1 MUST-A). The taint walk stopped at
+  depth 64, and taint was decided by file name, which marshal lets a script change for one nested function. Code is
+  now the agent's by birth (made while a script runs, except the standard library's own code an import loads), the
+  walk is unbounded and enters tuple and frozenset constants, and a walk that can't finish refuses.
+  (Not a route: closed in 2.1.0.)
+
+Still open in 2.1.0, failing closed (no escape): a script that execs installed or standard-library code can make it
+agent code for the session, so Angelo's own later calls through it are refused (break-it-confine-depth-5dc512c07e1
+SHOULD-2); a function a script builds from installed code with crafted bytecode is called installed by the
+region's end (SHOULD-3 of the same review); both close with the helper process.
 
 Cost and races: each confined property set takes one lock and records a string per base type (not yet measured
 on set-heavy scripts; ``benchmark_confinement`` measures the common cases), and a writer's first check of a declared
 input looks its type up in RNA from the job's thread, which can race an add-on registering on the main thread.
+
+Known limits in 2.1.0
+---------------------
+
+What a confined script can still reach, or what Angelo refuses that a person may notice, as of the branch that closes
+the network and link routes (``bugfix/v2.1.0-confine-reparse-unc``). Each item says what it is, why it is open and what
+closes it. 2.1.0 has no floor under deletions, overwrites or program starts made outside confinement (Rulings 19
+and 20 moved the command floor and the delete floor to the next release): the payload most open findings were shown with
+(``functools.partial(shutil.rmtree, ...)`` run later by Angelo's own code) runs as Angelo wherever such a route is open.
+
+Open, reachable by a script:
+
+* **Programs started, and files deleted, by code that escaped confinement.** A callable a script left that Angelo's
+  own code calls later runs as Angelo: a program it starts and a folder it deletes are not judged in 2.1.0. A confined
+  script itself starts no program at all, as in 2.0.1. The sandboxed script helper planned for the next release
+  closes this.
+  (Route: Angelo's own running state, until it restarts.)
+* **No delete floor.** 2.1.0 has no process-wide check under deletions: a recursive or mass delete, truncation or
+  overwrite made outside confinement (by Angelo's own code, an add-on, or code that escaped a script's confinement,
+  as above) is carried out as the system allows, and is permanent; nothing is moved to the system trash instead. Only
+  a confined script's own deletes are judged (by the rules above). A floor that refuses mass damage outside Angelo's
+  own and temporary folders, and sends recursive deletes inside a granted folder to the trash, is planned for the next
+  release; it did not pass its review in time for 2.1.0.
+  (Route: Angelo's own running state, until it restarts.)
+
+* **A name a script left in data, opened later by Angelo.** A remote name in an image, sound or cache path is opened
+  when Angelo loads that data outside any script, because FFmpeg's and Blender's own opens follow UNC names and 2.1.0
+  keeps no record of which read paths a script set. Path-typed RNA strings are judged when a script sets them (the
+  place-string table), which narrows this to paths set another way. The helper process closes it: it records
+  every path a script hands over.
+  (Route: Network shares, through a path.)
+* **Changes another process makes between a check and the open.** A link, a ``subst`` drive or a mount another program
+  creates after a path was checked is followed by the open that comes after. No script can make one (links are never
+  made or moved for a script), and the cached results notice such a change by the next script at the latest: Windows
+  re-reads each cached folder's own attributes and asks its drives again each script; POSIX resolves folders afresh
+  each script and after any change of folders Blender makes. An automounter map an administrator adds while Angelo
+  runs is seen when it mounts its folder (Linux: by the next script) or within a second (its files' edits, and
+  macOS's mount table, are read again at most once a second: Ruling 17).
+  (Not a route: another program's change, which no script can make.)
+* **A Windows shortcut (``.lnk``) resolved by the file browser for a script** uses Windows' no-tracking, no-link-info
+  flags; this is pinned by a host test but has no red-and-green proof, because the effect depends on the link-tracking
+  service the test machines may not run.
+  (Not a route: it asks no share or service when confined.)
+* **On Windows, a link already in a folder the script may read, whose target is a share nobody connected**, unless
+  "Strict script protection" is on (below). A script's open or lookup through such a symbolic link, junction or mount
+  point follows it and connects, as in 2.0.1; a name that spells the share itself is refused either way.
+  (Route: Network shares, through a path.)
+* **A lookup that names the network, or reaches it through a link, unless Strict script protection is on.** A
+  confined ``os.stat``, ``os.lstat``, ``os.access``, ``os.path.exists`` and the rest of the stat family,
+  ``os.DirEntry``'s ``is_dir``, ``is_file`` and ``stat``, ``realpath``, and Blender's own lookups for a script, ask
+  the system as in 2.0.1: under ``/net`` (or another automounter map of any host) or ``\\host\share`` the
+  lookup itself connects. On POSIX, an open through a link whose target lies under the automounter is followed the
+  same way. An open, load or write that names the network itself is refused either way.
+  (Route: Network shares, through a path.)
+* **A number Angelo holds, used by a script, unless Strict script protection is on.** A pipe, socket, terminal or
+  Windows handle of Angelo's (its link to the agent runtime, an IPC pipe) can be read, written, closed or replaced by
+  a script that names its number (``os.write(fd, ...)``, ``os.dup2(mine, fd)``, ``os.close(fd)``,
+  ``_winapi.WriteFile(h, ...)``), as in 2.0.1; a file's
+  descriptor is judged by its file either way.
+  (Route: Angelo's own running state, until it restarts.)
+
+Strict script protection (off by default):
+
+Ruling 17 keeps every layer whose cost is measurable against Angelo's own speed (not stock Blender's) behind one
+switch, ``angelo_strict_script_protection()`` (``bpy_angelo_guard_strict.cc``), off by default; a confined script can't
+change it. With it off nothing below costs anything, and with no script running nothing costs either way: on the Linux
+bench (iso-linux, f74b0d6 against the release base, 30 interleaved rounds) every default row was within noise (a stat
++0.4..1.5%, a deep judge +0.5..0.8%, an import +1.6%, ``os.walk`` +1.0%, ``copy2`` +1.6%, modeling -1.3%, a
+script-left callback -0.8%; the base's own p95 is 1.2..1.6% above its median), and Windows' deep judge was 208 µs
+and 231 µs through a link (build3, 8be1419) against 284 and 309 before this branch.
+
+* **Windows link walk.** A confined script's open, load or lookup on Windows walks the symbolic links, junctions and
+  mount points on the way without following any (``bpy_angelo_guard_confine_links.hh``), and refuses one that leads to
+  a share nobody connected, a drive letter Windows can't name, a target with ``..`` after a name or past its drive's
+  root, and a folder whose reparse tag is neither a link nor a known data tag (DFS, ProjFS). Off, a lookup keeps
+  2.0.1's check by the name's text and its full name, and a judge keeps the name's text and its resolved path. On the
+  Windows build machine (build3, 9ffa158, median of 25 runs of 800 opens 12 folders deep): 212.7 µs per open on a deep
+  local path and 236.4 µs through a folder link with it off, 341.1 and 480.6 with it on, against 284 and 309 before
+  any of this branch's checks. Angelo still walks its own roots once at startup, so a person's folder linked to a
+  share they use keeps that share connected.
+  (Not a route: what Strict script protection adds.)
+* **The stat family's network check.** Each confined lookup above (and each of Blender's own for a script) resolves its
+  folders, one ``lstat`` and one automounter check per component, and refuses one that names or reaches the network;
+  ``os.DirEntry`` checks every call, since a name may have become a link since the listing. On the Linux bench without
+  it (iso-linux, df8356d): a confined stat cost +20% warm and +354% cold, a stat of a new file 12 folders deep +1222%,
+  ``os.walk`` of 10,000 files 16 times as long, ``shutil.copy2`` of 1,000 files +18% and an import +10%. Off, those
+  wrappers are not installed at all: ``os.stat`` and the rest are CPython's own (a wrapper that only passed the call on
+  still cost +0.08 µs a call, +2.7% on a stat, script or not). Turning the switch on installs them, and off removes them
+  (every module attribute and reference holds CPython's function again), each in one walk over the loaded modules.
+  Turned on while Angelo runs, the walk reaches the modules' own references, not a copy something captured earlier in a
+  closure or a ``functools.partial``, which keeps CPython's function (a script can reach such a copy): set the switch
+  before scripts run. A pipe waited for and a lookup that reads a folder's names keep their checks either way.
+  (Not a route: what Strict script protection adds.)
+* **Which numbers a script made.** The makers (``os.pipe``, ``os.open``, ``os.dup``, ``socket.socketpair``,
+  ``_winapi.CreatePipe`` ...) note what they hand a confined script; ``os.close``, ``dup2``, ``lseek``,
+  ``set_blocking``, ``set_inheritable``, the locks, eventfd and timerfd, ``FileIO.close``, ``socket.detach`` and the
+  Windows handle functions then act on a number that is no file's only when the script made it, and a closed number is
+  the script's no longer (``bpy_angelo_guard_confine_made``). Tracked per run: turned on while a script runs, it applies
+  from the next run, so nothing the running script made is refused. Off, none of these wrappers is installed (a wrapper
+  that only passes a call on costs a measurable share of a close or a dup); ``_overlapped``'s network refusals stay.
+  (Not a route: what Strict script protection adds.)
+* **Definitions of the settings that widen what scripts may do.** With it on, the run-end sweep also reports a
+  setting (Always allow scripts, the local CLI and login settings, Strict itself) whose RNA definition changed during
+  the run, such as one redefined to read back its old value. Off, it compares none (two lookups per setting per
+  run cost a script ~19 us on macOS, v210-rc bench): C still refuses every definition change a confined script
+  makes, as in 2.0.1, so only unconfined code (an add-on, code that escaped) could redefine one unreported.
+  (Not a route: what Strict script protection adds.)
+* **Another interpreter, seen by any event it raises.** Once a second Python interpreter exists, every confinement
+  hot path asks at every call (the counts it reads first are the main interpreter's). Always: CPython's event for a
+  new interpreter, and importing or making a module of the ``_interpreters`` family in any context, under any name
+  (matched by its full name, its last name or its file: ``x._interpreters`` made by ``_imp`` is the same extension),
+  set that once Angelo's confinement is installed (the add-on's register, at startup). With it on, the audit hook
+  also compares each event's interpreter with the main one (one call per event, measurable on macOS: Ruling 17).
+  Strict off: an interpreter created by already-loaded native code that detaches its thread state first, or a family
+  module made outside ``_imp`` by already-loaded native code (ctypes, C), is not seen. Nor is a family module that
+  code running before the add-on registers (a startup script, an add-on registered earlier) makes through ``_imp``
+  on Windows, where ``_interpreters`` is built in, or an interpreter later created from it
+  (``_interpreters.create()`` raises no event of its own). A confined script still can't create an interpreter
+  from such a module: the creation fails, as it did before these counts, and nothing it asks for gets out, during the
+  script or after it (v210-rc build3 probes, on 2.1.0 and on the build it was cut from).
+  (Not a route: what Strict script protection adds.)
+* **POSIX: each component against the automounter.** A judge of an open resolves the path one component at a time;
+  with the switch on, each component is checked against the automounter's maps, so a link whose target lies under
+  ``/net`` is refused before it is followed. Off, the judge checks the whole name's text and resolves it as before.
+  (Not a route: what Strict script protection adds.)
+* **Turning it off may not last past a crash.** When the person turns Strict script protection off, the state
+  folder's copy says Off at once, but Blender writes preferences only at a clean exit with auto-save on. If Angelo
+  crashes, or Preferences auto-save is off, the preferences still say On at the next start, and On from either copy
+  wins, so it comes back on: the person turns it off again. It never comes back off by itself.
+  (Not a route: it errs toward the stricter checks.)
+* **A direct write can show it on while it is off.** Unconfined code (the console, an add-on) that writes the
+  stored value directly (``prefs["strict_script_protection"] = True``) skips the setting's update. The switch then
+  shows On while C still has it off, and the checks Strict adds don't run until the next preference read or the
+  person's press on the switch puts C in step; drawing the switch never corrects it, because drawing never writes.
+  (Not a route: a confined script's write is refused by every route, this one included, so only code that already
+  runs unconfined can make it.)
+
+Refused where 2.0.1 allowed it (fail closed; a person may notice):
+
+None of these was hit by any of 210 distinct agent scripts in 2,271 recent bench, scenario and gate logs, and in the
+real-model 2.0.0 Windows gate traffic 1 of 1,298 tool calls was a script at all (the rest were typed tools); each
+refusal says what to do instead.
+
+* A script can't move or rename a folder that holds a symbolic link, junction or mounted folder anywhere inside, or a
+  folder of more than 100000 entries or deeper than 128 folders: moving the files inside it works.
+* A script can't copy a folder through Blender's own copy (``BLI_copy``), and a copy that would make a link copies the
+  file's content instead.
+* On Windows, a share counts as connected for a script's names and lookups only when a drive letter is mapped to it,
+  when it was connected before any document loaded, when one of Angelo's folders lies on it, or when the person opened
+  a document from it themselves (an agent tool's open doesn't count). Otherwise a name on it (and, with Strict script
+  protection, a link to it) is refused, and the person is told which share on the console and in the chat.
+* On macOS and Linux, a folder the automounter mounts after Angelo started (and holding none of the person's folders)
+  is refused to scripts, as ``/net`` was.
+* With Strict script protection on, the Windows link walk's refusals above (a drive letter Windows can't name, a
+  link target with ``..``, an unknown reparse tag).
 
 Results
 -------
@@ -1103,6 +1576,80 @@ Results
 A script result still records ``execution_mode="trusted_unconfined"`` and ``confined=false`` (``trusted_scripts``):
 these fields say the script is not sandboxed from the person's files and scene. ``confinement_restored`` lists what
 its end put back.
+
+Strict script protection
+------------------------
+
+The maintainer's Ruling 17: a check that cannot keep agent scripts about as fast as stock Blender's may
+ship only as an opt-in for people who want stricter security, never on by default. **Strict script protection** is
+that opt-in: one preference (``ANGELO_Preferences.strict_script_protection``, ``strict_protection.py``), drawn under
+Agent permissions on the AI Providers page and beside Always allow scripts in the add-on's preferences. It is off by
+default, saved with the person's preferences, and off for anyone updating whose preferences never held it. Its
+description says what it adds (every path and link checked in full, pipes and handles a script makes tracked, more of
+what a script changes put back when its run ends) and that agent scripts can run slower. It claims only what ships:
+2.1.0 stops no script thread in either mode.
+
+* **C reads a flag, never RNA.** ``angelo_strict_script_protection()`` (``bpy_angelo_guard_strict.hh``) is one relaxed
+  atomic load, for any thread with or without the GIL. ``_angelo_guard.sync_strict_script_protection()`` sets it from
+  the value saved in the add-on's preferences, which C reads itself, so no caller hands C a value. It turns protection
+  off only for the person, on this setting's own control: their press on its switch on Angelo's page (the grant scope
+  that press opened, which C records), the ticket C minted for their press on its checkbox (taken by C, and minted
+  only for a press on an add-on preference: a property of the same name elsewhere mints none), or a preference read
+  they started (Load Factory Preferences, Revert: marked in C around the add-on reset of a read that loads
+  preferences, and honoured only when no Python is on the stack, so a read started from Python code, Angelo's own
+  settings import included, is no cause: the re-read of 9b3f450, M3). Limit (unconfined code, R15): code outside a
+  script's confinement can still start a read with no Python frame on the stack, such as a timer whose callback is a
+  ``functools.partial`` of the operator call, and so turn it off without the person (the re-read of 19011dd, S14). Any
+  other Off is refused: C keeps the flag, and the preference gets On back, so the switch shows what is in effect. An
+  add-on entry without preferences reads as the default, off; only a missing entry keeps the flag.
+  ``strict_protection.sync`` calls it when the add-on registers, after every preference read
+  (``prefs_reload.READ_LISTENERS``) and on each change. ``set_strict_script_protection(on)`` turns it on for anything,
+  off only as the sync allows it. Both act only on a change (``store_strict``), where a reader that installs something
+  with the flag does it.
+* **Never an agent script's.** C refuses a confined thread every write to a preference: attributes, and every struct
+  method of ``bpy_rna.cc`` that changes data (``property_unset``, ``property_overridable_library_set``, item
+  assignment and deletion, ``pop``, ``id_properties_ensure`` and ``id_properties_clear``: the review of 93ef5b1, M1,
+  closed as a class; function calls such as ``bl_system_properties_get`` were already refused; ``bpy_rna_anim.cc``'s
+  keyframe and driver calls too), every change of a preferences type's definition (a class attribute set or deleted,
+  a ``bpy.props`` definition, ``RemoveProperty``, ``register_class`` and ``unregister_class``: the review of a121c9a,
+  M2, since a redefined property loses its update), and its call of the setter or the sync. Whatever a run still
+  changed is put back at its end: the sweep restores it with inverted polarity (``protective``: on is the protected
+  side) and, when it was on at the run's start, reports a setting whose definition changed and re-syncs C from what
+  the preference holds (off, by default, neither runs: see "Known limits in 2.1.0"). Turning it on
+  narrows and is open to anything else. Turning it off widens: only the person's own press (its C ticket on Blender's
+  checkbox, or the grant scope of their click on Angelo's page), never while a script runs. Every change takes the
+  press's ticket, so an On press leaves none for an Off. A refused change says why in the status bar.
+* **Definitions as imported.** A definition's ``keywords`` and a class's ``__annotations__`` are plain containers a
+  confined script can change in place (no RNA change, nothing refused); Angelo writes every preference's definition
+  anew from its import-time record before each registration (``preference_definitions``), so a change never reaches a
+  later ``register_class`` (the re-read of 9b3f450, S13).
+* **Kept across a crash.** Blender saves preferences only at a clean exit, so each change is also saved at once in
+  Angelo's state folder (``strict-script-protection.json``, as Always allow scripts). At start On from either wins;
+  Off from the file never turns saved preferences off, so an Off lost to a crash or to auto-save being off comes
+  back On at the next start ("Known limits in 2.1.0").
+* **Workers.** A worker Blender starts with ``--factory-startup`` and loads no preferences, so it takes the flag of the
+  Angelo that started it: ``worker_process.worker_environment`` carries ``ANGELO_STRICT_SCRIPT_PROTECTION``
+  (``strict_flag.carried``) and the worker sets it before any agent code (``headless_main``,
+  ``strict_flag.from_environment``). A warm worker launched with another value is never taken or reused
+  (``strict_flag.matches``, ``worker_pool``): a change reaches the next worker chat.
+* **During a run.** Turning it on while a script runs takes effect at once for the lookups and links (it only narrows;
+  the sweep never turns an on back off). Which pipes, sockets and handles a script made is tracked per run: turned on
+  mid-run, it applies from the next run, so nothing the running script made before the switch is refused.
+* **What reads it.** The core reparse (link) checks (``bpy_angelo_guard_confine_remote.cc``: ``strict_lookups()``),
+  each listed with its measured cost under "Strict script protection (off by default)" in "Known limits in 2.1.0".
+  On, a confined script's lookups and opens on Windows walk the links on the way and refuse one leading to a share
+  nobody connected (or a drive Windows can't name, a ``..`` target, an unknown reparse tag); the stat family's,
+  ``os.DirEntry``'s and Blender's own lookups for a script refuse a name that reaches the network; POSIX resolves a
+  judged path one component at a time against the automounter; and the numbers a script makes are tracked, so it may
+  use, close or replace only its own pipes, sockets and handles, never one of Angelo's. Turning it on installs those
+  wrappers, and off removes them, each in one walk over the loaded modules; set it before scripts run (a copy captured
+  earlier in a closure keeps CPython's function).
+
+Pinned by ``test_native_strict_script_protection.py`` (the default, persistence, the flag following the preference,
+the refusals, the C side's shape), ``test_blender_strict_script_protection.py`` (the real guard's refusals, in
+the app), ``test_blender_strict_person_click.py`` (the person's real press on its AI Providers switch and on its
+checkbox turns it off, and every reader agrees: preference, C's flag, the saved choice, ``os.stat``) and
+``test_native_translation.py`` (its text in every catalogue).
 
 Tests
 -----
@@ -1112,7 +1659,10 @@ Tests
 * ``test_blender_confinement_attacks``: the same attacks against the C confinement in the app, and the module's
   surface.
 * ``test_blender_script_confinement``: operators, timers, draw handlers, handlers, driver functions and load-time
-  texts in the app, Angelo's access afterwards, and the cost.
+  texts in the app, Angelo's access afterwards, and the cost. It runs twice, with the app's bytecode cache prefix and
+  with none (``@pycache_prefix``, ``@no_pycache_prefix``), because which ``.pyc`` a loader names, and which cached
+  bytecode is installed code, differ between them.
+* ``test_native_confinement_pycache_trust``: only the cache prefix's mirrors of installed folders are trusted.
 * ``test_blender_confinement_escapes``: every trigger that runs code later × every carrier (break-it 2026-11-15),
   each payload reporting ``confined()``; class attributes, forged definitions, SQLite, saved load-time texts, held
   descriptors, the OS startup locations; ordinary code that must still run (``namedtuple`` defaults, ``asyncio``,
@@ -1140,6 +1690,61 @@ Other lanes' work kept the load at 5–10 throughout; the arms alternate, so it 
 * A 200,000-vertex bmesh grid, every vertex moved (n=40): 154.7 / 163.0 ms; 155.0 / 159.1 ms with 72a40bf97f6;
   152.6 / 162.3 ms without (+1.4% median).
 * An ``open()`` with no script running: about 16 µs, as without the guard; while confined about 62 µs.
+
+**With no script running, Blender's hot paths pay three loads** (2.1.0; 2.0.0's declaration 4). Every hook that
+runs per property set, per element or per data-block first asks ``BLI_fileops_confine_possible()`` (BLI_fileops.hh):
+the RNA setters' notes, the Python set refusals, the new data-block record, ``confined_now`` itself. It reads three
+parts, kept apart so an error in one holder can never cancel another (BREAKIT script-isolation-review-fable-2
+A2-MUST-1, where one signed sum let renamed code drive a running script's own count to zero):
+
+* ``BLI_fileops_confine_open``: the confinement's own thread states (``ConfineState``: ``depth``, ``pending``,
+  ``held``), so every write to them keeps it, and nothing else touches it;
+* ``BLI_fileops_confine_codes``: agent code objects alive. The stack test confines agent code at depth zero too (a
+  function a script left where its region's end can't replace it, called later by Angelo's code), so agent code by
+  identity is one set, and each member is counted while it is in it: a code watcher (``PyCode_AddWatcher``) adds
+  code made under the agent's file names (compiling, unmarshalling, ``code.replace``) and removes a member only when
+  that code object is freed; the wrapper of ``_imp._fix_co_filename``, the one way live code is renamed, adds code
+  renamed to those names, with its whole tree, while confined only for a root that is already agent code (a tree with
+  mixed names is refused); every code object a confined thread makes is added **at birth**, whatever its name
+  (compiling, unmarshalling, ``code.replace``, each nested constant as it is made), except code made from bytes
+  provenance proved are an installed file's own (its source compiled under its name, its ``.pyc`` byte for byte),
+  from a module Python ships frozen, or by a fresh installed module's body as it loads; never by what the importing
+  objects claim (a spec, a loader's path, the frames), which a script can build (break-it-confine-fixes-b31e34840ca
+  MUST-1); and taint (code a script
+  ran that someone else made) adds the whole tree of nested code, however deep, tuple and frozenset constants
+  included. 2.0.0 kept taint in a separate table held by weak references
+  and stopped its walk at depth 64, letting deeper code through as installed code (BREAKIT
+  break-it-confine-count-14a2d702b19 MUST-1, SHOULD-2): a lambda nested 70 deep, left in a tuple, read a private
+  file after its region;
+* ``BLI_fileops_confine_always``: set for good when counting can't be exact (no code watcher, a tainted file name,
+  a give-back with nothing to give back, or any audit event raised by an interpreter other than the main one, whose
+  code our watcher can't see): every path then asks, at 2.0.0's cost, never an unconfined set. An allocation failure
+  in a walk also **refuses** what was being walked (the exec, the compile, the script), and from then on every code
+  object not from a trusted file counts as agent code.
+
+A driver's Python is counted while its compiled expression exists. So the saving holds while no script runs and
+nothing a script left is alive. A document with Python drivers (rigs) keeps the hot paths asking while those
+drivers exist, at 2.0.0's cost; that case is not measured yet. ``_angelo_guard.confine_open()`` reads the sum and
+``confine_counts()`` the three parts. ``test_blender_script_confinement`` requires the sum to be zero before scripts
+and once their code is gone, set while one runs and while a function it left lives, that function still refused when
+Angelo's code calls it after the region, the same for a function made from code renamed to the agent's name and for
+code nested deeper than any fixed bound (lambdas and ``def`` chains, in a tuple or a handler list), and a script that
+drops a renamed code object before each of 64 tries to read a private file refused every time with no accounting
+error; ``test_native_confine_hot_paths`` requires every such hook to ask first, every source and renamer of agent code
+to keep the count by identity, and the three parts never to offset each other. Exact instruction counts inside the
+measured function (callgrind, Linux, angelo-lane-latency, not a shipping build; stock Blender v5.3.0, 2.0.0
+e3d0c27531a, the single count b24a865f3c1 and this fix built alike, one run on 2026-11-20):
+
+* ``foreach_set("co")`` on 750,000 vertices, three calls: stock 1,597,525,301; 2.0.0 1,685,276,138 (+5.5%); single
+  count 1,572,775,985; the fix 1,588,525,944 (0.6% below stock).
+* 20,000 sets of an int property from Python: stock 112,621,028; 2.0.0 113,313,551 (+0.6%); single count
+  111,213,437; the fix 111,513,362.
+* A data-block made (``BKE_libblock_alloc``, the difference of 2,200 and 200 meshes): stock 2,651.9 per block;
+  2.0.0 2,733.9; single count 2,679.9; the fix 2,694.9. The rest over stock is the name check over the startup file's
+  names and Angelo's ID runtime, not the confinement.
+
+The Python allocator's recorder (above) still wraps every object allocation while no script runs; it is measured by
+``benchmark_confinement`` and left as it is (removing it between regions would swap the allocator under live objects).
 
 Suspended work as regions and code provenance (Devin break-it Phase C review, 2026-11-16, angelo-linux-build, not a
 shipping build), measured against the previous guard ee5e77f8e11, four ABAB rounds (``benchmark_confinement.py``;

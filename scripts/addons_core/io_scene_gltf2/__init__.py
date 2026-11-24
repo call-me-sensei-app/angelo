@@ -2012,6 +2012,20 @@ class ImportGLTF2(Operator, ConvertGLTF2_Base, ImportHelper):
         default=False,
     )
 
+    # Angelo: the person's import (File > Import, the file browser, a dropped file) welds a file with morph targets,
+    # whose split seams would otherwise shade apart once a shape key moves; a script's call keeps Blender's default
+    # (maintainer, 2026-11-15). Merge Vertices joins only vertices with the same position, normal, skin and shape-key
+    # positions, so UVs, colours and hard edges stay. doc/angelo/generative_studio.rst, "Models with morph targets".
+    merge_vertices_for_morph_targets: BoolProperty(
+        name='Weld Shape Key Seams',
+        description=(
+            'Merge Vertices for a file with morph targets (shape keys), so its seams do not shade apart when a '
+            'shape key moves. UVs, colors and hard edges are kept. Files without morph targets are not changed'
+        ),
+        default=False,
+        options={'SKIP_SAVE'},
+    )
+
     import_shading: EnumProperty(
         name="Shading",
         items=(("NORMALS", "Use Normal Data", ""),
@@ -2151,6 +2165,8 @@ class ImportGLTF2(Operator, ConvertGLTF2_Base, ImportHelper):
                 pass
 
         self.has_active_importer_extensions = len(importer_extension_layout_draw.keys()) > 0
+        # Angelo: the person's import welds files with morph targets (``merge_vertices_for_morph_targets``).
+        self.merge_vertices_for_morph_targets = True
         return ImportHelper.invoke_popup(self, context)
 
     def execute(self, context):
@@ -2196,9 +2212,14 @@ class ImportGLTF2(Operator, ConvertGLTF2_Base, ImportHelper):
         from .blender.imp.blender_gltf import BlenderGlTF
 
         try:
-            gltf_importer = glTFImporter(filename, import_settings)
+            # A copy per file: one file's weld must not reach the next in a multi-file import.
+            gltf_importer = glTFImporter(filename, dict(import_settings))
             gltf_importer.read()
             gltf_importer.checks()
+            settings = gltf_importer.import_settings
+            if (settings.get('merge_vertices_for_morph_targets') and not settings.get('merge_vertices')
+                    and unwelded_morph_targets(gltf_importer.data)):
+                settings['merge_vertices'] = True
 
             gltf_importer.log.info("Data are loaded, start creating Blender stuff")
 
@@ -2215,7 +2236,7 @@ class ImportGLTF2(Operator, ConvertGLTF2_Base, ImportHelper):
             # glTF morph normals, so once a shape key moves the surface every seam shades as its own patch. The
             # default stays Blender's; the console line reaches a script's output (and an agent's), the report
             # the status bar.
-            if not import_settings.get('merge_vertices') and unwelded_morph_targets(gltf_importer.data):
+            if not gltf_importer.import_settings.get('merge_vertices') and unwelded_morph_targets(gltf_importer.data):
                 message = UNWELDED_MORPH_TARGETS
                 gltf_importer.log.warning(message)
                 self.report({'WARNING'}, bpy.app.translations.pgettext_rpt(message))
@@ -2246,6 +2267,9 @@ def import_mesh_panel(layout, operator):
     header.label(text="Mesh")
     if body:
         body.prop(operator, 'merge_vertices')
+        row = body.row()
+        row.active = not operator.merge_vertices
+        row.prop(operator, 'merge_vertices_for_morph_targets')
         body.prop(operator, 'import_merge_material_slots')
         body.prop(operator, 'import_point_as_pointcloud')
 

@@ -299,7 +299,7 @@ static AVFormatContext *init_format_context(const char *filepath,
     format_ctx->video_codec = forced_video_decoder;
   }
 
-  if (avformat_open_input(&format_ctx, filepath, nullptr, nullptr) != 0) {
+  if (ffmpeg_open_input_local(&format_ctx, filepath) != 0) {
     return nullptr;
   }
 

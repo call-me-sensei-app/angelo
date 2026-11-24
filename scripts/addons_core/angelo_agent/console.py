@@ -31,6 +31,13 @@ def display_text(message):
     if message.get("request_kind") == "angelo_goal":   # A held goal's round (goal_loop): its numbers, never its words.
         from .goal_text import row_display
         return row_display(message.get("goal") or {})
+    if message.get("role") == "user" and isinstance(message.get("plan_choice"), dict) and not message.get("request_kind"):
+        from .planning_text import row_display   # The person's Go on a plan card (plan_mode.rst): what they chose.
+        return row_display(message["plan_choice"], message["plan_choice"].get("notes", ""))
+    if message.get("request_kind") == "angelo_continue":   # Continue after Angelo closed (crash_resume_ui).
+        from .crash_resume_ui import ROW
+        counts = (list(message.get("parts") or ()) + [0, 0, 0])[:3]
+        return iface_(ROW, done=counts[0], maybe=counts[1], not_run=counts[2])
     if message.get("request_kind") == "angelo_event":   # Angelo's own request to the lead (worker_resume).
         return iface_("Angelo continued this chat: its workers have all ended. Not merged into this scene: {parts}",
                       parts=", ".join(message.get("parts") or ()))
@@ -179,6 +186,15 @@ def submit(controller, text, references=None, *, pending=(), unsent=None, run_ch
             engines = watcher.for_request(controller) if watcher is not None and not worker_chat else None
             if engines:
                 turn.observation["engines"] = engines
+            if not worker_chat:   # What the person picked with @ (composer_mentions); a worker's copy has other ids.
+                from . import composer_mentions
+                picked = composer_mentions.for_request(controller, text)
+                if picked:
+                    turn.observation["mentioned_items"] = picked
+                from . import context_folder_host   # The attached folders' path-free manifests (a state field).
+                folders = context_folder_host.observation(controller)
+                if folders is not None:
+                    turn.observation["context_folders"] = folders
             # Web exports read back in the background since the last request (web_readback), once.
             readbacks = sys.modules.get(__package__ + ".web_readback")
             finished = readbacks.for_request(controller) if readbacks is not None else None

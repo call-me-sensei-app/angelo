@@ -62,6 +62,9 @@ namespace blender {
  * \{ */
 
 static const BLI_FileGate *file_gate = nullptr;
+std::atomic<int> BLI_fileops_confine_open{0};
+std::atomic<int> BLI_fileops_confine_codes{0};
+std::atomic<bool> BLI_fileops_confine_always{false};
 
 void BLI_fileops_gate_set(const BLI_FileGate *gate)
 {
@@ -73,9 +76,45 @@ const BLI_FileGate *BLI_fileops_gate_get()
   return file_gate;
 }
 
+bool BLI_fileops_gate_refuses_lookup(const char *path, const bool follow_last)
+{
+  if (BLI_fileops_confine_possible() && file_gate != nullptr && file_gate->lookup_refused != nullptr &&
+      path != nullptr && file_gate->lookup_refused(path, follow_last))
+  {
+    errno = EACCES;
+    return true;
+  }
+  return false;
+}
+
 static bool gate_refuses(const char *path, bool write)
 {
   if (file_gate != nullptr && path != nullptr && file_gate->refused(path, write)) {
+    errno = EACCES;
+    return true;
+  }
+  return false;
+}
+
+/** A write that changes which folders exist or where they are (a folder made, a file or folder removed, a move): the
+ * gate's `folders_changed` runs first, so lookups resolved before are read again. A plain content write (a render
+ * frame, a bake) changes no folder and keeps them (head-14 read SHOULD: the cost). */
+static bool gate_refuses_structure(const char *path)
+{
+  if (file_gate != nullptr && file_gate->folders_changed != nullptr) {
+    file_gate->folders_changed();
+  }
+  return gate_refuses(path, true);
+}
+
+/** A move: both names as writes, and the moved folder holds no link (`BLI_FileGate::move_refused`). */
+static bool gate_refuses_move(const char *from, const char *to)
+{
+  if (gate_refuses_structure(from) || gate_refuses_structure(to)) {
+    return true;
+  }
+  if (file_gate != nullptr && file_gate->move_refused != nullptr && from != nullptr && file_gate->move_refused(from))
+  {
     errno = EACCES;
     return true;
   }
@@ -461,7 +500,7 @@ static bool dir_create_recursive(const char *dirname, const int len)
 
 bool BLI_dir_create_recursive(const char *dirname)
 {
-  if (gate_refuses(dirname, true)) {
+  if (gate_refuses_structure(dirname)) {
     return false;
   }
   const int mode = BLI_file_stat_mode(dirname);
@@ -522,7 +561,7 @@ bool BLI_file_ensure_parent_dir_exists(const char *filepath)
 
 int BLI_rename(const char *from, const char *to)
 {
-  if (gate_refuses(from, true) || gate_refuses(to, true)) {
+  if (gate_refuses_move(from, to)) {
     return -1;
   }
   if (!BLI_exists(from)) {
@@ -592,7 +631,7 @@ int BLI_rename(const char *from, const char *to)
 
 int BLI_rename_overwrite(const char *from, const char *to)
 {
-  if (gate_refuses(from, true) || gate_refuses(to, true)) {
+  if (gate_refuses_move(from, to)) {
     return -1;
   }
   if (!BLI_exists(from)) {
@@ -803,6 +842,10 @@ int BLI_dir_sync(const char *dirpath)
 int BLI_access(const char *filepath, int mode)
 {
   BLI_assert(!BLI_path_is_rel(filepath));
+  if (BLI_fileops_gate_refuses_lookup(filepath, true)) {
+    /* A lookup that would reach the network for a confined thread (BLI_fileops.hh, `lookup_refused`; errno EACCES). */
+    return -1;
+  }
 
   return uaccess(filepath, mode);
 }
@@ -935,7 +978,7 @@ static bool delete_recursive(const char *dir)
 
 int BLI_delete(const char *path, bool dir, bool recursive)
 {
-  if (gate_refuses(path, true)) {
+  if (gate_refuses_structure(path)) {
     return -1;
   }
   int err;
@@ -960,7 +1003,7 @@ int BLI_delete(const char *path, bool dir, bool recursive)
  */
 int BLI_delete_soft(const char *file, const char **r_error_message)
 {
-  if (gate_refuses(file, true)) {
+  if (gate_refuses_structure(file)) {
     return -1;
   }
   int err;
@@ -1010,6 +1053,10 @@ int BLI_path_move(const char *path_src, const char *path_dst)
   char path_dst_buf[FILE_MAX_STATIC_BUF];
   const char *path_dst_with_filename = path_destination_ensure_filename(
       path_src, path_dst, path_dst_buf, sizeof(path_dst_buf));
+  /* Angelo: the name the move writes (a folder target gets the source's name: head-10/11 re-read NIT). */
+  if (gate_refuses_move(path_src, path_dst_with_filename)) {
+    return -1;
+  }
 
   int err;
 
@@ -1033,12 +1080,16 @@ int BLI_path_move(const char *path_src, const char *path_dst)
 
 int BLI_copy(const char *path_src, const char *path_dst)
 {
-  if (gate_refuses(path_src, false) || gate_refuses(path_dst, true)) {
-    return -1;
-  }
   char path_dst_buf[FILE_MAX_STATIC_BUF];
   const char *path_dst_with_filename = path_destination_ensure_filename(
       path_src, path_dst, path_dst_buf, sizeof(path_dst_buf));
+  /* Angelo: the name the copy writes (a folder target gets the source's name: head-12 re-read SHOULD). */
+  if (gate_refuses(path_src, false) || gate_refuses(path_dst_with_filename, true)) {
+    if (!ELEM(path_dst_with_filename, path_dst_buf, path_dst)) {
+      MEM_delete(path_dst_with_filename);
+    }
+    return -1;
+  }
   int err;
 
   UTF16_ENCODE(path_src);
@@ -1498,13 +1549,17 @@ int BLI_dir_sync(const char *dirpath)
 int BLI_access(const char *filepath, int mode)
 {
   BLI_assert(!BLI_path_is_rel(filepath));
+  if (BLI_fileops_gate_refuses_lookup(filepath, true)) {
+    /* A lookup that would reach the network for a confined thread (BLI_fileops.hh, `lookup_refused`; errno EACCES). */
+    return -1;
+  }
 
   return access(filepath, mode);
 }
 
 int BLI_delete(const char *path, bool dir, bool recursive)
 {
-  if (gate_refuses(path, true)) {
+  if (gate_refuses_structure(path)) {
     return -1;
   }
   BLI_assert(!BLI_path_is_rel(path));
@@ -1524,7 +1579,7 @@ int BLI_delete(const char *path, bool dir, bool recursive)
 #  ifndef __APPLE__
 int BLI_delete_soft(const char *filepath, const char **r_error_message)
 {
-  if (gate_refuses(filepath, true)) {
+  if (gate_refuses_structure(filepath)) {
     return -1;
   }
   BLI_assert(!BLI_path_is_rel(filepath));
@@ -1657,6 +1712,12 @@ static int copy_callback_pre(const char *from, const char *to)
 {
   struct stat st;
 
+  /* Angelo: no folder is copied for a confined thread, however the copy was reached (head-14 read MUST-1). */
+  if (file_gate != nullptr && file_gate->confined != nullptr && file_gate->confined()) {
+    errno = EACCES;
+    return RecursiveOp_Callback_Error;
+  }
+
   if (check_the_same(from, to)) {
     fprintf(stderr, "%s: '%s' is the same as '%s'\n", __func__, from, to);
     return RecursiveOp_Callback_Error;
@@ -1696,6 +1757,21 @@ static int copy_single_file(const char *from, const char *to)
 
   if (lstat(from, &st)) {
     perror("lstat");
+    return RecursiveOp_Callback_Error;
+  }
+
+  /* Angelo: a confined thread never makes a link or a device (break-it-confine-reparse-b7d499c head-10/11 SHOULD):
+   * a link to a file is copied as the file's content (its path was judged with its links followed), anything else
+   * that isn't a plain file is refused. */
+  const bool confined = file_gate != nullptr && file_gate->confined != nullptr && file_gate->confined();
+  if (confined && S_ISLNK(st.st_mode)) {
+    if (stat(from, &st) != 0 || !S_ISREG(st.st_mode)) {
+      errno = EACCES;
+      return RecursiveOp_Callback_Error;
+    }
+  }
+  if (confined && !S_ISREG(st.st_mode) && !S_ISDIR(st.st_mode)) {
+    errno = EACCES;
     return RecursiveOp_Callback_Error;
   }
 
@@ -1811,6 +1887,9 @@ static int move_single_file(const char *from, const char *to)
 
 int BLI_path_move(const char *path_src, const char *path_dst)
 {
+  if (gate_refuses_move(path_src, path_dst)) {
+    return -1;
+  }
   int ret = recursive_operation(path_src, path_dst, move_callback_pre, move_single_file, nullptr);
 
   if (ret && ret != -1) {
@@ -1845,12 +1924,31 @@ static const char *path_destination_ensure_filename(const char *path_src,
 
 int BLI_copy(const char *path_src, const char *path_dst)
 {
-  if (gate_refuses(path_src, false) || gate_refuses(path_dst, true)) {
-    return -1;
-  }
   char path_dst_buf[FILE_MAX_STATIC_BUF];
   const char *path_dst_with_filename = path_destination_ensure_filename(
       path_src, path_dst, path_dst_buf, sizeof(path_dst_buf));
+  /* The name the copy writes (a folder target gets the source's name: head-12 re-read SHOULD). The gate first:
+   * nothing looks at the source before it has been judged (head-14 read MUST-1: a stat follows links and mounts). */
+  if (gate_refuses(path_src, false) || gate_refuses(path_dst_with_filename, true)) {
+    if (!ELEM(path_dst_with_filename, path_dst_buf, path_dst)) {
+      MEM_delete(path_dst_with_filename);
+    }
+    return -1;
+  }
+  /* Angelo: a confined thread never copies a folder (head-12 re-read M2): the gate judges the folder once, while a
+   * recursive copy reads every entry below it (a private folder inside one the judge allows, a link's target), and
+   * no caller copies one for a script. Looked at without following (a link is copied by copy_single_file's own
+   * rule); copy_callback_pre refuses any folder the copy reaches as well. */
+  if (file_gate != nullptr && file_gate->confined != nullptr && file_gate->confined()) {
+    struct stat st;
+    if (lstat(path_src, &st) == 0 && S_ISDIR(st.st_mode)) {
+      if (!ELEM(path_dst_with_filename, path_dst_buf, path_dst)) {
+        MEM_delete(path_dst_with_filename);
+      }
+      errno = EACCES;
+      return -1;
+    }
+  }
   int ret;
 
   ret = recursive_operation(

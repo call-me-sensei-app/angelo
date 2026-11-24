@@ -2708,10 +2708,11 @@ void operator_properties_ripple(wmOperatorType *ot, const eSeqRippleFlag options
   }
 
   if ((options & SEQ_RIPPLE_CLEAR_RANGES) != 0) {
+    /* Angelo: off by default, as the scene's Clear Ranges (`seq::tool_settings_init`). */
     prop = RNA_def_boolean(
         ot->srna,
         "clear_ranges",
-        true,
+        false,
         "Clear Ranges",
         "Delete strip contents inside the removed ranges on rippled channels so later strips "
         "close the full gap, else ripple later strips only as far as they can");
@@ -2758,12 +2759,17 @@ static eSeqRippleFlag ripple_flag_from_properties(wmOperator *op)
 }
 
 /* In the destructive case, we delete or trim all strip contents that occupy the same time
- * ranges as any ripple deleted strips before doing any rippling. */
+ * ranges as any ripple deleted strips before doing any rippling.
+ *
+ * Angelo: every strip this cuts was not selected (the selected ones are already removed), so its
+ * name is added to `r_cut` for the operator's warning: deleting a clip on one channel must never
+ * silently cut a clip the person did not select on another (Blender 5.3 launch feedback). */
 static void ripple_range_clear(Scene *scene,
                                ListBaseT<Strip> *seqbasep,
                                const ListBaseT<SeqTimelineChannel> *channels,
                                const seq::RippleRange &range,
-                               const bool all_channels)
+                               const bool all_channels,
+                               Vector<std::string> &r_cut)
 {
   Vector<Strip *> to_edit;
   for (Strip &strip : *seqbasep) {
@@ -2783,6 +2789,7 @@ static void ripple_range_clear(Scene *scene,
   for (Strip *strip : to_edit) {
     const bool covers_left = range.start <= strip->left_handle();
     const bool covers_right = range.end >= strip->right_handle(scene);
+    bool cut = true;
 
     if (covers_left && covers_right) {
       to_remove.append(strip);
@@ -2802,6 +2809,15 @@ static void ripple_range_clear(Scene *scene,
       if (right_strip != nullptr) {
         right_strip->left_handle_set(scene, range.end);
       }
+      else {
+        cut = false; /* The split was refused: the strip keeps every frame. */
+      }
+    }
+    if (cut) {
+      const std::string name = strip->name + 2;
+      if (!r_cut.contains(name)) {
+        r_cut.append(name);
+      }
     }
     seq::relations_invalidate_cache(scene, strip);
   }
@@ -2810,6 +2826,21 @@ static void ripple_range_clear(Scene *scene,
     seq::edit_flag_for_removal(scene, strip);
   }
   seq::edit_remove_flagged_strips(scene, seqbasep);
+}
+
+/* Angelo: name every unselected strip Clear Ranges cut (`r_cut` of ripple_range_clear). A warning,
+ * so it shows in the status bar and prints even when reports are quiet; nothing is said when
+ * nothing unselected lost a frame. `message` holds one %s for the names. */
+static void ripple_report_cut(wmOperator *op, const char *message, const Vector<std::string> &cut)
+{
+  if (cut.is_empty()) {
+    return;
+  }
+  std::string names;
+  for (const std::string &name : cut) {
+    names += names.empty() ? name : ", " + name;
+  }
+  BKE_reportf(op->reports, RPT_WARNING, message, names.c_str());
 }
 
 static bool should_ripple_strip(const ListBaseT<SeqTimelineChannel> *channels,
@@ -2935,13 +2966,17 @@ static wmOperatorStatus sequencer_ripple_delete_exec(bContext *C, wmOperator *op
 
   /* Every ripple delete changes the frames of later strips, so we must delete in reverse to avoid
    * invalidating range coordinates of later ranges. */
+  Vector<std::string> cut;
   for (const seq::RippleRange &range : ranges | std::views::reverse) {
     if ((ripple_flag & SEQ_RIPPLE_CLEAR_RANGES) != 0) {
       ripple_range_clear(
-          scene, seqbasep, channels, range, (ripple_flag & SEQ_RIPPLE_ALL_CHANNELS) != 0);
+          scene, seqbasep, channels, range, (ripple_flag & SEQ_RIPPLE_ALL_CHANNELS) != 0, cut);
     }
     ripple_gaps_close(scene, seqbasep, channels, range, ripple_flag);
   }
+
+  ripple_report_cut(
+      op, N_("Ripple Delete also cut strips that were not selected: %s (Undo restores them)"), cut);
 
   /* Ripple back the playhead. */
   if (scene->r.cfra != timeline_frame) {
@@ -3074,16 +3109,20 @@ static wmOperatorStatus sequencer_ripple_trim_exec(bContext *C, wmOperator *op)
   seq::edit_remove_flagged_strips(scene, seqbasep);
 
   /* Step 4: Close the gap left behind by rippling back later strips and the playhead. */
+  Vector<std::string> cut;
   if ((ripple_flag & SEQ_RIPPLE_CLEAR_RANGES) != 0) {
     for (const Bounds<int> &clear_range : clear_ranges) {
       ripple_range_clear(scene,
                          seqbasep,
                          channels,
                          {clear_range.min, clear_range.max, ripple_range.channels},
-                         (ripple_flag & SEQ_RIPPLE_ALL_CHANNELS) != 0);
+                         (ripple_flag & SEQ_RIPPLE_ALL_CHANNELS) != 0,
+                         cut);
     }
   }
   ripple_gaps_close(scene, seqbasep, channels, ripple_range, ripple_flag);
+  ripple_report_cut(
+      op, N_("Ripple Trim also cut strips that were not selected: %s (Undo restores them)"), cut);
 
   if (scene->r.cfra != timeline_frame) {
     DEG_id_tag_update(&scene->id, ID_RECALC_FRAME_CHANGE);

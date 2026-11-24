@@ -86,6 +86,7 @@ static bool install_slot(Gate &gate, PyTypeObject *type)
     return false;
   }
   const int index = slot_count++;
+  note_install_site(gate.module); /* The module that defines it: never made again while confined. */
   slot_gates[index] = &gate;
   gate.slot = current;
   if (init) {
@@ -171,6 +172,7 @@ static bool install_on_type(Gate &gate, PyTypeObject *type)
     }
     else {
       PyDict_SetItemString(type->tp_dict, gate.name, held); /* Immutable to Python; changed here, in C. */
+      note_install_site(gate.module); /* The module that defines it: never made again while confined. */
       PyType_Modified(type);
     }
   }
@@ -221,6 +223,7 @@ static bool install_gate(Gate &gate, PyObject *module)
       Py_XSETREF(gate.original, Py_NewRef(original));
       Py_XSETREF(gate.object, Py_NewRef(object));
       PyObject_SetAttrString(module, gate.name, object);
+      note_install_site(gate.module);
       replace_references(original, object); /* A package's copy (`from ._usdUtils import *`). */
       Py_DECREF(object);
     }
@@ -301,6 +304,7 @@ static void close_pxr(const char *module_name, PyObject *module)
   }
   pxr_call = type->tp_call;
   type->tp_call = pxr_closed_call;
+  note_install_site(module_name); /* The pxr module it was found in. */
   type->tp_flags &= ~Py_TPFLAGS_HAVE_VECTORCALL; /* Every call through `tp_call`. */
   PyType_Modified(type);
 }
@@ -364,13 +368,52 @@ static PyObject *hooked(PyObject *index, PyObject *args, PyObject *kwargs)
   const long which = PyLong_AsLong(index);
   const bool create = which == CREATE_DYNAMIC || which == CREATE_BUILTIN;
   PyObject *first = PyTuple_GET_SIZE(args) > 0 ? PyTuple_GET_ITEM(args, 0) : nullptr;
-  const std::string name = create ? spec_name(first) : std::string();
+  std::string name;
+  PyObject *call_args = Py_NewRef(args);
+  if (create && first != nullptr && confined_now()) {
+    /* This hook is the outermost `_imp` wrapper: the spec is read here, once, into a spec of Angelo's own, and that
+     * is what every check below and inside (guarded_imp) sees and what is made (head 14, SHOULD-1: a name that
+     * changes between reads passed the pxr gating as another module). */
+    PyObject *steady = steady_spec(first, name);
+    if (steady == nullptr) {
+      Py_DECREF(call_args);
+      refuse(GUARD, "an import whose spec names no module");
+      return nullptr;
+    }
+    Py_SETREF(call_args, PyTuple_New(PyTuple_GET_SIZE(args)));
+    if (call_args == nullptr) {
+      Py_DECREF(steady);
+      return nullptr;
+    }
+    PyTuple_SET_ITEM(call_args, 0, steady); /* Steals. */
+    for (Py_ssize_t i = 1; i < PyTuple_GET_SIZE(args); i++) {
+      PyTuple_SET_ITEM(call_args, i, Py_NewRef(PyTuple_GET_ITEM(args, i)));
+    }
+  }
+  else if (create) {
+    name = spec_name(first);
+  }
+  if (create) {
+    /* Any context, at creation, under any name: a module of the sub-interpreter family (by full name, last component
+     * or origin file, native.hh) has every hot path ask for good. `create_builtin` with an alias raises no `import`
+     * event (the re-read of f3b1e5f, MUST-1 and SHOULD-2: `_interpreters` may be built in on Windows). */
+    PyObject *made_from = PyTuple_GET_SIZE(call_args) > 0 ? PyTuple_GET_ITEM(call_args, 0) : nullptr;
+    PyObject *origin = made_from != nullptr ? PyObject_GetAttrString(made_from, "origin") : nullptr;
+    const std::string origin_text = text_of(origin);
+    Py_XDECREF(origin);
+    PyErr_Clear();
+    if (module_is_one_of(name, origin_text, true, INTERPRETER_MODULES)) {
+      confine_ask_always();
+    }
+  }
   if (create && !usd_confined && name.rfind("pxr.", 0) == 0 && confined_now()) {
     /* Without the confined resolver USD's composition would read any file: no USD for scripts (fail closed). */
+    Py_DECREF(call_args);
     refuse(NATIVE, name.c_str());
     return nullptr;
   }
-  PyObject *result = PyObject_Call(hook_originals[which], args, kwargs);
+  PyObject *result = PyObject_Call(hook_originals[which], call_args, kwargs);
+  Py_DECREF(call_args);
   if (result == nullptr) {
     return nullptr;
   }

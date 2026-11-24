@@ -127,6 +127,10 @@ const char *BLI_dir_home()
 
 double BLI_dir_free_space(const char *dir)
 {
+  if (BLI_fileops_gate_refuses_lookup(dir, true)) {
+    /* A lookup that would reach the network for a confined thread (BLI_fileops.hh, `lookup_refused`). */
+    return -1;
+  }
 #ifdef WIN32
   DWORD sectorspc, bytesps, freec, clusters;
   char tmp[4];
@@ -283,6 +287,10 @@ size_t BLI_file_size(const char *path)
 #ifndef __APPLE__
 eFileAttributes BLI_file_attributes(const char *path)
 {
+  if (BLI_fileops_gate_refuses_lookup(path, true)) {
+    /* A lookup that would reach the network for a confined thread (BLI_fileops.hh, `lookup_refused`). */
+    return eFileAttributes(0);
+  }
   int ret = 0;
 
 #  ifdef WIN32
@@ -360,6 +368,10 @@ bool BLI_file_alias_target(const char *filepath,
   if (!BLI_path_extension_check(filepath, ".lnk")) {
     return false;
   }
+  if (BLI_fileops_gate_refuses_lookup(filepath, true)) {
+    /* A lookup that would reach the network for a confined thread (BLI_fileops.hh, `lookup_refused`). */
+    return false;
+  }
 
   HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
   if (FAILED(hr)) {
@@ -379,7 +391,25 @@ bool BLI_file_alias_target(const char *filepath,
       if (conv_utf_8_to_16(filepath, path_utf16, ARRAY_SIZE(path_utf16)) == 0) {
         hr = PersistFile->Load(path_utf16, STGM_READ);
         if (SUCCEEDED(hr)) {
-          hr = Shortcut->Resolve(0, SLR_NO_UI | SLR_UPDATE | SLR_NOSEARCH);
+          /* `Resolve` looks the target up (a share's name connects): the target as stored is asked first. One with
+           * no path can't be told, so it is asked as a remote name: refused only for a confined thread. */
+          wchar_t stored_utf16[FILE_MAXDIR] = {0};
+          char stored[FILE_MAXDIR] = {0};
+          const bool named = SUCCEEDED(Shortcut->GetPath(stored_utf16, FILE_MAXDIR, nullptr, SLGP_RAWPATH)) &&
+                             conv_utf_16_to_8(stored_utf16, stored, sizeof(stored)) == 0 && stored[0];
+          if (BLI_fileops_gate_refuses_lookup(named ? stored : "\\\\angelo-unknown-target.invalid\\x", true)) {
+            hr = E_ACCESSDENIED;
+          }
+          if (SUCCEEDED(hr)) {
+            /* For a confined thread: no tracking of a moved target and no link info (either can ask a share or the
+             * distributed link-tracking service on the network), and no SLR_UPDATE (it rewrites the .lnk, a write
+             * nothing judged: head-14 read SHOULD). The person's own resolve keeps Windows' usual help. */
+            const BLI_FileGate *gate = BLI_fileops_gate_get();
+            const bool confined = gate != nullptr && gate->confined != nullptr && gate->confined();
+            hr = Shortcut->Resolve(0,
+                                   confined ? DWORD(SLR_NO_UI | SLR_NOSEARCH | SLR_NOTRACK | SLR_NOLINKINFO) :
+                                              DWORD(SLR_NO_UI | SLR_UPDATE | SLR_NOSEARCH));
+          }
           if (SUCCEEDED(hr)) {
             wchar_t target_utf16[FILE_MAXDIR] = {0};
             hr = Shortcut->GetPath(target_utf16, FILE_MAXDIR, nullptr, 0);
@@ -406,6 +436,10 @@ bool BLI_file_alias_target(const char *filepath,
 
 int BLI_file_stat_mode(const char *path)
 {
+  if (BLI_fileops_gate_refuses_lookup(path, true)) {
+    /* A lookup that would reach the network for a confined thread (BLI_fileops.hh, `lookup_refused`). */
+    return 0;
+  }
 #if defined(WIN32)
   BLI_stat_t st;
   wchar_t *tmp_16 = alloc_utf16_from_8(path, 1);
@@ -448,6 +482,9 @@ int BLI_file_stat_mode(const char *path)
 
 bool BLI_exists(const char *path)
 {
+  if (BLI_fileops_gate_refuses_lookup(path, true)) {
+    return false; /* A lookup that would reach the network for a confined thread (BLI_fileops.hh). */
+  }
 #ifdef WIN32
   wchar_t *path_16 = alloc_utf16_from_8(path, 0);
   const bool exists = (GetFileAttributesW(path_16) != INVALID_FILE_ATTRIBUTES);
@@ -470,6 +507,9 @@ int BLI_fstat(int fd, BLI_stat_t *buffer)
 
 int BLI_stat(const char *path, BLI_stat_t *buffer)
 {
+  if (BLI_fileops_gate_refuses_lookup(path, true)) {
+    return -1;
+  }
   int r;
   UTF16_ENCODE(path);
 
@@ -479,6 +519,8 @@ int BLI_stat(const char *path, BLI_stat_t *buffer)
   return r;
 }
 
+/* Not gated itself: reached through BLI_stat and BLI_file_stat_mode, which ask the gate first, and the confinement's
+ * own opener, which checks the very wide name it hands the system (bpy_angelo_guard_confine_remote.cc). */
 int BLI_wstat(const wchar_t *path, BLI_stat_t *buffer)
 {
 #  if defined(_MSC_VER)
@@ -495,12 +537,18 @@ int BLI_fstat(int fd, struct stat *buffer)
 
 int BLI_stat(const char *path, struct stat *buffer)
 {
+  if (BLI_fileops_gate_refuses_lookup(path, true)) {
+    return -1;
+  }
   return stat(path, buffer);
 }
 #endif
 
 bool BLI_is_dir(const char *path)
 {
+  if (BLI_fileops_gate_refuses_lookup(path, true)) {
+    return false;
+  }
 #ifdef WIN32
   wchar_t *tmp_16 = alloc_utf16_from_8(path, 1);
   const DWORD attr = GetFileAttributesW(tmp_16);
@@ -513,6 +561,9 @@ bool BLI_is_dir(const char *path)
 
 bool BLI_is_file(const char *path)
 {
+  if (BLI_fileops_gate_refuses_lookup(path, true)) {
+    return false;
+  }
 #ifdef WIN32
   wchar_t *tmp_16 = alloc_utf16_from_8(path, 1);
   const DWORD attr = GetFileAttributesW(tmp_16);
@@ -704,6 +755,10 @@ using FileIdentityHeld = int;
 
 void *BLI_file_identity_hold(const char *filepath)
 {
+  if (BLI_fileops_gate_refuses_lookup(filepath, false)) {
+    /* A lookup that would reach the network for a confined thread (BLI_fileops.hh, `lookup_refused`). */
+    return nullptr;
+  }
 #ifdef WIN32
   wchar_t *path_16 = alloc_utf16_from_8(filepath, 0);
   if (path_16 == nullptr) {

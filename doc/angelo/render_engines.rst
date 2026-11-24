@@ -76,6 +76,32 @@ The active preset is read back from the scene's own values (``preset_of``), so a
 values tuned by hand show as Cycles with no preset ticked: choosing Cycles then starts on Preview, while a scene
 already on a preset keeps it. Nothing is stored beside the scene's own Cycles settings.
 
+Denoisers on every GPU
+======================
+
+People on AMD, Intel and Apple graphics asked for "AMD's denoiser" after Blender 5.3, not knowing that the
+denoiser Cycles already uses is OpenImageDenoise, which runs on their GPU. Blender 5.3 (and its ``main`` on
+2026-11-13) calls it "Intel OpenImageDenoise" and greys out its **Use GPU** without saying why. Cycles' two Denoise
+panels (Render Properties > Sampling > Viewport and Render) change in three small places
+(``intern/cycles/blender/addon``):
+
+* **OpenImageDenoise** says what it is: "an AI denoiser that runs on the CPU and on the GPU with supported AMD,
+  Apple, Intel and NVIDIA graphics" (both denoiser menus).
+* **Use GPU greyed out says why**, under it, from Cycles' own device listing (``CyclesPreferences.oidn_gpu_state``,
+  ``_cycles.available_devices`` for every GPU backend; never a list of GPU names): a GPU here supports it (and its
+  driver is new enough) but is not chosen, so "Choose it in Preferences > System > Cycles Render Devices"; or no GPU
+  here supports it, so it denoises on the CPU. Nothing is added while a supported GPU is in use. Angelo's own render
+  presets already denoise with OpenImageDenoise on the GPU (above), so this is for scenes set up by hand or brought
+  from Blender.
+* **DLSS**, in a build made with it (``WITH_DLSS``; a release ships it only once NVIDIA has approved the use of its
+  marks, and a build without it has no DLSS item at all), says what it needs and does: NVIDIA RTX graphics, the
+  Rendered viewport only (it denoises and upscales; Solid and Material Preview are not rendered by Cycles), final
+  renders use OpenImageDenoise or OptiX. Blender's own line under it
+  still names the GPU and driver it requires when none here qualifies.
+
+The text is Angelo's (``sources.EXTRA_MSGIDS``), translated in every language. Host test:
+``test_native_cycles_denoiser_help``.
+
 Installed engines
 =================
 
@@ -183,13 +209,47 @@ registers, and a commercial V-Ray that cannot get its licence exits after about 
 Machines without a GPU
 ----------------------
 
-Angelo is not built for a machine without a GPU, and such a machine never reaches a render: a windowed Angelo refuses
-to start there, with Blender's own "Unsupported Graphics Card Configuration" dialog (OpenGL 4.3 or newer required),
-so no person ever starts the background children above. A background Angelo does start, and a Workbench or EEVEE
-render in it ends Blender with an access violation (a read of address 0, after Vulkan and then the software WGL
-fallback fail) instead of reporting an error; a factory-startup Workbench still with no Angelo code does the same
-(build3, 2026-11-11, offset 0x4790B0 in Angelo.exe). The windowless native suites that render on the GPU are therefore
-``needs_opengl`` and skipped on the GPU-less Windows builders (``test_native_suite_opengl``).
+Angelo is not built for a machine without a GPU, and a person never reaches a render there: a windowed Angelo refuses
+to start, with Blender's own "Unsupported Graphics Card Configuration" dialog (OpenGL 4.3 or newer required), and one
+whose windows got a context while the draw manager's was refused exits with the "Platform Unsupported" dialog rather
+than draw without one. A background Angelo does start, and there GPU-less use is refused, never a crash:
+
+* **One capability check.** ``WM_gpu_is_available()`` (``wm_init_exit.cc``) is true once the GPU module is
+  initialized. In background mode the GPU starts on demand, and the check makes that attempt itself, from whichever
+  thread asks first (the draw manager's own background start does so from a job's thread too), serialized, so its
+  answer is always the system's. The OpenGL backend reports support without probing, so the answer rests on whether
+  the system gave a GPU context: on Microsoft's GDI Generic 1.1 (no GPU, a remote desktop, an outdated driver) it gives
+  none. A refused context or an unsupported backend is remembered, logged once (``gpu.init``) and never retried, and
+  ``DRW_gpu_context_create`` creates nothing. **Known gap (macOS, upstream's too):** when that first start comes from a
+  job's thread, it also starts the background GHOST system there, which builds the application menus AppKit expects on
+  the main thread; starting that system on the main thread first is planned for the next release.
+* **Every GPU-drawn entry point refuses on it** with one translated message, "This needs a graphics card (GPU), and
+  none is usable on this computer" (``WM_gpu_unavailable_message``): a render with a GPU-drawn engine (EEVEE,
+  Workbench: ``RE_USE_GPU_CONTEXT``), a preview render on a job's thread included, and grease pencil composited over
+  another engine's render (``engine.cc``), the off-screen 3D view draw behind previews and captures
+  (``ED_view3d_draw_offscreen_imbuf``), light probe baking and ``Image.gl_load`` / ``gl_touch``. ``gpu.init()`` raises
+  ``SystemError`` with the same text in English, because scripts (an agent's among them) read it; every other ``gpu``
+  call already requires ``gpu.init()``. A render job's and the compositor job's own context
+  (``RE_display_ensure_gpu_context``, which ``render.render('INVOKE_DEFAULT')`` reaches) is not created, and below the
+  window manager the GPU module's own state guards what is left: no secondary context is made
+  (``GPU_create_secondary_context``: the image module, sequencer prefetch) and ``GPU_offscreen_create`` returns
+  nothing while it is uninitialized. ``test_native_gpu_capability_gate`` holds every entry point and every call that
+  creates a context to this list.
+* **The compositor keeps working.** Its device defaults to the GPU; without a context it composites on the CPU, its
+  own fallback, so a Cycles render with compositing finishes (``test_blender_look`` runs on the GPU-less builders and
+  proves it). A file saved in background mode has no thumbnail either way (``wm_files.cc``). Before 2.1.0 the null
+  context was activated and Angelo ended with an access violation in ``WM_system_gpu_context_activate``; upstream
+  Blender has the same unguarded constructor.
+* **Proven on every machine.** ``ANGELO_QA_REFUSE_GPU_CONTEXT`` (honoured in background mode only, where the GPU
+  starts on demand, and read once as ``WM_init`` starts, before Python runs, so no script can set it) makes the context
+  refuse as such a machine does; the runner sets it for ``test_blender_gpu_unavailable`` (its ``main_first`` and
+  ``thread_first`` variants: the first start on the main thread, or on a thread with nothing GPU on the main thread
+  before), which checks each refusal, that nothing crashes (preview jobs, a camera-thumbnail save,
+  ``render.render('INVOKE_DEFAULT')``) and that Cycles with compositing still writes its image.
+
+A GPU machine pays one boolean test per entry point. The windowless native suites that render or draw on the GPU stay
+``needs_opengl`` and skipped on the GPU-less Windows builders (``test_native_suite_opengl``): there they would only
+show the refusal.
 
 Open Shading Language on OptiX and the NVIDIA driver
 ----------------------------------------------------

@@ -254,18 +254,52 @@ class BundledThreeTests(unittest.TestCase):
     def test_the_page_loads_nothing_from_the_network(self):
         page = ADDON / "web_preview"
         own = sorted(path for path in page.iterdir() if path.suffix in {".html", ".js", ".css"})
-        self.assertEqual([path.name for path in own], ["app.css", "app.js", "compare.js", "drag.js", "index.html",
-                                                       "look.js", "panel.js", "shaders.js"])
+        self.assertEqual([path.name for path in own], ["app.css", "app.js", "compare.js", "drag.js", "framing.js",
+                                                       "index.html", "look.js", "panel.js", "shaders.js"])
         for path in own:
             text = path.read_text(encoding="utf-8")
             self.assertNotRegex(text, r"""(src|href|url|from|import)\s*[=(]?\s*["']?(https?:)?//""", path.name)
         imports = re.findall(r'from "([^"]+)"', "".join(path.read_text(encoding="utf-8") for path in own
                                                          if path.suffix == ".js"))
         for name in imports:
-            self.assertTrue(name in {"three", "./shaders.js", "./panel.js", "./look.js", "./compare.js", "./drag.js"}
+            self.assertTrue(name in {"three", "./shaders.js", "./panel.js", "./look.js", "./compare.js", "./drag.js",
+                                     "./framing.js"}
                             or name.startswith("three/addons/"), name)
             if name.startswith("three/addons/"):
                 self.assertTrue((self.VENDOR / "examples/jsm" / name[len("three/addons/"):]).is_file(), name)
+
+
+
+class Ktx2RefusalTests(unittest.TestCase):
+    """A gltfpack start Angelo refused is reported as that refusal and why, in its own translated finding, never as
+    gltfpack's failure (re-review of 145e8c9b7ed, NIT 3, deferred from 2.0.1)."""
+
+    @staticmethod
+    def unavailable():
+        import ast
+        tree = ast.parse((ROOT / "scripts/addons_core/angelo_agent/web_export.py").read_text(encoding="utf-8"))
+        node = next(n for n in tree.body
+                    if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") == "UNAVAILABLE")
+        return {key.value: tuple(ast.unparse(v) for v in value.elts)
+                for key, value in zip(node.value.keys, node.value.values)}
+
+    def test_each_cause_has_its_own_finding_with_a_fix(self):
+        from angelo_agent import owned_paths
+        unavailable = self.unavailable()
+        codes = {}
+        for cause in (owned_paths.RUN_AGENT_CHANGE, owned_paths.RUN_CHANGED, owned_paths.RUN_UNKNOWN, None):
+            error = PermissionError("refused")
+            if cause is not None:
+                error.run_refusal = cause
+            codes[cause] = web_compat.ktx2_refused(error)
+            with self.subTest(cause=cause):
+                self.assertIn(codes[cause], unavailable)
+                self.assertNotEqual(codes[cause], "ktx2_failed", "a refusal is not gltfpack's failure")
+                message, fix = unavailable[codes[cause]]
+                self.assertIn("gltfpack", message)
+                self.assertTrue(message.startswith("n_(") and fix.startswith("n_("), "translated, message and fix")
+        self.assertEqual(len({codes[c] for c in codes if c is not None}), 3, "one finding per cause")
+        self.assertEqual(codes[None], codes[owned_paths.RUN_UNKNOWN], "an untagged refusal reads as unknown")
 
 
 if __name__ == "__main__":

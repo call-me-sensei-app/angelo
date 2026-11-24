@@ -69,6 +69,7 @@ from angelo_agent import (chat_launcher, connect_hero, live_view, live_view_draw
 from parallel_workers_qa import op, paint, primitive, program  # noqa: E402
 import composer_hint_qa  # noqa: E402
 from hosted_worker_chat import connect, hosted  # noqa: E402
+import qa_hit
 
 HOSTED = hosted()   # Design A′: each worker chat's turns run in its worker (the "hosted" variant).
 if HOSTED:
@@ -131,7 +132,8 @@ def probe():
     from angelo_agent import asset_shelf_add
     region = bpy.context.region
     shelf = asset_shelf_add.places.get(bpy.context.area.as_pointer())
-    pills = [rect[1] + rect[3] - region.y for _action, rect in shelf[1]] if shelf and shelf[0] == window.as_pointer() else []
+    pills = ([qa_hit.from_window(qa_hit.RAW, region, rect[0], rect[1] + rect[3])[1] for _action, rect in shelf[1]]
+             if shelf and shelf[0] == window.as_pointer() else [])
     bottom = max([session_rail.bottom_inset(bpy.context.area.regions, region)] + pills)
     frames.append({'at': time.monotonic(), 'tiles': tiles,
                    'pictures': {session: rail_pictures._drawn.get(session, 0.0) for session in tiles},
@@ -384,8 +386,7 @@ def paging_step():
                 send('WHEELDOWNMOUSE', 'PRESS', x, y)
             receipt['events'].append({'type': kind, 'value': 'PRESS', 'x': x, 'y': y})
         elif stage == 'arrow':
-            ax, ay, aw, ah = plan().arrows[0]
-            x, y = int(view_region().x + ax + aw / 2), int(view_region().y + ay + ah / 2)
+            x, y = qa_hit.ipoint(qa_hit.RAW, view_region(), plan().arrows[0])   # The rail reads region pixels.
             for kind, value in (('MOUSEMOVE', 'NOTHING'), ('LEFTMOUSE', 'PRESS'), ('LEFTMOUSE', 'RELEASE')):
                 send(kind, value, x, y)
                 receipt['events'].append({'type': kind, 'value': value, 'x': x, 'y': y})
@@ -460,14 +461,12 @@ def paging_step():
 
 def tile_point(session):
     tile = next(t for t in plan().tiles if t.session == session)
-    region = view_region()
-    x, y, w, h = tile.rect
-    return int(region.x + x + w / 2), int(region.y + y + h / 2)
+    return qa_hit.ipoint(qa_hit.RAW, view_region(), tile.rect)
 
 
 def view_point(dx=0.5, dy=0.5):
     region = view_region()
-    return int(region.x + region.width * dx), int(region.y + region.height * dy)
+    return qa_hit.ipoint(qa_hit.RAW, region, (0, 0, region.width, region.height), dx, dy)
 
 
 def send(kind, value, x, y, **mods):

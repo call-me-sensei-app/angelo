@@ -309,6 +309,16 @@ modules: ``engine_preflight.check(window, target, fmt="AUTO", engine_version=Non
 ``engine_preflight.run`` (with the facts and options), ``engine_preflight.link_report(asset)`` and
 ``engine_preflight.TARGET_FOR_ENGINE``. Results carry object, action and image names, never a local path.
 
+Sections
+========
+
+Other modules add read-only parts to the report without editing this one: ``add_section(key, function,
+budget_ms)``; ``function(window, facts)`` returns a dict for ``report[key]`` or None. They run after the engine
+findings, in registration order, while their declared budget fits in ``SECTIONS_BUDGET_MS`` (1.5 s for all of
+them); one that doesn't fit is reported ``{"skipped": "budget"}``, one that raises as ``{"error": <type>}``, and
+neither fails the preflight. ``report["sections_ms"]`` gives each section's time; ``for_agent`` passes sections as
+they are, so a section names the tool that holds its full list. The report's own fields can't be used as keys.
+
 Validation
 ==========
 

@@ -7,7 +7,7 @@ from .ui_text import n_
 
 
 APPROVALS = {
-    "ASK": (n_("Ask before changes"), n_("Review each scene mutation. Python asks unless you explicitly trust scripts for this open chat.")),
+    "ASK": (n_("Ask before changes"), n_("Review each scene mutation. Python asks unless you trust scripts for this open chat or chose to always run that exact script in this project.")),
     "AUTO_BOUNDED": (n_("Auto · bounded edits"), n_("Auto-approve validated object edits and native sculpt passes. Python trust is separate.")),
     "READ_ONLY": (n_("Read only"), n_("Inspect and discuss the scene; reject every mutation, including Python.")),
 }
@@ -34,6 +34,10 @@ DEFAULT_APPROVAL = "AUTO_BOUNDED"
 # A build from before the marker drops it when it saves the chat (its save whitelist), so such a save makes a
 # deliberate Ask look like the old default again: accepted, since every 1.0 build writes the marker.
 APPROVAL_VERSION = 2
+# Plan mode (doc/angelo/plan_mode.rst): a planning chat is a Read only chat with ``planning`` set, and the setting it
+# builds in after the person's Go preselected (``plan_return``). Planning holds only in Read only (``stored_options``),
+# so every Read only refusal applies to it and the flag can never weaken one.
+PLAN_RETURNS = ("ASK", "AUTO_BOUNDED")
 
 
 def stored_options(value):
@@ -53,10 +57,23 @@ def stored_options(value):
         approval = DEFAULT_APPROVAL
     elif not isinstance(approval, str) or approval not in APPROVALS:
         approval = "ASK"
-    return {"model": str(value.get("model") or "")[:128],
-            "effort": value.get("effort") if _level(value.get("effort")) else "",
-            "fast": value.get("fast") is True,
-            "approval": approval}
+    options = {"model": str(value.get("model") or "")[:128],
+               "effort": value.get("effort") if _level(value.get("effort")) else "",
+               "fast": value.get("fast") is True,
+               "approval": approval}
+    from .planning_state import clean_mark
+    mark = clean_mark(value.get("plan_draft"))   # Edit's mark on the draft, kept with the chat (plan_mode.rst, N2b).
+    if mark is not None:
+        options["plan_draft"] = mark
+    if value.get("planning") is True and approval == "READ_ONLY":   # Only a Read only chat plans (plan_mode.rst).
+        options["planning"] = True
+        options["plan_return"] = value["plan_return"] if value.get("plan_return") in PLAN_RETURNS else "ASK"
+    return options
+
+
+def planning(value):
+    """Whether a chat with these options is in plan mode: Read only with ``planning`` set (``stored_options``)."""
+    return stored_options(value).get("planning") is True
 
 
 NARROWING_APPROVALS = frozenset({"ASK", "READ_ONLY"})   # Anything may choose them (doc/angelo/grant_operators.rst).
@@ -66,10 +83,20 @@ def options_widen(arguments):
     """Whether a chat's ``set_options(**changes)`` widens (``grant_guard.entry``; ``arguments`` bound, plain values),
     read from the call alone, never from the chat's state, which a script could write (the C guard review, SHOULD-3):
     Ask, Read only and Fast off narrow; anything else widens, a model or effort choice and an unknown key included
-    (Copy setup break-it r2, S2: narrowing was refused to agent code)."""
+    (Copy setup break-it r2, S2: narrowing was refused to agent code). Plan mode: starting it narrows, ending it
+    widens, and only Ask as its build setting narrows (doc/angelo/plan_mode.rst, "State")."""
     for key, value in arguments["changes"].items():
         if key == "approval":
             if value not in NARROWING_APPROVALS:
+                return True
+        elif key == "planning":
+            if value is not True:
+                return True
+        elif key == "plan_return":
+            if value != "ASK":
+                return True
+        elif key == "plan_draft":   # Edit's provenance mark: setting it is the person's Edit; clearing it narrows.
+            if value is not None:
                 return True
         elif key != "fast" or value is not False:
             return True

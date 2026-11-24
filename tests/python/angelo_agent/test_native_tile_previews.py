@@ -77,6 +77,64 @@ class Decode(unittest.TestCase):
         self.assertIs(image.colorspace_settings.is_data, True)   # The configuration's data role (color_spaces).
 
 
+class HeaderBoundAndTurn(unittest.TestCase):
+    """Re-review of markup 4e712847d3b. S1: a 0.8 MiB flat 16384 x 16384 PNG passed the 5 MiB check and Blender
+    decoded all of it (1 GiB, 4 GiB at 16 bits) before the pixel limit refused it, at every open, chip, Send and
+    Resize. S3: a phone portrait (EXIF orientation 6) opened and was marked sideways."""
+
+    def test_a_picture_over_the_pixel_limit_is_refused_by_its_header_before_any_decode(self):
+        import struct
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder, "flat.png")
+            path.write_bytes(b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", 16384, 16384)
+                             + b"\x08\x02\x00\x00\x00" + b"\x00" * 64)
+            bpy = MagicMock()
+            with patch.dict(sys.modules, {"bpy": bpy}), self.assertRaises(ValueError) as caught:
+                tp.decode(path)
+            bpy.data.images.load.assert_not_called()
+            self.assertEqual(str(caught.exception), tp.TOO_MANY_PIXELS)
+
+    def test_a_known_format_whose_header_cant_be_read_is_refused_before_any_decode(self):
+        """Re-review of b5808fd5a2e, S7: a JPEG with 5,000 comment segments before a 16K frame header outlasted the
+        header walk, and decode handed it to Blender whole; a zero-size header was "too many pixels" (N6)."""
+        import struct
+        import tempfile
+        comments = b"".join(b"\xff\xfe" + struct.pack(">H", 18) + b"x" * 16 for _ in range(5000))
+        frame = b"\xff\xc2" + struct.pack(">H", 17) + bytes((8,)) + struct.pack(">HH", 16384, 16384) + b"\x03" + b"\x00" * 9
+        png0 = b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", 0, 600) + b"\x08\x02\x00\x00\x00"
+        with tempfile.TemporaryDirectory() as folder:
+            for name, data, sentence in (("crafted.jpg", b"\xff\xd8" + comments + frame, tp.UNREADABLE),
+                                         ("zero.png", png0 + b"\x00" * 64, tp.NO_PIXELS)):
+                with self.subTest(name=name):
+                    path = Path(folder, name)
+                    path.write_bytes(data)
+                    bpy = MagicMock()
+                    with patch.dict(sys.modules, {"bpy": bpy}), self.assertRaises(ValueError) as caught:
+                        tp.decode(path)
+                    bpy.data.images.load.assert_not_called()
+                    self.assertEqual(str(caught.exception), sentence)
+
+    def test_each_exif_orientation_turns_the_pixels_as_the_standard_says(self):
+        """Displayed (row, column), rows top first, from stored ones, for a 2 x 3 picture (EXIF 2.32, tag 0x0112)."""
+        import numpy as np
+        h, w = 2, 3
+        stored = [[(r * w + c) for c in range(w)] for r in range(h)]
+        expected = {1: lambda r, c: stored[r][c], 2: lambda r, c: stored[r][w - 1 - c],
+                    3: lambda r, c: stored[h - 1 - r][w - 1 - c], 4: lambda r, c: stored[h - 1 - r][c],
+                    5: lambda r, c: stored[c][r], 6: lambda r, c: stored[h - 1 - c][r],
+                    7: lambda r, c: stored[h - 1 - c][w - 1 - r], 8: lambda r, c: stored[c][w - 1 - r]}
+        rows_bottom_first = [stored[r] for r in reversed(range(h))]
+        flat = np.array([[v, 0, 0, 1] for row in rows_bottom_first for v in row], dtype=np.float32).reshape(-1)
+        for turn, value in expected.items():
+            with self.subTest(turn=turn):
+                out, ow, oh = tp.upright(flat, w, h, turn)
+                self.assertEqual((ow, oh), (h, w) if turn >= 5 else (w, h))
+                seen = np.asarray(out).reshape(oh, ow, 4)[::-1, :, 0]   # Top first again.
+                self.assertEqual([[int(v) for v in row] for row in seen],
+                                 [[value(r, c) for c in range(ow)] for r in range(oh)])
+
+
 class Previews(unittest.TestCase):
     def make(self, decoder=None, budget=tp.GPU_BYTES):
         self.decoded, self.woken = [], []

@@ -10,7 +10,7 @@ from bpy.types import Operator
 from .input_policy import modal_options
 from . import studio as core   # Rebound state (_enabled, _input_generation) is read through the module.
 from . import canvas_controls, canvas_focus, chat_view as canvas, live_windows, scroll_input, studio_drag, studio_enter
-from . import text_keys
+from . import studio_views, text_keys
 from .studio_state import MULTILINE_FIELDS, error_text, refusable
 from .ui_text import n_
 from .studio import (  # noqa: E402 (studio imports this module after defining these)
@@ -113,7 +113,7 @@ class ANGELO_OT_studio_input(Operator):
                 if choice is not None:
                     action = popup_state["action"]
                     if action == "model":
-                        state["models"][state["kind"]] = choice
+                        studio_views.choose_model(state, state["kind"], choice)
                     elif action == "folder_picker" and choice in core.LIBRARY_ACTIONS:
                         state.pop("popover", None)
                         refusable(state, lambda: getattr(bpy.ops.angelo, core.LIBRARY_ACTIONS[choice])('INVOKE_DEFAULT'))

@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 
 import bpy
+import qa_hit
 
 OUT = Path(os.environ.get("ANGELO_QA_DIR", "/tmp/angelo-update-crash-qa"))
 shots = []
@@ -44,15 +45,13 @@ def card_region():
 def hit_rect(action, value=None):
     """A clickable control's rectangle in window pixels (enabled controls only)."""
     _, region, state = card_region()
-    x, y, w, h = next(r for r, a, v in state.plan.hits if a == action and (value is None or v == value))
-    return region.x + x, region.y + y, w, h
+    return qa_hit.rect(qa_hit.PIXELS, region, next(r for r, a, v in state.plan.hits if a == action and (value is None or v == value)))
 
 
 def button_rect(label):
     """Any button's rectangle by label, disabled ones included (they have no hit area)."""
     _, region, state = card_region()
-    x, y, w, h = next(op[1] for op in state.plan.ops if op[0] == "button" and op[2] == label)
-    return region.x + x, region.y + y, w, h
+    return qa_hit.rect(qa_hit.PIXELS, region, next(op[1] for op in state.plan.ops if op[0] == "button" and op[2] == label))
 
 
 def button_state(label):
@@ -186,8 +185,7 @@ def peak(path, rect):
 
 def card_rect():
     _, region, state = card_region()
-    x, y, w, h = state.plan.card
-    return region.x + x, region.y + y, w, h
+    return qa_hit.rect(qa_hit.PIXELS, region, state.plan.card)
 
 
 def chat_fonts():

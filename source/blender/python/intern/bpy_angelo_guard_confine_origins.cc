@@ -135,13 +135,11 @@ std::string join(const std::string &a, const std::string &b)
  * another case or separator, is still the same file). False when it can't be opened. */
 bool win_file_id(const std::string &path, FILE_ID_INFO &id)
 {
-  const int size = MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, nullptr, 0);
-  std::wstring wide(size > 0 ? size : 1, L'\0');
-  if (size <= 0 || MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, wide.data(), size) <= 0) {
+  std::wstring wide;
+  if (!utf8_to_wide(path, wide)) {
     return false;
   }
-  HANDLE handle = CreateFileW(wide.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
-                              OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+  HANDLE handle = HANDLE(open_for_lookup(wide, true));
   if (handle == INVALID_HANDLE_VALUE) {
     return false;
   }
@@ -165,6 +163,9 @@ bool win_file_id(const std::string &path, FILE_ID_INFO &id)
  * and file ID; else the normalized path). */
 bool same_file(const std::string &a, const std::string &b)
 {
+  if (!lookup_may_touch(a) || !lookup_may_touch(b)) {
+    return false; /* Never looked up (a remote name on a share nobody connected): not shown to be the same. */
+  }
 #ifdef _WIN32
   FILE_ID_INFO ia, ib;
   if (win_file_id(a, ia) && win_file_id(b, ib)) {
@@ -173,7 +174,7 @@ bool same_file(const std::string &a, const std::string &b)
   }
 #endif
   BLI_stat_t sa, sb;
-  if (BLI_stat(a.c_str(), &sa) != 0 || BLI_stat(b.c_str(), &sb) != 0) {
+  if (lookup_stat(a, &sa) != 0 || lookup_stat(b, &sb) != 0) {
     return false;
   }
   if (sa.st_ino != 0 || sb.st_ino != 0) {
@@ -521,14 +522,19 @@ bool origin_honest(PyObject *name, PyObject *module)
   std::vector<std::string> portions;
   for (const std::string &entry : entries) {
     const std::string folder = absolute(entry);
-    if (!BLI_is_dir(folder.c_str())) {
+    if (!lookup_may_touch(folder)) {
+      /* A remote entry (a script may have put one in `__path__`): never looked up, and the name is not shown to
+       * resolve where it claims, so it is dropped (review-confine-fixes-eddf9bcda75 MUST-1). */
+      return false;
+    }
+    if (!lookup_is_dir(folder)) {
       continue; /* A zip or a missing folder: the path-based finder's file loaders don't read it. */
     }
     const std::string base = join(folder, tail);
-    if (BLI_is_dir(base.c_str())) {
+    if (lookup_is_dir(base)) {
       for (const std::string &suffix : suffixes) {
         const std::string init = join(base, "__init__" + suffix);
-        if (BLI_is_file(init.c_str())) {
+        if (lookup_is_file(init)) {
           return file && same_file(init, record.file);
         }
       }
@@ -536,7 +542,7 @@ bool origin_honest(PyObject *name, PyObject *module)
     }
     for (const std::string &suffix : suffixes) {
       const std::string path = join(folder, tail + suffix);
-      if (BLI_is_file(path.c_str())) {
+      if (lookup_is_file(path)) {
         return file && same_file(path, record.file);
       }
     }

@@ -28,7 +28,7 @@ from .provider_registry import is_coding_mode
 from .provider_usage import MAX_COST_USD, MAX_SERVED_MODELS, MAX_TOKENS, TOKENS as USAGE_TOKENS
 from .request_path import PathFacts, clean_path, running_usage
 from .runtime_environment import PROMPT_CACHE_TTLS
-from . import shared_replace, write_turn
+from . import request_tiers, shared_replace, write_turn
 from .state_file_writes import write_receipts
 from .write_turn import WriteTurn
 
@@ -120,7 +120,7 @@ def clean_route(value):
 
 def _clean_usage(value):
     cleaned = {key: _usage_value(key, number) for key, number in (value.items() if isinstance(value, dict) else ())}
-    usage = {key: number for key, number in cleaned.items() if number is not None}
+    usage = request_tiers.kept({key: number for key, number in cleaned.items() if number is not None}, value)
     return usage if "turns" in usage and len(usage) > 1 else None
 
 
@@ -238,6 +238,7 @@ class RequestMetrics:
             if key in USAGE_SUMS and _usage_value(key, value) is not None:
                 totals[key] = totals.get(key, 0) + value
                 reports[key] = reports.get(key, 0) + 1
+        request_tiers.accumulate(totals, reports, usage)   # Each turn's requests at their own price tier.
         models = usage.get("models") if isinstance(usage, dict) else None
         for model in models if isinstance(models, list) else ():
             if model_id(model) and model not in served and len(served) < MAX_SERVED_MODELS:
@@ -281,6 +282,7 @@ class RequestMetrics:
         # cut short reports what it can: ``interrupted_turns`` then marks every
         # field as a lower bound instead of hiding what the other turns used.
         usage = {key: value for key, value in totals.items() if turns and reports.get(key, 0) >= turns - interrupted}
+        usage.pop("above_step", None) if reports.get("above_step", 0) < turns else None   # Every turn split, or none.
         usage = dict(usage, turns=turns) if usage or (turns and interrupted) else None
         return dict(usage, interrupted_turns=interrupted) if usage and interrupted else usage
 

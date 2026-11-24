@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))   # qa_frames
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-studio-palette-qa"))
@@ -156,7 +157,8 @@ def refresh_gap(view, region):
         return None
     refresh, imported = rects["refresh"], rects["import"]
     left, right = refresh[0] + refresh[2] + 1, imported[0] - 1
-    return (region.x + left, region.y + refresh[1] + 3, right - left, refresh[3] - 6) if right > left else None
+    return (qa_hit.rect(qa_hit.mirrored_about(view.get("mirror")), region, (left, refresh[1] + 3, right - left, refresh[3] - 6))
+            if right > left else None)
 
 
 def set_palette(name):
@@ -294,14 +296,13 @@ def tick():
             view = studio.view(area)
             tab_rect = next(r for r, action, value in view["hits"] if action == "tab" and value == tab)
             create = view["geometry"]["create"]
-            if view.get("mirror") is not None:   # Right to left: hits are layout rects, drawn mirrored (canvas_rtl.drawn).
-                tab_rect = (view["mirror"] - tab_rect[0] - tab_rect[2], *tab_rect[1:])
-                create = (view["mirror"] - create[0] - create[2], *create[1:])
+            studio_space = qa_hit.mirrored_about(view.get("mirror"))   # Layout rects, drawn mirrored right to left.
             state["captures"][label] = {
                 "palette": palette, "violet": round(violet_share(px), 4),
-                "tab_contrast": round(contrast(px, (region.x + tab_rect[0], region.y + tab_rect[1], tab_rect[2], tab_rect[3])), 2),
-                "create_contrast": round(contrast(px, (region.x + create[0], region.y + create[1] + create[3] - 120,
-                                                        create[2], 110)), 2) if create[2] > 0 else None}
+                "tab_contrast": round(contrast(px, qa_hit.rect(studio_space, region, tab_rect)), 2),
+                "create_contrast": round(contrast(px, qa_hit.rect(studio_space, region, (create[0], create[1] + create[3] - 120,
+                                                                                  create[2], 110))), 2)
+                if create[2] > 0 else None}
             from qa_frames import content_share
             state["captures"][label]["content"] = round(content_share(px), 4)   # A flat frame is no capture.
             gap = refresh_gap(view, region)

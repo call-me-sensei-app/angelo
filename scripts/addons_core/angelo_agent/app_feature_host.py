@@ -38,7 +38,34 @@ def _engine_link(window, request):
                     "puts the npm install command on the clipboard and names the Vite plugin to add)."}
 
 
-def execute(window, name, request):
+def _markup(window, controller, request):
+    """The picture viewer for the person, on the chat's picture or the 3D view now (``markup_ui``)."""
+    if window is None or controller is None or getattr(controller, "references", None) is None:
+        raise RefusalError("This chat has no window to show a picture in", code="UNSUPPORTED")
+    from . import markup_message, markup_overlay, markup_ui
+    try:
+        if "reference_id" in request:
+            picture = markup_ui.reference_record(controller, request["reference_id"])
+        else:
+            from . import document_scene   # Never the shown scene when it isn't the chat's (N8).
+            if document_scene.refusal(controller) is not None:
+                raise RefusalError("This chat's scene isn't the one shown, so its 3D view can't be marked up; "
+                                   "ask the person to switch back to it", code="VALIDATION")
+            markup_message.room(controller)
+            picture = markup_ui.capture_view(controller, window)
+            controller.attachments.append(picture)
+            controller.version += 1
+        shown = markup_overlay.open_reference(controller, picture, keyboard=False)   # The person may be typing.
+    except (OSError, ValueError) as error:
+        raise RefusalError("The picture viewer could not open: %s" % error, code="VALIDATION") from None
+    return {"feature": "markup", "open": bool(shown), "reference_id": picture["id"],
+            "next": "The person draws and comments on the picture and sends it with their instructions; it arrives as "
+                    "the marked picture, the original and the numbered comments. Nothing is sent until they send."}
+
+
+def execute(window, name, request, controller=None):
     if request["feature"] == "ENGINE_LINK":
         return _engine_link(window, request)
+    if request["feature"] == "MARKUP":
+        return _markup(window, controller, request)
     raise RefusalError("Unknown feature", code="VALIDATION")

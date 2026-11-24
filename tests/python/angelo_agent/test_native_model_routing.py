@@ -111,6 +111,75 @@ class RouteTests(unittest.TestCase):
             policy.route(profile(), EDIT, pinned_model="gpt-6.1-sol")
 
 
+FABLE = {"id": "claude-fable-5-2", "tier": "strong", "images": True, "context_window": 1000000,
+         "prices": {"input": 8.0, "output": 40.0, "cache_read": 0.20, "cache_write": 16.0}}
+
+
+def shipped(identity, **extra):
+    """A profile row from the shipped table: its tier and published 5-minute rates."""
+    facts = model_profiles.MODELS[identity]
+    return dict({"id": identity, "tier": facts["tier"], "images": facts["images"],
+                 "context_window": facts["context_window"], "prices": model_profiles.rates(identity, "5m")}, **extra)
+
+
+class SharedTierTests(unittest.TestCase):
+    """Two models in one tier (Opus 5.5 and Fable 5.2 are both strong; GPT-6.2 Astra and GPT-6 Astra too): the
+    cheaper published rates come first, whatever order the catalog lists them in, so an escalation or a fallback
+    never reaches the dearer model of a tier before the cheaper one."""
+
+    def test_the_next_rung_is_the_cheaper_model_of_the_next_tier(self):
+        for order in ((FABLE, OPUS), (OPUS, FABLE)):
+            with self.subTest(first=order[0]["id"]):
+                chosen = policy.route(profile(measured(HAIKU), SONNET, *order), EDIT)
+                self.assertEqual([rung.model for rung in chosen.ladder],
+                                 ["claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-2"])
+
+    def test_without_a_default_the_nearest_tier_runs_its_cheaper_model(self):
+        for order in ((FABLE, OPUS), (OPUS, FABLE)):
+            with self.subTest(first=order[0]["id"]):
+                self.assertEqual(policy.route(profile(*order), EDIT).model, "claude-opus-5-5")
+
+    def test_a_model_without_prices_ranks_after_the_priced_ones_of_its_tier(self):
+        unpriced = dict(FABLE, prices=None)
+        chosen = policy.route(profile(measured(SONNET), unpriced, OPUS), EDIT)
+        self.assertEqual([rung.model for rung in chosen.ladder], ["claude-opus-5-5", "claude-fable-5-2"])
+
+    def test_the_shipped_rows_escalate_to_the_cheaper_strong_model_in_any_catalog_order(self):
+        # From the shipped tables: each runtime's strong tier holds two rows at different rates.
+        for runtime, start, strong in (("codex", "gpt-6.2-sol", ("gpt-6.2-astra", "gpt-6-astra")),
+                                       ("claude", "claude-sonnet-5-5", ("claude-opus-5-5", "claude-fable-5-2"))):
+            cheaper, dearer = sorted(strong, key=lambda m: sum(model_profiles.rates(m, "5m")[f]
+                                                               for f in ("input", "output")))
+            for order in (strong, strong[::-1]):
+                with self.subTest(runtime=runtime, first=order[0]):
+                    rows = [shipped(start, default=True)] + [shipped(m) for m in order]
+                    chosen = policy.route(profile(*rows, runtime=runtime), EDIT)
+                    self.assertEqual([rung.model for rung in chosen.ladder], [cheaper, dearer])
+
+    def test_equal_rates_keep_the_catalogs_order(self):
+        # GPT-6.2 Sol and GPT-6.1 Sol share a tier at the same published rates: nothing in their prices ranks
+        # them, so the provider's own listing decides, as it did before prices ordered a tier.
+        self.assertEqual(model_profiles.rates("gpt-6.2-sol", "5m")["input"],
+                         model_profiles.rates("gpt-6.1-sol", "5m")["input"])
+        for first, second in (("gpt-6.2-sol", "gpt-6.1-sol"), ("gpt-6.1-sol", "gpt-6.2-sol")):
+            with self.subTest(first=first):
+                rows = (shipped(first), shipped(second), shipped("gpt-6.2-astra"))
+                self.assertEqual(policy.route(profile(*rows, runtime="codex"), EDIT).model, first)
+
+
+class CatalogOrderTests(unittest.TestCase):
+    """A profile built from a connection's catalog keeps the catalog's order, so two rows at equal rates resolve in
+    the provider's order through the real builder, not alphabetically by ID."""
+
+    def test_equal_rates_follow_the_catalog_through_the_profile_builder(self):
+        for first, second in (("gpt-6.2-sol", "gpt-6.1-sol"), ("gpt-6.1-sol", "gpt-6.2-sol")):
+            with self.subTest(first=first):
+                catalog = [{"id": first}, {"id": second}, {"id": "gpt-6.2-astra"}]
+                profile = model_profiles.capability_profile("c", "codex", "SUBSCRIPTION", catalog, effort="medium")
+                self.assertEqual([m["id"] for m in profile["models"]], [first, second, "gpt-6.2-astra"])
+                self.assertEqual(policy.route(profile, EDIT).model, first)
+
+
 class EscalationTests(unittest.TestCase):
     def setUp(self):
         self.fast = policy.route(profile(measured(HAIKU), SONNET, measured(OPUS)), EDIT)
@@ -205,6 +274,19 @@ class PublishedPriceTests(unittest.TestCase):
         self.assertEqual(model_profiles.rates("claude-haiku-5-5", "1h", prompt_tokens=100000)["cache_write"], 0.20)
         # Providers without a 1-hour TTL charge their one write rate.
         self.assertEqual(model_profiles.rates("gpt-6.1-sol", "1h")["cache_write"], 2.50)
+
+    def test_fable_5_2_carries_anthropics_published_rates(self):
+        # Anthropic's pricing page (read 2026-11-18): $8 input, $10 5m and $16 1h writes, $0.20 cache hits
+        # (0.025x input), $40 output; the whole 1M window at those rates. Claude Code 2.1.321 adds it as "fable".
+        self.assertEqual(model_profiles.resolve("fable"), "claude-fable-5-2")
+        facts = model_profiles.MODELS["claude-fable-5-2"]
+        self.assertEqual((facts["runtime"], facts["tier"], facts["context_window"], facts["images"]),
+                         ("claude", "strong", 1000000, True))
+        self.assertNotIn("price_step_tokens", facts)
+        self.assertEqual(model_profiles.rates("claude-fable-5-2", "1h"),
+                         {"input": 8.0, "output": 40.0, "cache_read": 0.20, "cache_write": 16.0})
+        self.assertEqual(model_profiles.rates("claude-fable-5-2", "5m")["cache_write"], 10.0)
+        self.assertNotIn("claude-fable-5-2", model_profiles.MEASURED, "measured-only features stay off")
 
     def test_every_row_is_sourced_and_tiered(self):
         for identity, facts in model_profiles.MODELS.items():

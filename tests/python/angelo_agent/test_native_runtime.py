@@ -165,7 +165,13 @@ class NativeRuntimeTests(unittest.TestCase):
                                                      "angelo_engine_link_status", "angelo_engine_link",
                                                      # The deferred, approved download (download_spec; downloads.rst).
                                                      "angelo_download",
-                                                 "angelo_goal"} | FLOW_NAMES | TEAM_NAMES | JOB_NAMES
+                                                 "angelo_goal",
+                                                 # Plan mode: START and PROPOSE (plan_mode.rst).
+                                                 "angelo_plan",
+                                                 # The attached folder, read-only (context_folder, 2.1.0).
+                                                 "angelo_context_folder",
+                                                 # The working folder's text files (context_folder_write, 2.1.0).
+                                                 "angelo_context_folder_write"} | FLOW_NAMES | TEAM_NAMES | JOB_NAMES
                             | RIG_NAMES | LIBRARY_NAMES)
 
     def test_read_only_policy_rejects_all_mutations(self):

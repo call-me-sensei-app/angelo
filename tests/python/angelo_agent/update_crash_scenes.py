@@ -18,6 +18,7 @@ import update_crash_gui as gui
 from update_crash_gui import (active, brightness, button_rect, button_state, capture, card, center, click, close_to,
                               fill_of, hit_rect, key, labels, move_to, park_pointer, press_at, release_at, ring_of,
                               same_pixels, settle, text, until, window)
+import qa_hit
 
 TEAL, TEAL_HOVER, TEAL_PRESSED = (43, 196, 191), (61, 217, 209), (31, 153, 148)
 FOCUS, CARD = (158, 235, 230), (23, 25, 30)
@@ -197,7 +198,7 @@ def update_notice(fx):
     yield from settle(3)
     after = (tuple(view.view_rotation), view.view_distance, view.view_camera_zoom, view.view_perspective)
     c["the_viewport_still_orbits_beside_the_notice"] = after != before and active("update")
-    c["the_notice_ignores_points_outside_its_card"] = card_kit.hit_test(plan, start[0] - region.x, start[1] - region.y) is None
+    c["the_notice_ignores_points_outside_its_card"] = card_kit.hit_test(plan, *qa_hit.from_window(qa_hit.PIXELS, region, *start)) is None
 
     click("notes")
     yield from settle()
@@ -316,15 +317,14 @@ def crash_with_endpoint(fx):
 
     box = gui.host()._active.plan.scroll["report"]
     _, region, _ = gui.card_region()
-    bx, by, bw, bh = box["rect"]
-    inside = (int(region.x + bx + bw / 2), int(region.y + by + bh / 2))
+    inside = qa_hit.ipoint(qa_hit.PIXELS, region, box["rect"])
     window().event_simulate(type='MOUSEMOVE', value='NOTHING', x=inside[0], y=inside[1])
     for _ in range(4):
         window().event_simulate(type='WHEELDOWNMOUSE', value='PRESS', x=inside[0], y=inside[1])
     yield from settle()
     scrolled = capture("crash-15-report-scrolled.png")
     c["the_report_box_scrolls"] = gui.host()._active.ui.scroll.get("report", 0) > 0 and not same_pixels(
-        focused, scrolled, (region.x + bx, region.y + by, bw, bh))
+        focused, scrolled, qa_hit.rect(qa_hit.PIXELS, region, box["rect"]))
 
     box_rect = hit_rect("remember")
     fill = (box_rect[0] + 4, box_rect[1] + box_rect[3] / 2)   # Inside the box, left of the check mark.

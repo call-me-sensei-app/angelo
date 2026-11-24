@@ -13,7 +13,9 @@ and UTF-16LE, for:
 * the building machine's own identity: the user name and host name it runs under, plus any ``--identity``, and its
   folders: home and temporary folders from the environment plus any ``--identity-path`` (source, build), each in
   its long and, on Windows, its 8.3 short form;
-* credentials in their published formats (private keys with key material, provider API keys and tokens);
+* credentials in their published (or, for GitHub's fine-grained tokens, observed) formats: private keys with key
+  material, provider API keys and tokens. Not seen: a credential encoded again (base64, as in a ``Basic`` header), one
+  split across lines, and pre-2021 unprefixed 40-hex GitHub tokens, which no shape tells from a SHA-1;
 * build artifacts by type (``.pdb``, ``.exp``, ``.ilk``, ``.iobj``, ``.ipdb``, ``.obj``, ``.lib``): they do not belong in an
   installer at all, so they are excluded from the install, never allowed.
 
@@ -70,7 +72,13 @@ SECRETS = {
     # OpenAI keys carry "T3BlbkFJ" inside a long body; a table of key prefixes ("sk-proj-sk-svcacct-...") does not.
     "OpenAI API key": r"sk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{20,}T3BlbkFJ[A-Za-z0-9_-]{20,}",
     "AWS access key": r"(?<![A-Z0-9])AKIA(?![0-9A-Z]{9}EXAMPLE)[0-9A-Z]{16}(?![A-Z0-9])",  # AWS's documented example is none
-    "GitHub token": r"(?:ghp|gho|ghs|ghu|ghr)_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{60,}",
+    # Classic tokens: a prefix and at least 36 base62 characters (refresh tokens are longer). Fine-grained tokens:
+    # github_pat_ and an 82-character body observed as 22 + "_" + 59 (the split is not published, and lengths may
+    # grow, so the first segment is open-ended). No boundary after either: a token baked into a binary's string pool
+    # has the next constant right after it. The shape alone rejects a program's own prefix constant followed by other
+    # constants ("github_pat_GITHUB_TOKENGH_ENTERPRISE_TOKEN..." in the bundled Codex: 6 characters, not 22, before "_").
+    "GitHub token": r"(?:ghp|gho|ghs|ghu|ghr)_[A-Za-z0-9]{36}",
+    "GitHub fine-grained token": r"github_pat_[A-Za-z0-9]{22,}_[A-Za-z0-9]{59}",
     "Slack token": r"xox[abprs]-[0-9]{6,}-[0-9A-Za-z-]{10,}",
     "Google API key": r"AIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])",
     "Stripe live key": r"(?:sk|rk)_live_[0-9A-Za-z]{24,}",
@@ -112,7 +120,8 @@ ANCHORS = {
     "home folder (macOS)": b"/users/", "home folder (Linux)": b"/home/", "temporary folder (macOS)": b"/var/folders/",
     "home folder (Windows)": b"users", "Windows short (8.3) path": b"~", "home folder (HFS alias)": b"users:",
     "temporary folder (HFS alias)": b"var:folders:", "private key": b"private key-----", "Anthropic API key": b"sk-ant-",
-    "OpenAI API key": b"t3blbkfj", "AWS access key": b"akia", "GitHub token": b"_", "Slack token": b"xox",
+    "OpenAI API key": b"t3blbkfj", "AWS access key": b"akia", "GitHub token": b"gh",
+    "GitHub fine-grained token": b"github_pat_", "Slack token": b"xox",
     "Google API key": b"aiza", "Stripe live key": b"_live_",
 }
 
@@ -173,23 +182,76 @@ def _rules(identity, folders=()):
 
 
 def load_allow(path=ALLOW_FILE):
-    """``[(file globs, compiled match, reason)]``; every entry must give all three."""
+    """``[(file globs, compiled match, reason, context, upstream)]``; every entry must give files, match and reason.
+
+    Two optional conditions narrow an entry from "this text in these files" to "this text where upstream put it":
+    ``context``, a regular expression the text right after the hit must start with (for a file Angelo builds, such as
+    the executable, that links upstream's static libraries), and ``upstream: true``, which excuses a hit only in a
+    file whose bytes equal a file of the pinned upstream library tree (``scan(upstream=...)``, ``--upstream-root``;
+    bytecode counts when its source does). Without the tree such an entry excuses nothing."""
     entries = json.loads(Path(path).read_text(encoding="utf-8"))["allow"]
     allow = []
     for entry in entries:
         if not (entry.get("files") and entry.get("match") and entry.get("reason")):
             raise ScanError("%s: every entry needs files, match and reason: %r" % (path, entry))
-        allow.append((list(entry["files"]), re.compile(entry["match"]), entry["reason"]))
+        context = re.compile(entry["context"]) if entry.get("context") else None
+        allow.append((list(entry["files"]), re.compile(entry["match"]), entry["reason"], context,
+                      bool(entry.get("upstream"))))
     return allow
 
 
-def _allowed(allow, relative, text, rule_class):
+def _allowed(allow, relative, text, rule_class, after="", is_upstream=None):
+    """The reason an allow entry excuses this hit, or None. ``after``: the text following the hit; ``is_upstream()``:
+    whether the hit's file is a file of the pinned upstream library tree."""
     if rule_class in ("secret", "identity", "diagnostic"):
         return None  # never allowed: a credential, this machine's own name or a build without the confinement
-    for globs, match, reason in allow:
-        if match.fullmatch(text) and any(fnmatch.fnmatchcase(relative, glob) for glob in globs):
-            return reason
+    for entry in allow:
+        globs, match, reason = entry[:3]
+        context, upstream = (tuple(entry[3:5]) + (None, False))[:2]
+        if not (match.fullmatch(text) and any(fnmatch.fnmatchcase(relative, glob) for glob in globs)):
+            continue
+        if context is not None and not context.match(after):
+            continue
+        if upstream and not (is_upstream and is_upstream()):
+            continue
+        return reason
     return None
+
+
+def upstream_digests(roots):
+    """The SHA-256 of every regular file below ``roots`` (the pinned upstream library trees)."""
+    digests = set()
+    for root in roots:
+        for folder, _dirs, files in os.walk(root):
+            if os.sep + ".git" in folder + os.sep:
+                continue
+            for name in files:
+                path = os.path.join(folder, name)
+                if not os.path.islink(path) and os.path.isfile(path):
+                    digests.add(sha256_of(path))
+    return digests
+
+
+def homes_of(identity, folders):
+    """The home folders a builder with these names and folders has, as hit texts are written."""
+    homes = set(folders)
+    for name in identity:
+        homes.update({"/home/" + name, "/Users/" + name, "C:\\Users\\" + name, "C:/Users/" + name})
+    home = os.path.expanduser("~")
+    if home and home not in ("~", "/"):
+        homes.add(home)
+    return sorted(homes)
+
+
+def allow_problems(allow, identity, folders):
+    """An allow entry must never be able to excuse the scanning machine's own home: why one could (empty: none)."""
+    problems = []
+    for entry in allow:
+        for home in homes_of(identity, folders):
+            if entry[1].fullmatch(home.rstrip("\\/")):
+                problems.append("the allow entry %r would excuse this machine's own home %s: refusing to scan with it"
+                                % (entry[2][:60], home))
+    return problems
 
 
 def _pyc_strings(data):
@@ -230,14 +292,23 @@ def _wide(anchor):
 
 
 def _views(data, anchors):
-    """The file's bytes, and its UTF-16LE text re-encoded as bytes when it holds an anchor in UTF-16LE."""
-    yield data
+    """``(encoding, start, view)``: the file's bytes, and its UTF-16LE text from byte 0 and from byte 1, re-encoded as
+    UTF-8, when it holds an anchor in UTF-16LE. ``start`` is the byte the view begins at (``_file_offset``)."""
+    yield "UTF-8", 0, data
     lower = data.lower()
     if any(_wide(anchor) in lower for anchor in anchors):
         for offset in (0, 1):
             wide = data[offset:]
             text = wide[: len(wide) - len(wide) % 2].decode("utf-16-le", "replace")
-            yield text.encode("utf-8", "replace")
+            yield "UTF-16LE", offset, text.encode("utf-8", "replace")
+
+
+def _file_offset(encoding, start, view, position):
+    """The byte in the file where a hit at ``position`` of a ``_views`` view begins: each character of a UTF-16LE view
+    is one 2-byte code unit of the file (an undecodable unit became one replacement character)."""
+    if encoding != "UTF-16LE":
+        return start + position
+    return start + 2 * len(view[:position].decode("utf-8", "replace"))
 
 
 def _listed_name(relative):
@@ -260,10 +331,12 @@ def listed_files(folder, manifest):
     return chosen
 
 
-def scan(folder, identity=None, allow=None, folders=None, only=None):
+def scan(folder, identity=None, allow=None, folders=None, only=None, upstream=None):
     """Scan every regular file below ``folder``. Returns ``{"files", "bytes", "hits": {path: {kind: n}},
     "examples": {path: [text]}, "allowed": {reason: n}}``. Symbolic links are not followed. ``only`` (folder-relative
-    POSIX paths, compared case-insensitively on Windows) limits the scan to those files: what an install wrote."""
+    POSIX paths, compared case-insensitively on Windows) limits the scan to those files: what an install wrote.
+    ``upstream``: the SHA-256 set of the pinned upstream library tree (``upstream_digests``), for ``upstream`` entries.
+    ``report["allowed_files"]`` counts each excused hit per reason and file."""
     folder = Path(folder)
     if not folder.is_dir():
         raise ScanError("%s is not a folder" % folder)
@@ -272,8 +345,10 @@ def scan(folder, identity=None, allow=None, folders=None, only=None):
     allow = load_allow() if allow is None else allow
     rules = _rules(identity, folders)
     only = None if only is None else {_listed_name(name) for name in only}
-    wide_anchors = sorted({anchor for _kind, _pattern, rule_class, anchor in rules if rule_class != "secret"})
-    report = {"files": 0, "bytes": 0, "identity": list(identity), "folders": list(folders), "hits": {}, "examples": {}, "allowed": {}}
+    wide_anchors = sorted({anchor for _kind, _pattern, _rule_class, anchor in rules})   # credentials too
+    report = {"files": 0, "bytes": 0, "identity": list(identity), "folders": list(folders), "hits": {}, "examples": {},
+              "locations": {},
+              "allowed": {}, "allowed_files": {}}
     for root, dirs, files in os.walk(folder):
         dirs.sort()
         for name in sorted(files):
@@ -284,6 +359,19 @@ def scan(folder, identity=None, allow=None, folders=None, only=None):
             if only is not None and _listed_name(relative) not in only:
                 continue
             data = path.read_bytes()
+            verdict = []
+
+            def is_upstream(path=path, data=data, verdict=verdict):
+                if not verdict:
+                    source = data
+                    if path.name.endswith(".pyc") and path.parent.name == "__pycache__":
+                        # Bytecode is upstream when the source it was compiled from is.
+                        source_path = path.parent.parent / (path.name.split(".")[0] + ".py")
+                        source = source_path.read_bytes() if source_path.is_file() else None
+                    verdict.append(upstream is not None and source is not None
+                                   and hashlib.sha256(source).hexdigest() in upstream)
+                return verdict[0]
+            raw = data
             if name.endswith(".pyc"):
                 data = _pyc_strings(data) or data
             report["files"] += 1
@@ -292,7 +380,10 @@ def scan(folder, identity=None, allow=None, folders=None, only=None):
                 report["examples"].setdefault(relative, []).append(name)
             report["bytes"] += len(data)
             seen = set()
-            for view in _views(data, wide_anchors):
+            bytecode = name.endswith(".pyc") and data is not raw
+            for encoding, view_start, view in _views(data, wide_anchors):
+                if bytecode:
+                    encoding = "bytecode string constants"   # offsets count in the constants, one per line
                 lower = view.lower()
                 for kind, pattern, rule_class, anchor in rules:
                     if anchor not in lower:
@@ -305,15 +396,21 @@ def scan(folder, identity=None, allow=None, folders=None, only=None):
                         if key in seen:
                             continue
                         seen.add(key)
-                        reason = _allowed(allow, relative, text, rule_class)
+                        after = view[found.end():found.end() + 256].decode("utf-8", "replace")
+                        reason = _allowed(allow, relative, text, rule_class, after, is_upstream)
                         if reason:
                             report["allowed"][reason] = report["allowed"].get(reason, 0) + 1
+                            per_file = report["allowed_files"].setdefault(reason, {})
+                            per_file[relative] = per_file.get(relative, 0) + 1
                             continue
                         counts = report["hits"].setdefault(relative, {})
                         counts[kind] = counts.get(kind, 0) + 1
                         examples = report["examples"].setdefault(relative, [])
                         if len(examples) < 3:
                             examples.append(text if rule_class != "secret" else text[:8] + "…")
+                        locations = report["locations"].setdefault(relative, [])
+                        if len(locations) < 3:
+                            locations.append([kind, encoding, _file_offset(encoding, view_start, view, found.start())])
     if report["files"] == 0:
         raise ScanError("%s holds no files: nothing was scanned" % folder)
     return report
@@ -371,9 +468,11 @@ def summary(report, limit=40):
     lines = ["%d files, %.1f MB scanned; %d with builder paths or credentials" % (
         report["files"], report["bytes"] / 1e6, len(rows))]
     for relative, counts in rows[:limit]:
-        lines.append("  %6d  %s  (%s; e.g. %s)" % (sum(counts.values()), relative,
-                                                  ", ".join("%s %d" % item for item in sorted(counts.items())),
-                                                  " ".join(report["examples"][relative])))
+        where = report.get("locations", {}).get(relative)
+        lines.append("  %6d  %s  (%s; e.g. %s%s)" % (
+            sum(counts.values()), relative, ", ".join("%s %d" % item for item in sorted(counts.items())),
+            " ".join(report["examples"][relative]),
+            "; first in %s at byte %d" % (where[0][1], where[0][2]) if where else ""))
     if len(rows) > limit:
         lines.append("  ... and %d more files" % (len(rows) - limit))
     for reason, count in sorted(report["allowed"].items()):
@@ -428,13 +527,21 @@ def main(argv=None):
     parser.add_argument("--receipt", help="write a receipt of a clean scan for --installer here")
     parser.add_argument("--report", help="write the full report as JSON here")
     parser.add_argument("--files-from", help="scan only the files this manifest lists (CMake's install_manifest.txt)")
+    parser.add_argument("--upstream-root", action="append", default=[],
+                        help="the pinned upstream library tree (LIBDIR): files byte-identical to one of its files may "
+                             "keep upstream's build paths (allow entries with upstream: true)")
     arguments = parser.parse_args(argv)
     if bool(arguments.installer) != bool(arguments.receipt):
         parser.error("--installer and --receipt go together")
     try:
         only = listed_files(arguments.folder, arguments.files_from) if arguments.files_from else None
-        report = scan(arguments.folder, builder_identity(arguments.identity),
-                      folders=builder_folders(arguments.identity_path), only=only)
+        identity, folders, allow = (builder_identity(arguments.identity), builder_folders(arguments.identity_path),
+                                    load_allow())
+        problems = allow_problems(allow, identity, folders)
+        if problems:
+            raise ScanError("; ".join(problems))
+        upstream = upstream_digests(arguments.upstream_root) if arguments.upstream_root else None
+        report = scan(arguments.folder, identity, allow, folders=folders, only=only, upstream=upstream)
     except (ScanError, OSError, ValueError) as error:
         print("builder-paths: %s" % error, file=sys.stderr)
         return 2

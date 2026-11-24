@@ -108,11 +108,25 @@ goal on the chip, or the chat's Stop, ends it; sending your own message pauses i
 
 Contract: :doc:`goal_mode`.
 
+Plan mode
+=========
+
+Talk it through before anything is built: chat bar **+** > **Plan first** (beside **Attach** and **Goal**), or just
+say "let's plan first". The chat becomes read only, so nothing in the scene changes, while the agent researches on the
+web, looks at the scene and asks what it needs. It ends with a plan card: up to three approaches, each with its steps,
+risks and an estimate, the one it recommends and its open questions. **Edit** puts an approach in the message box to
+change; **Go with this** switches the chat to the setting shown under **Then** (Ask before changes, or Auto) and sends
+that approach, with anything you typed, as your next message. Keep talking to revise the plan; afterwards the **Plan**
+chip keeps the chosen approach in view and **Revise plan** starts planning again.
+
+Contract: :doc:`plan_mode`.
+
 Base meshes and hands
 =====================
 
 Start from one of Angelo's base meshes (chat bar **+** > **Start from** > **Base meshes**; it is added when you send
-your message), or choose **Work on hands** so the agent starts from your rig's hands with Angelo's hand tools.
+your message), or choose **Work on hands** (chat bar **+** > **Rig** > **Work on hands**) so the agent starts from your
+rig's hands with Angelo's hand tools.
 
 Contract: :doc:`hand_rigging`.
 
@@ -185,6 +199,28 @@ glTF, Unreal Engine or Unity: chat bar **+** > **Create** > **Render** > **Bake 
 
 Contract: :doc:`long_jobs`.
 
+Mark up a picture
+=================
+
+Show the agent what you mean on a picture: click a picture in the chat's message box, or chat bar **+** > **Mark up
+a picture…** (the newest picture, or the 3D view as it is now). Draw with a pen, arrows, ellipses, rectangles and
+text in six colours, pin numbered comments on a point or a region, add instructions and send. The agent gets the
+marked picture, the original and every comment with its place. The same bar removes a background or erases what you
+brush over (an image generation: it shows the cost first and keeps the original) and crops or scales the picture.
+
+Contract: :doc:`attachment_markup`.
+
+Retopology
+==========
+
+Turn a scanned, sculpted or AI-generated mesh into clean quad topology that follows its shape and its sharp and
+marked edges, as a new object: chat bar **+** > **Model** > **Retopology**, **Properties** > **Mesh** > **Remesh** >
+**Retopology**, or F3. It works on broken meshes (holes, loose parts, flipped faces, triangle soups), keeps vertex
+groups, and can make the result exactly symmetric. Ask the agent ("retopologize this at about 8k faces") and it runs
+the same tool as a background job.
+
+Contract: :doc:`retopology`.
+
 Render a region over the last render
 ====================================
 
@@ -204,17 +240,114 @@ Mode, paint masks and Particle Edit).
 
 Contract: :doc:`select_through`.
 
+Scatter
+=======
+
+Place trees, rocks or any objects from your scene on a surface by slope, height, a painted mask and distance from
+paths or buildings, in layers that keep out of each other's way: select the objects, then the surface, and choose
+chat bar **+** > **Create** > **Scatter** (or **F3** > **Scatter**). The result is a new object with plain Geometry
+Nodes you can open and edit; density, seed, camera culling and viewport points are its modifier's inputs.
+Contract: :doc:`scatter`.
+
+Camera Look
+===========
+
+Give the camera a lens and film look (vignette, glare, halation, a film grade, grain and bokeh shape) from a
+preset: chat bar **+** > **Render tools** > **Camera Look** (or **F3** > **Camera Look**). It works with every
+render engine and shows in the viewport's camera view; **Clean** takes it off and puts back what it replaced.
+Contract: :doc:`camera_look`.
+
 Tension maps
 ============
 
 See where a deforming mesh stretches (red) or squashes (blue), live in the viewport, and use it in materials: chat
 bar **+** > **Inspect** > **Tension map**, or **Add Modifier** > **Edit** > **Tension**.
 
+Loops (LoopTools tools)
+=======================
+
+Blender's built-in versions of the LoopTools tools, together and under the names LoopTools used: **Bridge**,
+**Circle**, **Curve**, **Flatten**, **Gstretch to Annotation**, **Relax** and **Space**. In mesh Edit Mode:
+
+* right-click: **Loops**, at the top of the menu, where LoopTools put its own;
+* **Edge** > **Loops**, so F3 search finds each tool by its LoopTools name ("Relax", "Gstretch").
+
+Each item runs Blender's own operator, the same one **Mesh** > **Transform** offers under its longer name. LoopTools'
+Loft has no built-in equivalent; Bridge is the closest. Source: ``angelo_agent/loops_menu.py``.
+
+Splats to meshes
+================
+
+Turn Gaussian splats (imported with **File** > **Import** > **PLY**) into meshes you can use: select the splats and
+run **Splats to Mesh** (chat bar **+** > **Create**, or F3). **Collision** makes a closed, light mesh within a triangle budget for physics and game
+engines; **Visual** makes a finer mesh coloured from the splats. Faint splats floating off the captured surface are
+left out, judged against the capture's own density. The splats themselves are not changed. **Export Splats (.ply)**
+writes splats back in the format other splat tools read. Source: ``angelo_agent/splat_mesh.py``.
+
+A collision mesh always fits its triangle budget, stays closed and never passes through itself
+(``angelo_agent/splat_budget.py``). Walls and other features at least about the splats' spacing across are kept: a
+closed room keeps every wall wherever the voxel grid falls, and a result that has lost part of the capture is refused
+(each splat must lie within its own radius plus half a voxel of the surface, judged against the finest surface,
+which keeps everything). When thinning it would make a thin wall's two sides cross, or lose part of the capture, the
+mesh is rebuilt a little coarser instead, then refined toward finer voxels only while that brings it measurably closer
+to the splats, and no closer than the splats' own size. If a result were ever over the budget, or missing part of the
+splats, the operator says so.
+
+Thin walls sit about a splat radius off on both sides, so a sparse capture of a large space fits looser than a dense
+one (a 20 m floor plan from 60,000 splats has splats about 0.3 m across), and a large flat space at the default
+budget sits further off than with more triangles. For tighter collision, raise the triangle budget or capture more
+densely: a 20 m floor plan of six rooms with 15 cm interior walls, from a million splats, stays well within 2% of its
+size at about 18,000 triangles.
+
+On a test machine a million splats take about 20 s (an object shaped like a sphere, or a 20 m floor plan, 5,000
+triangles) and about 1.5 GB of memory; 60,000 splats take a few seconds. A later release narrows the costly part to the
+thin or enclosed places that need it. A Visual mesh of a million splats takes about 4 s and 0.9 GB, and has about
+1.3 million triangles.
+
+Collision hulls for game engines
+================================
+
+Give a mesh collision a game engine reads: chat bar **+** > **Share** > **Collision hulls** (F3: **Fit Collision
+Hulls**). A concave mesh gets several convex hulls, so a doorway stays open and a bowl stays hollow; each engine's
+export writes them its way (Unreal ``UCX_``, Unity MeshCollider, Godot OMI or name suffixes).
+
+Contract: :doc:`game_physics`.
+
 UV checker
 ==========
 
-Show a checker pattern on your models to spot UV stretching and uneven texel density: chat bar **+** > **Check** >
+Show a checker pattern on your models to spot UV stretching and uneven texel density: chat bar **+** > **Inspect** >
 **UV checker**, Director's top bar, or **View** > **Toggle UV Checker**.
+
+Shape Cut
+=========
+
+Draw on a surface to cut it: chat bar **+** > **Model** > **Shape Cut**, or F3 > **Shape Cut**. Hover a face, drag a
+box or circle (click corners for a polygon, or hold and draw freehand), then move the mouse to set the depth and click.
+The shape snaps to a grid lined up with the face's edge. Keys 1 to 6 choose Cut, Union, Intersect, Slice, Inset or
+Panel; T cuts all the way through. Every cut stays live: select its wire cutter to move or scale it, or delete the
+cutter to undo the cut. Ask the agent for the same thing in words, such as "cut a 2 cm vent grid into this panel".
+
+UV Layout
+=========
+
+Unwrap and pack the selected meshes for one texture: chat bar **+** > **Model** > **UV Layout**, or F3 > **UV
+Layout**. Choose the texture size, an optional texel density in pixels per metre (extra UDIM tiles are added when the
+parts do not fit one), how many mip levels the padding keeps clean, whether to unwrap first, stack identical parts,
+give each material or object its own tile, and how many extra layouts to search. Pack Islands has the same **Search**
+setting. Ask the agent in words, such as "unwrap and pack this for 2K at 10 px/cm".
+
+Rigging: retarget, game rigs and IK
+===================================
+
+Chat bar **+** > **Rig** holds the rigging tools, beside **Work on hands**. Each works on any humanoid armature by
+the role each bone plays, whatever its bones are called: **Retarget animation** copies the other selected rig's
+animation onto the active one; **Make game rig** makes a deform-only copy named for Unreal Engine, Unity or Godot,
+with every action baked and one root; **Root motion** moves the hips' travel onto the root bone or keeps the clip in
+place; **Export clips** writes one clip per action, the way each engine imports them; **IK controls** adds hand and
+foot effectors with elbow and knee poles, and **Switch IK/FK** moves the limbs between them, keeping the pose. F3 >
+**Pose Body** poses the whole body from where the hands, feet, head or hips should be, within a human range of motion
+and balanced over the planted feet. The agent runs the same operators. Details: ``doc/angelo/rigging.rst``.
 
 Rig check for a game engine
 ===========================
@@ -232,6 +365,24 @@ A web-ready .glb for Three.js with its size budget, and a browser preview that u
 **+** > **Share** > **Web export** or **Live browser preview**, and **File > Export**.
 
 Contract: :doc:`web_export`.
+
+Rules
+=====
+
+Instructions Angelo follows in every request, written once: for this project (saved in the file) or for all projects
+(kept on this computer). Rules that came with someone else's file wait until you review them: chat bar **+** >
+**Rules…**.
+
+Contract: :doc:`agent_chat`.
+
+Folder as context
+=================
+
+Let Angelo read a folder of yours in one chat, such as a game project or a folder of references. It only reads it,
+never changes it, and the model never sees where it is on your computer: chat bar **+** > **Folder as context…**; the
+chat's card names the folder, with **Remove**.
+
+Contract: :doc:`agent_chat`.
 
 Learn: how to do it yourself
 ============================

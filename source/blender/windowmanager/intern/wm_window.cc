@@ -1844,6 +1844,64 @@ static void ghost_event_proc_timestamp_warning(const GHOST_IEvent *ghost_event)
 #endif /* !NDEBUG */
 
 /**
+ * `win` came forward: what the window manager does on the operating system's activation (and only
+ * that, so `WM_window_activate_simulate` runs exactly this path).
+ */
+static void wm_window_activated(wmWindowManager *wm, wmWindow *win, const uint64_t event_time_ms)
+{
+  /* Ensure the event state matches modifiers (window was inactive). */
+  wm_window_update_eventstate_modifiers(wm, win, event_time_ms);
+
+  /* Entering window, update mouse position (without sending an event). */
+  wm_window_update_eventstate(win);
+
+  /* No context change! `C->wm->runtime->windrawable` is drawable, or for area queues. */
+  wm->runtime->winactive = win;
+  win->active = 1;
+  wm_window_csd_title_redraw_tag(wm, win);
+
+  /* Zero the `keymodifier`, it hangs on hotkeys that open windows otherwise. */
+  win->runtime->eventstate->keymodifier = EVENT_NONE;
+
+  win->addmousemove = 1; /* Enables highlighted buttons. */
+
+  wm_window_make_drawable(wm, win);
+
+  /* NOTE(@sergey): Window might be focused by mouse click in configuration of window manager
+   * when focus is not following mouse
+   * click could have been done on a button and depending on window manager settings
+   * click would be passed to blender or not, but in any case button under cursor
+   * should be activated, so at max next click on button without moving mouse
+   * would trigger its handle function
+   * currently it seems to be common practice to generate new event for, but probably
+   * we'll need utility function for this?
+   */
+#ifdef WITH_PYTHON
+  /* Angelo: before its synthetic move, so the guard knows that move is not the person's. */
+  BPY_angelo_guard_note_activate(win);
+#endif
+  wmEvent event;
+  wm_event_init_from_window(win, &event);
+  event.type = MOUSEMOVE;
+  event.val = KM_NOTHING;
+  copy_v2_v2_int(event.prev_xy, event.xy);
+  event.flag = eWM_EventFlag(0);
+
+  WM_event_add(win, &event);
+}
+
+bool WM_window_activate_simulate(wmWindowManager *wm, wmWindow *win)
+{
+  if (g_system == nullptr || win->runtime == nullptr || win->runtime->ghostwin == nullptr ||
+      win->runtime->eventstate == nullptr)
+  {
+    return false; /* Background, or a window without its system window yet. */
+  }
+  wm_window_activated(wm, win, g_system->getMilliSeconds());
+  return true;
+}
+
+/**
  * Called by ghost, here we handle events for windows themselves or send to event system.
  *
  * Mouse coordinate conversion happens here.
@@ -1912,46 +1970,7 @@ static bool ghost_event_proc(const GHOST_IEvent *ghost_event, GHOST_TUserDataPtr
       break;
     }
     case GHOST_kEventWindowActivate: {
-      /* Ensure the event state matches modifiers (window was inactive). */
-      wm_window_update_eventstate_modifiers(wm, win, event_time_ms);
-
-      /* Entering window, update mouse position (without sending an event). */
-      wm_window_update_eventstate(win);
-
-      /* No context change! `C->wm->runtime->windrawable` is drawable, or for area queues. */
-      wm->runtime->winactive = win;
-      win->active = 1;
-      wm_window_csd_title_redraw_tag(wm, win);
-
-      /* Zero the `keymodifier`, it hangs on hotkeys that open windows otherwise. */
-      win->runtime->eventstate->keymodifier = EVENT_NONE;
-
-      win->addmousemove = 1; /* Enables highlighted buttons. */
-
-      wm_window_make_drawable(wm, win);
-
-      /* NOTE(@sergey): Window might be focused by mouse click in configuration of window manager
-       * when focus is not following mouse
-       * click could have been done on a button and depending on window manager settings
-       * click would be passed to blender or not, but in any case button under cursor
-       * should be activated, so at max next click on button without moving mouse
-       * would trigger its handle function
-       * currently it seems to be common practice to generate new event for, but probably
-       * we'll need utility function for this?
-       */
-#ifdef WITH_PYTHON
-      /* Angelo: before its synthetic move, so the guard knows that move is not the person's. */
-      BPY_angelo_guard_note_activate(win);
-#endif
-      wmEvent event;
-      wm_event_init_from_window(win, &event);
-      event.type = MOUSEMOVE;
-      event.val = KM_NOTHING;
-      copy_v2_v2_int(event.prev_xy, event.xy);
-      event.flag = eWM_EventFlag(0);
-
-      WM_event_add(win, &event);
-
+      wm_window_activated(wm, win, event_time_ms);
       break;
     }
     case GHOST_kEventWindowClose: {

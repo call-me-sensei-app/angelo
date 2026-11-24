@@ -11,6 +11,8 @@
 
 #include <Python.h>
 
+#include <array>
+#include <atomic>
 #include <cctype>
 #include <cstring>
 #include <optional>
@@ -19,9 +21,17 @@
 #include <string_view>
 #include <unordered_map>
 
+#ifndef _WIN32
+#  include <sys/ioctl.h>
+#endif
+
 #include "bpy_angelo_guard_confine_intern.hh"
+#include "bpy_angelo_guard_strict.hh"
 #include "bpy_angelo_guard_confine_journal.hh"
+#include "bpy_angelo_guard_confine_made.hh"
 #include "bpy_angelo_guard_confine_paths.hh"
+#include "bpy_angelo_guard_confine_remote.hh"
+#include "bpy_angelo_guard_confine_tree.hh"
 #include "bpy_angelo_guard_confine_winpath.hh"
 
 namespace blender::angelo_guard {
@@ -69,17 +79,44 @@ static const std::unordered_map<std::string_view, Event> &events()
       {"os.utime", {Kind::File, {{0, 'm', 3}}}},
       {"os.truncate", {Kind::File, {{0, 'w', -1}}}},
       {"os.chflags", {Kind::File, {{0, 'm', -1}}}},
-      {"os.lchflags", {Kind::File, {{0, 'm', -1}}}},
       {"os.link", {Kind::File, {{0, 's', 2}, {1, 'l', 3}}}},
       {"os.symlink", {Kind::File, {{0, 't', -1}, {1, 'l', 2}}}},
       {"os.listdir", {Kind::File, {{0, 'r', -1}}}},
       {"os.scandir", {Kind::File, {{0, 'r', -1}}}},
       {"os.chdir", {Kind::File, {{0, 'r', -1}}}},
       {"os.fwalk", {Kind::File, {{0, 'r', 4}}}},
+      /* Python 3.13's os.walk raises its own event before its first scandir (found by the inventory's probe): the
+       * top folder, judged as the listing it is. */
+      {"os.walk", {Kind::File, {{0, 'r', -1}}}},
+      /* pathlib's own walk and globs raise theirs before their first scandir (the inventory's stdlib events): the
+       * folder, judged as the listing it is. */
+      {"pathlib.Path.walk", {Kind::File, {{0, 'r', -1}}}},
+      {"pathlib.Path.glob", {Kind::File, {{0, 'r', -1}}}},
+      {"pathlib.Path.rglob", {Kind::File, {{0, 'r', -1}}}},
+      /* Windows: a descriptor's raw handle is its file (judged as the descriptor is). A handle made into a
+       * descriptor (msvcrt.open_osfhandle) is judged by its wrapper as every handle is (wrap_io.cc, handle_wraps: one
+       * the script made, or a file it may use), never refused whole: multiprocessing's spawn makes its own pipe a
+       * descriptor before its start, which is refused as a program (build3, 6c49a17). */
+      {"msvcrt.get_osfhandle", {Kind::File, {{0, 'f', -1}}}},
+      {"os.lockf", {Kind::File, {{0, 'f', -1}}}}, /* A lock on a descriptor: judged as its file. */
+      /* fcntl's descriptor calls (flags, locks, a device's requests): judged as the descriptor's file. */
+      {"fcntl.fcntl", {Kind::File, {{0, 'f', -1}}}},
+      {"fcntl.ioctl", {Kind::File, {{0, 'f', -1}}}},
+      {"fcntl.flock", {Kind::File, {{0, 'f', -1}}}},
+      {"fcntl.lockf", {Kind::File, {{0, 'f', -1}}}},
+      /* A signal to one of this process's threads (Angelo's own among them). */
+      {"signal.pthread_kill", {Kind::ProcessState}},
+      {"msvcrt.locking", {Kind::File, {{0, 'f', -1}}}},
       {"os.listxattr", {Kind::File, {{0, 'r', -1}}}},
       {"os.getxattr", {Kind::File, {{0, 'r', -1}}}},
       {"os.setxattr", {Kind::File, {{0, 'm', -1}}}},
       {"os.removexattr", {Kind::File, {{0, 'm', -1}}}},
+      /* Changes CPython raises no event for: their wrappers raise these (bpy_angelo_guard_confine_wrap_lookup.cc,
+       * `audit_wraps`), with the path and its folder descriptor. A FIFO or device node made is judged as a write,
+       * the link walk included; a new root folder for the process is refused. */
+      {"angelo.os.mkfifo", {Kind::File, {{0, 'm', 1}}}},
+      {"angelo.os.mknod", {Kind::File, {{0, 'm', 1}}}},
+      {"angelo.os.chroot", {Kind::ProcessState}},
       {"shutil.copyfile", {Kind::File, {{0, 'r', -1}, {1, 'w', -1}}}},
       {"shutil.copymode", {Kind::File, {{0, 'r', -1}, {1, 'm', -1}}}},
       {"shutil.copystat", {Kind::File, {{0, 'r', -1}, {1, 'm', -1}}}},
@@ -96,6 +133,9 @@ static const std::unordered_map<std::string_view, Event> &events()
       {"tempfile.mkdtemp", {Kind::File, {{0, 'm', -1}}}},
       {"mmap.__new__", {Kind::File, {{0, 'f', -1}}}},
       {"_winapi.CreateJunction", {Kind::File, {{0, 't', -1}, {1, 'l', -1}}}},
+      /* `shutil.copy2` / `copy` / `copytree` on Windows (Python 3.12+) copy through CopyFile2 directly, raising no
+       * `shutil.copyfile` event (head-10/11 re-read MUST): judged as that copy is, source read, target written. */
+      {"_winapi.CopyFile2", {Kind::File, {{0, 'r', -1}, {1, 'w', -1}}}},
       /* Windows' raw handles (`_winapi.ReadFile` reads one with no descriptor to judge): judged as a write, its
        * strictest use, whatever access it asks for. */
       {"_winapi.CreateFile", {Kind::File, {{0, 'w', -1}}}},
@@ -131,8 +171,8 @@ static const std::unordered_map<std::string_view, Event> &events()
       {"gc.get_referrers", {Kind::Guard}},
       {"gc.get_referents", {Kind::Guard}},
       {"function.__new__", {Kind::Guard}},
-      {"sys.set_asyncgen_hooks_firstiter", {Kind::Guard}},
-      {"sys.set_asyncgen_hooks_finalizer", {Kind::Guard}},
+      /* Every thread's current exception, with its traceback's frames (as sys._current_frames). */
+      {"sys._current_exceptions", {Kind::Guard}},
       {"sqlite3.enable_load_extension", {Kind::Native}},
       {"sqlite3.load_extension", {Kind::Native}},
       {"_thread.start_new_thread", {Kind::Thread}},
@@ -149,6 +189,8 @@ static const std::unordered_map<std::string_view, Event> &events()
       {"winreg.LoadKey", {Kind::Startup}},
       {"winreg.SaveKey", {Kind::Startup}},
       {"winreg.ConnectRegistry", {Kind::Network}},
+      {"winreg.DisableReflectionKey", {Kind::Startup}}, /* A key's reflection changed for every program. */
+      {"winreg.EnableReflectionKey", {Kind::Startup}},
       /* The whole process's limits: they can't be raised back, and every program Angelo starts inherits them
        * (bpy_angelo_guard_confine_process.cc has the rest of the process's state). */
       /* The environment and the working folder: every program Angelo starts and every relative path it opens
@@ -163,15 +205,16 @@ static const std::unordered_map<std::string_view, Event> &events()
 }
 
 /** Event families refused whole on a confined thread: the network and foreign code. */
+static const std::pair<const char *, Kind> FAMILY_PREFIXES[] = {
+    {"socket.", Kind::Network},   {"http.client.", Kind::Network}, {"ftplib.", Kind::Network},
+    {"smtplib.", Kind::Network},  {"imaplib.", Kind::Network},     {"poplib.", Kind::Network},
+    {"nntplib.", Kind::Network},  {"telnetlib.", Kind::Network},   {"ctypes.", Kind::Native},
+    {"_ctypes.", Kind::Native},   {"cffi.", Kind::Native},
+};
+
 static std::optional<Kind> family(const char *event)
 {
-  static const std::pair<const char *, Kind> prefixes[] = {
-      {"socket.", Kind::Network},   {"http.client.", Kind::Network}, {"ftplib.", Kind::Network},
-      {"smtplib.", Kind::Network},  {"imaplib.", Kind::Network},     {"poplib.", Kind::Network},
-      {"nntplib.", Kind::Network},  {"telnetlib.", Kind::Network},   {"ctypes.", Kind::Native},
-      {"_ctypes.", Kind::Native},   {"cffi.", Kind::Native},
-  };
-  for (const auto &[prefix, kind] : prefixes) {
+  for (const auto &[prefix, kind] : FAMILY_PREFIXES) {
     if (strncmp(event, prefix, strlen(prefix)) == 0) {
       return kind;
     }
@@ -279,7 +322,13 @@ static int judge_path(const Event &event, const char *name, PyObject *args, cons
     }
     const std::optional<std::string> open_path = descriptor_path(fd);
     if (!open_path) {
-      return 0; /* A pipe or a socket: no file. */
+      /* A pipe, a socket, a terminal: only one confined code made (bpy_angelo_guard_confine_made), never one of
+       * Angelo's by number. Numbers are tracked with Strict script protection only (Head 20 read R-4): off, it
+       * passes, as in 2.0.1. */
+      if (!ownership_tracked() || !descriptor_is_open(fd) || made_descriptor(fd)) {
+        return 0;
+      }
+      return refuse(PRIVATE, "a descriptor the script didn't make (one of Angelo's pipes or streams)");
     }
     path = open_path;
   }
@@ -298,6 +347,9 @@ static int judge_path(const Event &event, const char *name, PyObject *args, cons
   if (refusal == Refusal::ToolOutput) {
     return refuse(TOOL_OUTPUT, path->c_str());
   }
+  if (refusal == Refusal::Network) {
+    return refuse(NETWORK, path->c_str());
+  }
   (void)event;
   (void)name;
   return 0;
@@ -309,12 +361,52 @@ static int judge_path(const Event &event, const char *name, PyObject *args, cons
  * (`os.symlink`, `_winapi.CreateJunction`, and what calls them: `shutil.copytree(symlinks=True)`, a tar member),
  * and no hard link to, or move of, something that is itself a link (`os.link`, `os.rename` / `os.replace`,
  * `shutil.move`): a moved or linked link is the same link elsewhere. A link the person made is read as before. */
+/** `fcntl.ioctl`: while confined only a request that reads (how much waits, a terminal's size); any other can change a
+ * device or inject into a terminal (TIOCSTI types into the controlling terminal's shell; head-16 read SHOULD-5). */
+static int ioctl_refused(const char *name, PyObject *args)
+{
+  if (strcmp(name, "fcntl.ioctl") != 0) {
+    return 0;
+  }
+#ifndef _WIN32
+  PyObject *request = PyTuple_GET_SIZE(args) > 1 ? PyTuple_GET_ITEM(args, 1) : nullptr;
+  const unsigned long value = request && PyLong_Check(request) ? PyLong_AsUnsignedLongMask(request) : ~0ul;
+  PyErr_Clear();
+  if (value == (unsigned long)FIONREAD || value == (unsigned long)TIOCGWINSZ) {
+    return 0;
+  }
+#endif
+  return refuse(PROCESS, "fcntl.ioctl (only FIONREAD and TIOCGWINSZ, which read)");
+}
+
 static int link_refused(const char *name, PyObject *args)
 {
   if (strcmp(name, "os.symlink") == 0 || strcmp(name, "_winapi.CreateJunction") == 0) {
     return refuse(GUARD, "a symbolic link or junction: Angelo's own writes would follow it");
   }
-  if ((strcmp(name, "os.link") != 0 && strcmp(name, "os.rename") != 0) || PyTuple_GET_SIZE(args) < 1) {
+  if (strcmp(name, "_winapi.CopyFile2") == 0) {
+    /* Only flags that copy a file's content as a file (head-12 re-read M1: a denylist missed
+     * COPY_FILE_OPEN_AND_COPY_REPARSE_POINT with COPY_FILE_DIRECTORY, which copies a junction as a junction). Any
+     * other bit (COPY_SYMLINK, a reparse point, a directory, a flag yet unknown), or flags that can't be read: refused
+     * as a link made. */
+    constexpr unsigned long fail_if_exists = 0x00000001, restartable = 0x00000002,
+                            allow_decrypted_destination = 0x00000008, no_buffering = 0x00001000,
+                            no_offload = 0x00040000, request_compressed_traffic = 0x10000000;
+    constexpr unsigned long allowed = fail_if_exists | restartable | allow_decrypted_destination | no_buffering |
+                                      no_offload | request_compressed_traffic;
+    PyObject *flags = PyTuple_GET_SIZE(args) > 2 ? PyTuple_GET_ITEM(args, 2) : nullptr;
+    const unsigned long value = (flags && PyLong_Check(flags)) ? PyLong_AsUnsignedLongMask(flags) : ~0ul;
+    PyErr_Clear();
+    if (value & ~allowed) {
+      return refuse(GUARD, "a copy that makes a link, a folder or a reparse point: Angelo's own writes would follow it");
+    }
+    return 0;
+  }
+  /* `shutil.move` raises its own event before its rename, and catches a refused rename (an OSError) to fall back to
+   * a copy of the tree: asked here first, so the refusal is the move's and no partial copy is left (linux-c on
+   * 40fdab063e6). */
+  const bool moving = strcmp(name, "os.rename") == 0 || strcmp(name, "shutil.move") == 0;
+  if ((strcmp(name, "os.link") != 0 && !moving) || PyTuple_GET_SIZE(args) < 1) {
     return 0;
   }
   int fd = -1;
@@ -326,6 +418,13 @@ static int link_refused(const char *name, PyObject *args)
   }
   if (source && !source->empty() && last_component_links(*source, dir_fd)) {
     return refuse(GUARD, "a link to, or move of, a symbolic link or junction: Angelo's own writes would follow it");
+  }
+  /* A folder holding a link at any depth moves that link to a new path (break-it-confine-reparse-b7d499c head-7 M6):
+   * an open judged before the move, a read Blender or a library makes later, could then go through it. */
+  if (source && !source->empty() && moving) {
+    if (const char *reason = move_tree_refusal(move_tree_verdict(*source, dir_fd))) {
+      return refuse(reason, source->c_str());
+    }
   }
   return 0;
 }
@@ -343,22 +442,48 @@ static bool innermost_is_agent()
   return agent;
 }
 
-/** Modules that open files (or run code) natively, out of every check: refused on import while confined. The in-app
- * inventory (test_blender_confinement_native_openers) classifies every bundled extension module against this. */
-static bool native_file_module(PyObject *name)
+/** Whether `event`'s first character starts any name `events()` holds or any `FAMILY_PREFIXES` entry: built once, from
+ * those same lists, so an event it says no to would find nothing in either (the coordinator's (Q): `builtins.id`,
+ * thousands a run, no longer hashes its name and walks the prefixes only to return 0). */
+static bool handled_first_char(const char *event)
 {
-  const char *text = name && PyUnicode_Check(name) ? PyUnicode_AsUTF8(name) : nullptr;
+  static const std::array<bool, 256> handled = [] {
+    std::array<bool, 256> first{};
+    for (const auto &item : events()) {
+      if (!item.first.empty()) {
+        first[(unsigned char)item.first[0]] = true;
+      }
+    }
+    for (const auto &item : FAMILY_PREFIXES) {
+      first[(unsigned char)item.first[0]] = true;
+    }
+    return first;
+  }();
+  return handled[(unsigned char)event[0]];
+}
+
+/** An `import` event's module name and file (its first two arguments; the file may be None): empty when not text. */
+static std::string import_arg(PyObject *args, const Py_ssize_t index)
+{
+  PyObject *value = args != nullptr && PyTuple_Check(args) && PyTuple_GET_SIZE(args) > index ?
+                        PyTuple_GET_ITEM(args, index) :
+                        nullptr;
+  const char *text = value != nullptr && PyUnicode_Check(value) ? PyUnicode_AsUTF8(value) : nullptr;
   if (text == nullptr) {
     PyErr_Clear();
-    return false;
+    return std::string();
   }
-  for (const char *module : NATIVE_FILE_MODULES) {
-    const size_t size = strlen(module);
-    if (strncmp(text, module, size) == 0 && (text[size] == '\0' || text[size] == '.')) {
-      return true;
-    }
-  }
-  return false;
+  return text;
+}
+
+/** Modules that open files (or run code) natively, out of every check: refused on import while confined, by full
+ * name, last component or file (`module_is_one_of`: an alias such as `x._dbm` is the same extension). The in-app
+ * inventory (test_blender_confinement_native_openers) classifies every bundled extension module against this. */
+static bool native_file_module(PyObject *args)
+{
+  const std::string name = import_arg(args, 0);
+  const std::string file = import_arg(args, 1);
+  return !name.empty() && module_is_one_of(name, file, extension_origin(file), NATIVE_FILE_MODULES);
 }
 
 /** Whether `os.add_dll_directory`'s folder (its first argument, a path) is a trusted one. */
@@ -447,6 +572,12 @@ static int judge(const char *name, const Event &event, PyObject *args)
         if (arg.role != 0 && judge_path(event, name, args, arg) != 0) {
           return -1;
         }
+        if (arg.role != 0 && strchr("mvl", arg.role) != nullptr) {
+          lookup_cache_forget(); /* Made, moved or linked: a link may stand where a folder was (wrap_lookup.cc). */
+        }
+      }
+      if (ioctl_refused(name, args) != 0) {
+        return -1;
       }
       if (link_refused(name, args) != 0) {
         return -1; /* After the path rules: a link into a private folder is refused as that. */
@@ -476,7 +607,7 @@ static int judge(const char *name, const Event &event, PyObject *args)
       }
       return refuse(NATIVE, name);
     case Kind::Network:
-      return making_socketpair > 0 ? 0 : refuse(NETWORK, name);
+      return socketpair_event_allowed(name, args) ? 0 : refuse(NETWORK, name);
     case Kind::Guard:
       return refuse(GUARD, name);
     case Kind::Startup:
@@ -493,7 +624,7 @@ static int judge(const char *name, const Event &event, PyObject *args)
       return 0;
     }
     case Kind::Import: {
-      if (native_file_module(PyTuple_GET_SIZE(args) > 0 ? PyTuple_GET_ITEM(args, 0) : nullptr)) {
+      if (native_file_module(args)) {
         return refuse(NATIVE, "a module that opens files natively");
       }
       PyObject *file = PyTuple_GET_SIZE(args) > 1 ? PyTuple_GET_ITEM(args, 1) : nullptr;
@@ -558,7 +689,7 @@ static bool generic_name(PyObject *name)
   return false;
 }
 
-static bool trusted_name(PyObject *name)
+bool trusted_name(PyObject *name)
 {
   const char *text = PyUnicode_AsUTF8(name);
   if (text == nullptr) {
@@ -595,7 +726,10 @@ static int on_exec(PyObject *args)
   {
     /* (Code an installed import makes as it loads afresh, unseeded, is its own definition: `@dataclass`'s and
      * `namedtuple`'s generated methods, journal.cc.) */
-    taint(code);
+    if (!taint(code)) {
+      busy = false;
+      return refuse(GUARD, "exec"); /* Its tree could not all be made agent code: refused, not run unconfined. */
+    }
   }
   busy = false;
   return 0;
@@ -677,8 +811,64 @@ static int agent_native_load(const char *event, PyObject *args)
 
 /** \} */
 
+/** Whether an `import` event names a module of the sub-interpreter family (INTERPRETER_MODULES, native.hh) by full
+ * name, last component or file: a third-party `_interpolate` is not one (the re-read of c1f066be23f, NIT-1), an alias
+ * `x._interpreters` is (the re-read of f3b1e5f, MUST-1). Creation itself is checked too, in any context
+ * (pipeline_install.cc `hooked`, wrap.cc `guarded_imp`): `_imp.create_dynamic` / `create_builtin` with an alias spec
+ * raises no `import` event. */
+static bool interpreters_module(PyObject *args)
+{
+  const std::string name = import_arg(args, 0);
+  const std::string file = import_arg(args, 1);
+  return !name.empty() && module_is_one_of(name, file, extension_origin(file), INTERPRETER_MODULES);
+}
+
 int hook(const char *event, PyObject *args, void * /*user_data*/)
 {
+  /* The code watcher and the taint set belong to the main interpreter; a sub-interpreter's code is in neither. Once
+   * any other interpreter exists, every hot path asks, at 2.0.0's cost, rather than resting on the import refusal of
+   * `_interpreters` alone (BREAKIT break-it-confine-count-14a2d702b19 SHOULD-3). A taint raised in another
+   * interpreter would put that interpreter's code pointers in the process-wide set, where no watcher of theirs
+   * removes them; an address the main interpreter reuses then reads as agent code (fails closed). Three ways in, each
+   * enough alone:
+   * - with Strict script protection on, any event raised in another interpreter: one call per event against the main
+   *   interpreter, cached at the first event (the main interpreter's own start: the hook is installed before Python
+   *   starts); off, that call is not made (Ruling 17: it was measurable on macOS), and an interpreter made by
+   *   already-loaded native code that detaches its thread state first, or a family module made outside `_imp` by
+   *   already-loaded native code (ctypes, C), is not seen (doc: "Known limits in 2.1.0");
+   * - `cpython.PyInterpreterState_New` (Py_NewInterpreter, PyInterpreterState_New): before the new one runs;
+   * - any import of the `_interpreters` family, in any context: `_interpreters.create()` raises no event of its own
+   *   (it detaches the thread state first: the perf re-read of 6a573ad, MUST-1), and unconfined code that loaded it
+   *   leaves it in `sys.modules`, where a script reaches it without importing.
+   * By default the other two cover every known route: `_interpreters` needs an import, and Py_NewInterpreter /
+   * PyInterpreterState_New raise the creation event from C or ctypes. */
+  /* Per-event work, read as one word (`hook_event_work`, intern.hh): zero by default, so the usual event pays one
+   * relaxed load. Nonzero while Strict is on (the interpreter compare) or while some thread has an installed-bytes
+   * mark (cleared at its thread's next event, as before). */
+  if (hook_event_work.load(std::memory_order_relaxed) != 0) {
+    if (angelo_strict_script_protection()) {
+      static std::atomic<PyInterpreterState *> main_interpreter{nullptr};
+      PyInterpreterState *interpreter = PyInterpreterState_Get();
+      PyInterpreterState *main = main_interpreter.load(std::memory_order_relaxed);
+      if (main == nullptr) {
+        main = PyInterpreterState_Main();
+        main_interpreter.store(main, std::memory_order_relaxed);
+      }
+      if (interpreter != main) {
+        confine_ask_always();
+      }
+    }
+    /* A verification lasts at most until the thread's next event. */
+    if (installed_bytes_verified) {
+      installed_bytes_verified = false;
+    }
+  }
+  if (event[0] == 'c' && strcmp(event, "cpython.PyInterpreterState_New") == 0) {
+    confine_ask_always();
+  }
+  if (event[0] == 'i' && strcmp(event, "import") == 0 && interpreters_module(args)) {
+    confine_ask_always();
+  }
   if (event[0] == 'e' && strcmp(event, "exec") == 0) {
     return on_exec(args);
   }
@@ -696,7 +886,9 @@ int hook(const char *event, PyObject *args, void * /*user_data*/)
     busy = false;
     return refused != 0 ? refused : on_compile(args);
   }
-  if (strcmp(event, "code.__new__") == 0 || strncmp(event, "marshal.load", 12) == 0) {
+  if ((event[0] == 'c' && strcmp(event, "code.__new__") == 0) ||
+      (event[0] == 'm' && strncmp(event, "marshal.load", 12) == 0))
+  {
     busy = true;
     int result = 0;
     if (confined_now()) {
@@ -704,6 +896,9 @@ int hook(const char *event, PyObject *args, void * /*user_data*/)
     }
     busy = false;
     return result;
+  }
+  if (!handled_first_char(event)) {
+    return 0; /* No name in `events()` or `FAMILY_PREFIXES` starts with this character: nothing below would match. */
   }
   const auto &table = events();
   const auto found = table.find(std::string_view(event));

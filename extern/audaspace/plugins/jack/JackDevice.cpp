@@ -156,7 +156,9 @@ JackDevice::JackDevice(const std::string& name, DeviceSpecs specs, int buffersiz
 	m_specs = specs;
 	m_specs.format = FORMAT_FLOAT32;
 
-	jack_options_t options = JackNullOption;
+	// Angelo: never start a JACK server. Without JackNoStartServer libjack forks and runs the first line of
+	// ~/.jackdrc, a file any program (or an agent script) can write: connect only to a server already running.
+	jack_options_t options = JackNoStartServer;
 	jack_status_t status;
 
 	// open client

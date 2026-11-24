@@ -182,6 +182,16 @@ class PayloadTests(FeedCase):
         self.refused("invalid", document=document)
 
 
+    def test_the_blender_version_a_release_is_built_on(self):
+        document = fx.payload()
+        self.assertEqual(self.open(document=document).latest.blender, "", "older feeds say nothing")
+        document["latest"]["blender"] = "5.4.0"
+        self.assertEqual(self.open(document=document).latest.blender, "5.4.0")
+        for bad in ("5.4", "5.4.0 LTS", 54, ""):
+            with self.subTest(bad=bad):
+                self.bad_latest("invalid", blender=bad)
+
+
 class OfferTests(FeedCase):
     def offer(self, current, platform="macos-arm64", **changes):
         document = fx.payload(**changes)

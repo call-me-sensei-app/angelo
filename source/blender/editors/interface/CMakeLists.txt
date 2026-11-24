@@ -175,9 +175,12 @@ add_dependencies(bf_editor_interface bf_rna)
 
 if(WITH_GTESTS)
   set(TEST_INC
+    # `wm_angelo_pointer_region.hh`, for `interface_angelo_pointer_region_test.cc`.
+    ../../windowmanager/intern
   )
   set(TEST_SRC
     interface_angelo_arming_test.cc
+    interface_angelo_pointer_region_test.cc
     interface_ops_test.cc
   )
 

@@ -35,6 +35,12 @@ GUARDS = frozenset({"guard", "grant"})   # grant_guard.guard(Cls, ...) and @gran
 
 # "module:function" -> why Angelo's own decision, not a press, may open a grant scope there.
 AUTOMATIC = {
+    "context_folder_grants:Grants._set_state": "a context folder's state in C (its attach order, created count, legacy "
+                                               "mark, the agent's own files) after the person's attach or switch, or "
+                                               "after a write of the agent's: refused while agent code runs",
+    "context_folder_grants:Grants.remove": "the working folder moves on to the next non-legacy folder the person "
+                                           "attached when they remove the working one (agent_chat.rst); never while "
+                                           "agent code runs, and the chat says which folder is working now",
     "script_admission:prepare": "admits the exact script text the chat's approval route approved",
     "trusted_scripts:TrustedScripts._approve_automatically": "a script a trusted-scripts rule covers, as the person "
                                                              "set it",

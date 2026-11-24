@@ -98,12 +98,32 @@ class AggregatedUsageTests(unittest.TestCase):
 
     def test_models_without_a_step_are_priced_as_before(self):
         summed = usage(3_000_000, output=30_000, read=2_000_000, requests=30)
-        for model, (fresh, output, read) in (("claude-opus-5-5", (4.0, 20.0, 0.20)), ("gpt-6-astra", (10.0, 50.0, 1.0)),
-                                             ("gpt-6.1-sol", (2.0, 10.0, 0.10))):
+        for model, (fresh, output, read) in (("claude-opus-5-5", (4.0, 20.0, 0.20)),
+                                             ("claude-sonnet-5-5", (2.0, 10.0, 0.10))):
             with self.subTest(model=model):
                 self.assertAlmostEqual(metrics.list_cost(summed, model),
                                        round(price(3_000_000, 30_000, (fresh, output, read), read=2_000_000), 4))
                 self.assertNotIn("step", metrics.list_price_basis([summed], model, "5m"))
+
+
+    def test_gpt_sums_above_272k_are_priced_per_request_or_unknown(self):
+        # Every GPT row's step (model_profiles.OPENAI_STEP_TOKENS): 2x input and cache, 1.5x output above 272K.
+        for model, (fresh, output, read) in (("gpt-6.2-sol", (2.0, 10.0, 0.10)), ("gpt-6.2-astra", (8.0, 40.0, 0.40)),
+                                             ("gpt-6.1-sol", (2.0, 10.0, 0.10)), ("gpt-6-astra", (10.0, 50.0, 1.0))):
+            with self.subTest(model=model):
+                within = usage(250_000, output=2000, read=200_000, requests=3)
+                self.assertAlmostEqual(metrics.list_cost(within, model),
+                                       round(price(250_000, 2000, (fresh, output, read), read=200_000), 4))
+                self.assertIn("within the 272000-token price step", metrics.list_price_basis([within], model, "5m"))
+                one = usage(300_000, output=2000, read=200_000, requests=1)
+                self.assertAlmostEqual(metrics.list_cost(one, model), round(price(
+                    300_000, 2000, (fresh * 2, output * 1.5, read * 2), read=200_000), 4))
+                summed = usage(900_000, output=6000, read=600_000, requests=3)
+                self.assertIsNone(metrics.list_cost(summed, model), "a sum of several requests: never guessed")
+                parts = [usage(300_000, output=2000, read=200_000)] * 3
+                self.assertAlmostEqual(metrics.list_cost(summed, model, per_request=parts),
+                                       round(3 * price(300_000, 2000, (fresh * 2, output * 1.5, read * 2),
+                                                       read=200_000), 4))
 
 
 class RecordedRequestTests(unittest.TestCase):

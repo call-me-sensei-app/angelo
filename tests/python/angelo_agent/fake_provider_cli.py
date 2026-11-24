@@ -37,6 +37,8 @@ this file under the app's own Python: ``<python> fake_provider_cli.py claude
   Angelo's runtime holds a cell. ``turn/steer`` for the open turn is kept (logged) and read at the next model
   request, as Codex does: each one's user item, with its ``clientUserMessageId`` as ``clientId``, then a reply
   naming what it read ("Read: ..."); a steer for no open turn is refused "no active turn to steer".
+  ``call:<name>`` is a call turn whose call a suite scripts (``script_codex_call``): the tool and arguments in
+  ``<state>/codex-calls/<name>.json`` (plan mode's START and PROPOSE, plan_mode.rst).
 
 Sign-in is a marker file in the profile the real CLI would use
 (``CLAUDE_CONFIG_DIR`` or ``$HOME/.claude``; ``CODEX_HOME`` or
@@ -458,6 +460,18 @@ def codex_steer(message):
          {"id": message["id"], "error": {"code": -32600, "message": "no active turn to steer"}})
 
 
+def script_codex_call(name, tool, arguments, state=None):
+    """The call a ``call:<name>`` turn makes: ``tool`` with ``arguments`` (the module's docstring)."""
+    folder = (Path(state) if state else _codex_state()) / "codex-calls"
+    folder.mkdir(parents=True, exist_ok=True)
+    _write_atomically(folder / (name + ".json"), json.dumps({"tool": tool, "arguments": arguments}))
+
+
+def _scripted_call(name):
+    data = json.loads((_codex_state() / "codex-calls" / (name + ".json")).read_text())
+    return data["tool"], data["arguments"]
+
+
 def codex_call_turn(message, number, outcome):
     """A turn with one dynamic tool call, on its own thread (``call``/``call_approval``, the module's docstring)."""
     params = message.get("params") or {}
@@ -479,6 +493,7 @@ def codex_call_turn(message, number, outcome):
         wait_for_gate(gate, _next_hold(gate))   # The suite types its message while this turn works.
     script = {"description": "Name the scene's objects.", "code": "result = [o.name for o in bpy.data.objects]"}
     tool, arguments = (("angelo_execute_python", script) if outcome == "call_approval"
+                       else _scripted_call(outcome[5:]) if outcome.startswith("call:")
                        else ("angelo_inspect_scene", {}))
     answer, request = queue.Queue(), "fixture-call-%d" % number
     with _OPEN_LOCK:
@@ -532,7 +547,7 @@ def codex_server():
         if method == "turn/start":
             turns += 1
             outcome = next_codex_turn()
-            if outcome in ("call", "call_approval"):
+            if outcome in ("call", "call_approval") or outcome.startswith("call:"):
                 threading.Thread(target=codex_call_turn, args=(message, turns, outcome), daemon=True).start()
             else:
                 codex_turn(message, turns, outcome)

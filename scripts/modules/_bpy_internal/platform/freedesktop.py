@@ -64,6 +64,16 @@ BLENDER_FILENAME = "blender"
 # The target binary (thumbnailer).
 BLENDER_THUMBNAILER_FILENAME = "blender-thumbnailer"
 
+# Angelo: what registering writes into the shared locations (`~/.local/bin`, `share/thumbnailers`,
+# `share/mime`) carries Angelo's own names, so registering or unregistering Angelo never replaces or
+# removes a stock Blender's registration (upstream writes `blender`, `blender-thumbnailer`,
+# `blender.thumbnailer` and `x-blender.xml`). The command people type is `angelo`, the package's launcher.
+ANGELO_LAUNCHER_FILENAME = "angelo"
+REGISTERED_BIN_FILENAME = "angelo"
+REGISTERED_THUMBNAILER_FILENAME = "angelo-thumbnailer"
+REGISTERED_THUMBNAILER_ENTRY = "angelo.thumbnailer"
+REGISTERED_MIME_XML = "angelo-x-blender.xml"
+
 
 # -----------------------------------------------------------------------------
 # Other Constants
@@ -135,14 +145,16 @@ def handle_bin(do_register: bool, all_users: bool) -> str | None:
         os.makedirs(dirpath_dst, exist_ok=True)
 
     # Full path, then name to create at the destination.
+    # The launcher sets up the bundled libraries' search path (`blender-launcher`); a build without it links the binary.
+    launcher_src = os.path.join(BLENDER_DIR, ANGELO_LAUNCHER_FILENAME)
     files_to_link = [
-        (BLENDER_BIN, BLENDER_FILENAME, False),
+        (launcher_src if os.path.exists(launcher_src) else BLENDER_BIN, REGISTERED_BIN_FILENAME, False),
     ]
 
     blender_thumbnailer_src = os.path.join(BLENDER_DIR, BLENDER_THUMBNAILER_FILENAME)
     if os.path.exists(blender_thumbnailer_src):
         # Unfortunately the thumbnailer must be copied for `bwrap` to find it.
-        files_to_link.append((blender_thumbnailer_src, BLENDER_THUMBNAILER_FILENAME, True))
+        files_to_link.append((blender_thumbnailer_src, REGISTERED_THUMBNAILER_FILENAME, True))
     else:
         sys.stdout.write("  Thumbnailer not found, skipping: \"{:s}\"\n".format(blender_thumbnailer_src))
 
@@ -207,7 +219,7 @@ def handle_desktop_file(do_register: bool, all_users: bool) -> str | None:
 
 
 def handle_thumbnailer(do_register: bool, all_users: bool) -> str | None:
-    filename = "blender.thumbnailer"
+    filename = REGISTERED_THUMBNAILER_ENTRY
 
     if all_users:
         base_dir = os.path.join(SYSTEM_PREFIX, "share")
@@ -240,7 +252,7 @@ def handle_thumbnailer(do_register: bool, all_users: bool) -> str | None:
     # with wrapper that means the command *must* be in the users `$PATH`.
     # and it cannot be a SYMLINK.
     if shutil.which("bwrap") is not None:
-        command = BLENDER_THUMBNAILER_FILENAME
+        command = REGISTERED_THUMBNAILER_FILENAME
     else:
         command = blender_thumbnailer_bin
 
@@ -253,8 +265,8 @@ def handle_thumbnailer(do_register: bool, all_users: bool) -> str | None:
 
 
 def handle_mime_association_xml(do_register: bool, all_users: bool) -> str | None:
-    # `xdg-mime install x-blender.xml`
-    filename = "x-blender.xml"
+    # `xdg-mime install angelo-x-blender.xml` (upstream: `x-blender.xml`, which a stock Blender's unregister removes).
+    filename = REGISTERED_MIME_XML
 
     if all_users:
         base_dir = os.path.join(SYSTEM_PREFIX, "share")

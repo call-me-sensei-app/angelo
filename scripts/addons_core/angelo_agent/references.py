@@ -12,6 +12,7 @@ from pathlib import Path
 
 from . import owned_paths, pdf_text, thread_start
 from .image_proof import digest, url_digest
+from .reference_errors import ImageMissing, ReferencePending  # noqa: F401  (also ``references.``)
 from .refusal_codes import coded
 from .ui_text import n_
 
@@ -197,7 +198,8 @@ class ReferenceStore:
         """The file of an image in this conversation's folder by its id (an attachment's reference_id).
 
         Only a canonical UUID and this folder's own regular PNG, JPEG or WebP file of at most the image
-        limit; ValueError otherwise, never a path of the caller's making.
+        limit; ValueError otherwise (``ImageMissing`` while no such file is there), never a path of the caller's
+        making.
         """
         try:
             stem = str(uuid.UUID(reference_id))
@@ -211,7 +213,7 @@ class ReferenceStore:
                 raise ValueError("That image is larger than the %d MiB an attachment may be"
                                  % (self.image_limit // (1024 * 1024)))
             return path
-        raise ValueError("No image with that reference_id is attached to this conversation")
+        raise ImageMissing("No image with that reference_id is attached to this conversation")
 
     def _own_file(self, reference):
         """The record's file inside THIS conversation's folder, located by its file name.
@@ -387,10 +389,6 @@ class ReferenceStore:
         with self._lock:
             for key in [key for key in self._texts if key[0] == path.stem]:
                 del self._texts[key]
-
-
-class ReferencePending(ValueError):
-    """A PDF's text is being extracted on another thread; read it again shortly."""
 
 
 def _redraw_when_set(event, interval=0.1):

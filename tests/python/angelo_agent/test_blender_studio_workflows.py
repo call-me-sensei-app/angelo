@@ -57,6 +57,7 @@ import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 import qa_operator  # noqa: E402  (a stand-in self for an operator's method, never a bare namespace)
 import qa_canvas_grant  # noqa: E402  (a grant clicked as the person clicks it; a scripted one refused)
 import qa_input  # noqa: E402
+import qa_hit  # noqa: E402  (surface points to window pixels)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))   # studio_workflows_evidence
 
@@ -233,8 +234,9 @@ def click(action, value=None):
     rect = next(r for r, v in hits(action) if value is None or v == value)
     target, area = studio_area()
     r = region()
-    event = SimpleNamespace(type='LEFTMOUSE', value='PRESS', mouse_x=r.x + rect[0] + rect[2] / 2,
-                            mouse_y=r.y + rect[1] + rect[3] / 2, mouse_prev_y=r.y + rect[1], unicode="", ctrl=False,
+    x, y = qa_hit.point(qa_hit.mirrored_about(studio.view(area).get("mirror")), r, rect)   # Studio layout, as drawn.
+    event = SimpleNamespace(type='LEFTMOUSE', value='PRESS', mouse_x=x,
+                            mouse_y=y, mouse_prev_y=qa_hit.point(qa_hit.RAW, r, rect, 0.5, 0.0)[1], unicode="", ctrl=False,
                             oskey=False, alt=False, shift=False)
     handler = qa_operator.stand_in(studio.ANGELO_OT_studio_input, window_pointer=target.as_pointer(), focus_area=None,
                                    dragging=False)   # The operator's own methods, as its modal reaches them.

@@ -122,7 +122,8 @@ def claude_session(executable, context, native_id=None, default_model=None):
               "effort": request_effort(context, options, "claude"),
               "thinking": bool(debug_thinking.claude_arguments(context)),
               "resume": native_id or "", "gateway": gateway_session(context),
-              "overrides": model_overrides(context.state.get("provider"))}
+              "overrides": model_overrides(context.state.get("provider")),
+              "window_200k": window_unknown(context.state.get("provider"), model or "")}
     return claude_arguments(executable, values), initialize
 
 
@@ -130,6 +131,12 @@ def model_overrides(mode):
     """An organization endpoint's mapped Claude models, as Claude Code's ``modelOverrides`` (endpoint_connections)."""
     from .endpoint_connections import claude_model_overrides
     return claude_model_overrides(mode)
+
+
+def window_unknown(mode, model):
+    """Whether this launch's model needs Claude Code's 200K window kept (``endpoint_connections.claude_window_unknown``)."""
+    from .endpoint_connections import claude_window_unknown
+    return claude_window_unknown(mode, model)
 
 
 def gateway_session(context):
@@ -182,6 +189,8 @@ def claude_arguments(executable, values):
                 **team_network.settings(values.get("gateway", False), values.get("hooks_blocked"))}
     if values.get("overrides"):   # A gateway's names for the Claude models they are: their real context windows.
         settings["modelOverrides"] = dict(values["overrides"])
+    if values.get("window_200k"):   # A model Claude Code can't place: its old 200K, never an assumed 1M.
+        settings["env"] = {WINDOW_200K: "1"}
     # Never --bare: its built-in tools are only shell and file tools (runtime_environment.require_angelo_profile).
     command = [executable, "-p", "--input-format", "stream-json", "--output-format", "stream-json",
                "--verbose", "--include-partial-messages", "--tools", values["tools"], "--allowedTools", allowed_tools,
@@ -199,6 +208,7 @@ def claude_arguments(executable, values):
 
 
 _MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:@/\[\]-]{0,127}")
+WINDOW_200K = "CLAUDE_CODE_DISABLE_1M_CONTEXT"
 _OVERRIDE_TARGET = re.compile(r"[\x21-\x7e]{1,200}")   # A server's own model name (custom_endpoints.model_name).
 
 
@@ -234,7 +244,8 @@ def launch_values(arguments):
               "effort": after("--effort") or "", "thinking": "--thinking-display" in arguments,
               "resume": next((part[len("--resume="):] for part in arguments if part.startswith("--resume=")), ""),
               "gateway": '"skipWebFetchPreflight": true' in (after("--settings") or ""),
-              "overrides": _overrides(after("--settings"))}
+              "overrides": _overrides(after("--settings")),
+              "window_200k": '"%s": "1"' % WINDOW_200K in (after("--settings") or "")}
     # A worker built the hook settings from its own reading of the administrator's Claude Code policy; rebuild the same
     # form here (the host decides the launch it runs from its own reading: runtime_plan).
     values["hooks_blocked"] = False if values["gateway"] else None

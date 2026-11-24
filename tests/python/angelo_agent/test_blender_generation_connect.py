@@ -51,6 +51,7 @@ from angelo_agent import flow_host, flow_nodes, flow_tools, flow_tree, flow_ui, 
 from angelo_agent.editor_registry import GENERATIVE_AI  # noqa: E402
 from angelo_agent.flow_spec import revision  # noqa: E402
 from angelo_agent.view_png import encode_png  # noqa: E402
+import qa_hit
 
 REPORT = OUT / "generation-connect.json"
 STEPS = {"Concept", "Model", "Hero/Sheet", "Hero/Mesh"}
@@ -140,7 +141,7 @@ def studio_click(action):
         state["observed"].setdefault("missing_controls", []).append(action)
         return
     # A person's press: onto it a beat after reaching it (qa_input.press: C's ARM_SECONDS rule for a grant).
-    qa_input.press(window(), int(region.x + rect[0] + rect[2] / 2), int(region.y + rect[1] + rect[3] / 2))
+    qa_input.press(window(), *qa_hit.ipoint(qa_hit.mirrored_about(studio.view(area).get("mirror")), region, rect))
 
 
 def build(flow, **edit):

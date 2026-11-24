@@ -19,7 +19,7 @@ import angelo_guard_twin as twin
 from test_native_grant_operators import GuardCase
 
 WINDOW = SimpleNamespace(as_pointer=lambda: 0x2000)
-REGION = SimpleNamespace(x=10, y=20, width=400, height=600)
+REGION = SimpleNamespace(x=10, y=20, width=400, height=600, as_pointer=lambda: 0x3000)
 
 
 class OnlyControlsAreRegions(GuardCase):
@@ -32,6 +32,14 @@ class OnlyControlsAreRegions(GuardCase):
         with patch.object(self.guard, "script_running", return_value=False):
             self.guard.canvas_regions(WINDOW, REGION, surface, hits, 1.0, False)
         return twin._regions[(0x2000, surface)]
+
+    def test_the_regions_name_the_region_they_are_drawn_in(self):
+        """The review of f6b01a9..da9ba66, SHOULD 1: C gives them only input Blender routes to that region."""
+        calls = []
+        with patch.object(twin, "consent_regions", side_effect=lambda *args: calls.append(args)), \
+                patch.object(self.guard, "script_running", return_value=False):
+            self.guard.canvas_regions(WINDOW, REGION, "chat:2", [((100, 100, 120, 24), "approve", "c")], 1.0, False)
+        self.assertEqual([call[3] for call in calls], [0x3000])
 
     def test_a_reveal_shield_over_the_card_is_no_region(self):
         card = ((100, 100, 120, 24), "script_session_allow", "call-1")

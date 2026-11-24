@@ -47,6 +47,7 @@ from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 import qa_input  # noqa: E402  (synthetic clicks)
 import qa_plus_menu  # noqa: E402  (the + menu, read from the chat's canvas state)
+import qa_hit
 
 product_env.clear("DISABLE_DEFAULT_CHAT")
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-learn-cards-qa"))
@@ -136,8 +137,7 @@ def card_hit(action):
     active = card_host._active
     area = next(a for a in window().screen.areas if a.as_pointer() == active.area)
     region = next(r for r in area.regions if r.type == 'WINDOW')
-    x, y, wide, high = next(rect for rect, name, _ in reversed(active.plan.hits) if name == action)
-    return region.x + x + wide / 2, region.y + y + high / 2
+    return qa_hit.point(qa_hit.PIXELS, region, next(rect for rect, name, _ in reversed(active.plan.hits) if name == action))
 
 
 def write(rows):

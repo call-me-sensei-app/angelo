@@ -7,7 +7,8 @@ range from several runs of the build being stamped (gate receipts
 ``fixture/perf-ratchet.json`` or benchmark reports): the ceiling is the
 highest run median and the tolerance follows ``perf_ratchet.restamp_tolerance``
 (the standing rule, or twice the range with no floor for the snapshot
-three-write sums, maintainer 2026-10-27). Runs of more than one binary or
+three-write sums, maintainer 2026-10-27; either at least three times the
+largest within-run spread the runs recorded, ruling 7 for 2.0.0). Runs of more than one binary or
 platform are refused, so an ABAB's mixed A and B runs can never become a
 ceiling. The restamps of record used three or four runs.
 
@@ -50,12 +51,14 @@ def rebaseline(ceilings, runs, names, *, writes_files=(), allow_raise=False, sou
     Every run must measure every name in instructions, on one platform and one
     binary, or nothing is recorded; a ceiling rises only with ``allow_raise``.
     """
-    measured, platforms, units = [], set(), {}
+    measured, platforms, units, spreads = [], set(), {}, []
     for run in runs:
         platform, operations = perf_ratchet.load_results(run)
         platforms.add(platform)
         measured.append(operations)
-        units.update(perf_ratchet.load_details(run)["units"])
+        details = perf_ratchet.load_details(run)
+        units.update(details["units"])
+        spreads.append(details["spread"])
     builds = {_build_identity(run) for run in runs} - {None}
     if len(platforms) != 1 or len(builds) > 1:
         raise RatchetError("A rebaseline needs runs of one build on one platform (got %d builds, platforms %s)"
@@ -73,13 +76,16 @@ def rebaseline(ceilings, runs, names, *, writes_files=(), allow_raise=False, sou
         if units.get(name, "instructions") != "instructions":
             raise RatchetError("%s is an exact %s operation; perf_ratchet.py --update records it" % (name, units[name]))
         ceiling = max(values)
+        own = [spread.get(name) for spread in spreads]   # Each run's within-run spread (ruling 7 for 2.0.0).
         tolerance = perf_ratchet.restamp_tolerance(name, values, default=ceilings["default_tolerance"],
-                                                   writes_files=name in writes_files)
+                                                   writes_files=name in writes_files, spreads=own)
         previous = operations.get(name)
         if previous and ceiling > previous["ceiling"] and not allow_raise:
             raise RatchetError("Refusing to raise ceilings without --allow-raise: " + name)
         operations[name] = dict(previous or {}, ceiling=ceiling, tolerance=tolerance)
         record[name] = {"runs": values, "tolerance": tolerance}
+        if any(spread is not None for spread in own):
+            record[name]["within_run_spread"] = perf_ratchet.within_run_spread(name, own)
     entry["operations"] = dict(sorted(operations.items()))
     entry.setdefault("rebaselined", []).append({"date": today or datetime.date.today().isoformat(),
                                                 "source": source, "runs": len(runs), "operations": record})

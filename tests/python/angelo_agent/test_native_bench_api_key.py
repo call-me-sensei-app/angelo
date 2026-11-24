@@ -235,6 +235,7 @@ class SelectionTests(unittest.TestCase):
 
     def test_needs_names_the_api_key_accounts_a_selection_bills(self):
         self.assertEqual(self.needs("gate-carbon-*", "smoke-carbon-*")["api_key_accounts"], ["gemini"])
+        self.assertEqual(self.needs("gate-neon-*", "smoke-neon-*")["api_key_accounts"], ["gemini"])
         for only in (("gate-sol-*", "smoke-sol-*"), ("gate-astra-*",), ("gate-opus-*",)):
             self.assertEqual(self.needs(*only)["api_key_accounts"], [], only)
 
@@ -279,7 +280,10 @@ class SessionTests(unittest.TestCase):
         self.assertLessEqual(len(session.splitlines()), 500)
 
     def test_the_launcher_writes_the_secret_name_on_every_send(self):
-        launcher = (ROOT / "scripts/angelo/gcp_windows_validate.sh").read_text(encoding="utf-8")
+        main = (ROOT / "scripts/angelo/gcp_windows_validate.sh").read_text(encoding="utf-8")
+        bench = main[main.index("\nbench() {"):]
+        self.assertIn('source "$ROOT/scripts/angelo/gcp_windows_bench_inputs.sh"', bench[:bench.index("\n}\n")])
+        launcher = (ROOT / "scripts/angelo/gcp_windows_bench_inputs.sh").read_text(encoding="utf-8")   # Its inputs.
         self.assertIn(',angelo-bench-gemini-secret=$gemini_secret"', launcher)
         self.assertIn('local gemini_secret="${ANGELO_BENCH_GEMINI_SECRET_NAME:-}"', launcher)
         self.assertIn("^angelo-bench-[A-Za-z0-9_-]{1,242}$", launcher)

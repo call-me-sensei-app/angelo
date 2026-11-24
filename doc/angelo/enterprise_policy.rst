@@ -119,8 +119,29 @@ the same key in a later one:
    then the same key under ``HKEY_CURRENT_USER``.
 3. **Linux**: ``/etc/angelo/policy.json``, a JSON object of the keys above.
 4. ``ANGELO_POLICY_FILE``, a JSON file named by an environment variable, for
-   trying a policy out without device management. It can only set keys that no
-   managed source sets.
+   trying a policy out without device management. Whoever starts Angelo names
+   this file (a script or a coding agent's shell included), so it can only
+   narrow access, and only through keys no managed source sets:
+
+   * An ``Allow…`` switch it turns off, and a ``Require…`` or ``Disable…`` switch
+     it turns on, apply. An unusable switch value applies restrictively, as from
+     a managed source, so a typo can't widen access here either.
+   * Every key that would grant, redirect or name anything is left out:
+     ``ExtraCACertificates``, ``CustomEndpoints`` (an empty list too),
+     ``ConsoleURL``, ``GatewayURL``, ``UpdateFeedURL``, ``Organization``,
+     ``EmailDomains`` and ``AdminContact``. Deliver those through one of the
+     managed sources above.
+   * What it left out, and what was unusable in it, are said as the file's own
+     (never as the organization's), on AI Providers and in Preferences' Angelo
+     team section, whether or not a managed policy exists. A key a managed
+     source already sets is not reported.
+
+   Known and accepted (security audit 2026-11-01, L7): where no managed source
+   sets them, the environment variables ``ANGELO_CONSOLE_URL``,
+   ``ANGELO_GATEWAY_URL`` and ``ANGELO_UPDATE_FEED_URL`` still point Angelo at
+   another console, gateway or (signed) update feed, and ``NODE_EXTRA_CA_CERTS``
+   and ``SSL_CERT_FILE`` reach the coding agents. Pin ``ConsoleURL``,
+   ``GatewayURL`` and ``UpdateFeedURL`` in a managed source where that matters.
 
 macOS configuration profile
 ---------------------------
@@ -163,8 +184,17 @@ Windows registry and Group Policy
 ---------------------------------
 
 Booleans are ``REG_DWORD`` (1 or 0), text is ``REG_SZ`` (or ``REG_EXPAND_SZ``,
-whose environment variables such as ``%ProgramData%`` are expanded), and
-``EmailDomains`` is ``REG_MULTI_SZ`` (or a comma-separated ``REG_SZ``). Deploy them with Group
+see below), and ``EmailDomains`` is ``REG_MULTI_SZ`` (or a comma-separated
+``REG_SZ``). In a ``REG_EXPAND_SZ`` value, a variable such as ``%ProgramData%``
+expands only from what ``HKEY_LOCAL_MACHINE`` records: the machine environment
+(``SYSTEM\CurrentControlSet\Control\Session Manager\Environment``) and the
+system folders (``SystemRoot``, ``windir``, ``SystemDrive``, ``ProgramData``,
+``ALLUSERSPROFILE``, ``PUBLIC``, ``ProgramFiles``, ``ProgramFiles(x86)``,
+``ProgramW6432``, ``CommonProgramFiles``), never from the environment Angelo was
+started with, which whoever starts it sets. Any other name (``%USERPROFILE%``
+included) stays as written, as Windows leaves an unknown name, so a path naming
+one is unusable: applied restrictively and reported.
+Deploy them with Group
 Policy Preferences (Registry items), Intune, or any tool that writes the
 policy key. An example ``.reg`` file::
 

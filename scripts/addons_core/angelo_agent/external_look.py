@@ -19,9 +19,9 @@ class AgentLooks:
     """``self.env``, ``self._reply``, ``self._looks`` and ``self._views`` are ``ExternalHost``'s."""
 
     def _image(self, work, controller, identity):
-        try:
-            path = controller.references.attached_image(identity)
-            data = path.read_bytes()
+        from . import reference_images
+        try:   # Checked and read on one descriptor, sharing delete on Windows.
+            data, path = reference_images.read_image(controller.references, identity)
         except (OSError, ValueError) as error:
             return self._reply(work, controller, "invalid", str(error))
         if len(data) > MAX_IMAGE_BYTES:

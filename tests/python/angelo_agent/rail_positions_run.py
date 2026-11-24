@@ -11,6 +11,7 @@ import bpy
 import qa_waits
 import rail_positions_checks as geometry
 import rail_positions_fixture as fx
+import qa_hit
 
 SCALE = qa_waits.timeout_scale()
 WAIT = 4.0   # Seconds for the product to draw a change by itself (x the runner's timeout scale).
@@ -78,7 +79,7 @@ def tiles():
 def to_window(rect):
     """The window pixel at the centre of ``rect`` (rail-region pixels)."""
     _area, region = fx.window_region(S.window)
-    return region.x + rect[0] + rect[2] / 2, region.y + rect[1] + rect[3] / 2
+    return qa_hit.point(qa_hit.RAW, region, rect)
 
 
 def at(find, fallback=(0, 0, 0, 0)):

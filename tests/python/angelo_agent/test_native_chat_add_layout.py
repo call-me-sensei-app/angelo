@@ -41,6 +41,9 @@ ADVANCES = json.loads((HERE / "fixtures/menu_font_advances.json").read_text(enco
 # A chat column as Angelo lays it out (width, height above its bottom edge, the composer's top + 8): measured at a
 # 1440 x 875 window (a 1440 x 900 screen less the menu bar), and the same layout at 1280 x 775 (1280 x 800).
 SCREENS = {"1440x900": (502, 820, 126), "1280x800": (446, 720, 126)}
+# The interface scale of a 100-dpi display (Linux and Windows at 100%, Xvfb's default): the same window's chat lays out
+# 96/100 as many canvas units (``chat_view.ui_scale``), which the GUI audits draw at.
+DPI_100 = 100 / 96
 
 
 def advance(character):
@@ -106,6 +109,20 @@ def translator(code):
     return lambda message: blender.get(message) or angelo.get(message) or message
 
 
+def empty_groups():
+    """The built-in groups (``chat_destinations.GROUPS``) with no member registered: the menu leaves them out."""
+    return {group for group in getattr(cd, "GROUPS", (cd.VIDEO_GROUP, cd.RENDER_GROUP)) if not cd.members(group)}
+
+
+def rows(geometry):
+    """Tile rows the grid lays out: distinct tops of its cells (a tile spanning both columns is a row of its own)."""
+    return len({cell["rect"][1] for cell in geometry["cells"]})
+
+
+def top_level():
+    return set(cd.TOP_LEVEL) - empty_groups()
+
+
 def items(translate, worker=False):
     return [dict(entry, title=translate(entry["label"]), why=translate(entry.get("subtitle") or ""),
                  section=translate(entry["section"])) for entry in cd.entries(worker)]
@@ -119,13 +136,41 @@ class Registered(unittest.TestCase):
             cd.register(feature)
 
 
+class SectionTests(Registered):
+    def test_each_heading_is_drawn_once(self):
+        """The grid's sections are contiguous: a tile whose order falls among another section's tiles draws its heading
+        a second time (2.1.0: Scatter at order 45, after Work on hands, drew a second "Create" under "Start from")."""
+        sections = [entry["section"] for entry in cd.entries() if entry.get("placement", "grid") == "grid"]
+        runs = [section for index, section in enumerate(sections) if index == 0 or section != sections[index - 1]]
+        self.assertEqual(len(runs), len(set(runs)), "a heading drawn twice: %s" % runs)
+
+
+class BarTests(unittest.TestCase):
+    def test_the_bars_buttons_stay_inside_the_popup_with_or_without_a_search_label(self):
+        """2.1.0 attachment markup: a second labelled button beside Attach ran off the popup's left edge in six
+        languages, because the buttons turned to icons only when the caller passed a search label. The rule holds for
+        any labels: buttons that would leave the search field no room are icons."""
+        for search_label in ("", "Search Angelo"):
+            for count in (1, 2, 3):
+                for length in (6, 20, 40):
+                    items = [{"title": "W" * length, "why": "", "section": "", "placement": "bar", "kind": "tile"}
+                             for _ in range(count)]
+                    with self.subTest(search_label=search_label, count=count, length=length):
+                        geometry = layout.place(items, measure, wrap, 446, 720, 126, search_label=search_label)
+                        for _, rect in geometry["attach"]:
+                            self.assertTrue(layout.in_view(rect, geometry["rect"]), rect)
+                        self.assertGreaterEqual(geometry["search"][2], layout.SEARCH_LEAST, "the field keeps its width")
+                        self.assertLessEqual(geometry["search"][0] + geometry["search"][2],
+                                             min(rect[0] for _, rect in geometry["attach"]) + 0.5, "no overlap")
+
+
 class FoldTests(Registered):
     def test_every_feature_is_in_view_without_scrolling_on_common_laptops_in_every_language(self):
         self.assertEqual(len(LANGUAGE_CODES), 21)
         for code in LANGUAGE_CODES:
             translate = translator(code)
             shown = items(translate)
-            self.assertEqual({entry["feature"] for entry in shown}, set(cd.TOP_LEVEL), "one entry per feature")
+            self.assertEqual({entry["feature"] for entry in shown}, top_level(), "one entry per feature")
             for screen, (width, height, bottom) in SCREENS.items():
                 with self.subTest(language=code, screen=screen):
                     geometry = layout.place(shown, measure, wrap, width, height, bottom, translate("Search Angelo"))
@@ -136,10 +181,71 @@ class FoldTests(Registered):
                              for cell in geometry["cells"]}
                     found.update({shown[i]["feature"]: (rect, popup) for i, rect in geometry["attach"]})
                     found.update({shown[i]["feature"]: (rect, popup) for i, rect in geometry["links"]})
-                    for feature in cd.TOP_LEVEL:
+                    for feature in top_level():
                         rect, area = found[feature]
                         self.assertTrue(layout.in_view(rect, area), "%s is below the fold: %s" % (feature, rect))
                     self.assertLessEqual(popup[1] + popup[3], height - layout.TOP_MARGIN + 0.5, "inside the chat")
+
+    def test_the_grid_holds_at_most_its_row_budget_and_the_budget_fits_exactly(self):
+        """The top level's row budget (``chat_destinations.ROW_BUDGET``): every lane adding a tile sees here, not in a
+        GUI run, that the menu is full and its tool belongs in a group (Inspect, Model, Render, Video). Capacity is in
+        rows of the two-column grid, not tiles: a tile joining a section with an odd count fills its half-row for free,
+        one joining an even section starts a row (a tile count was exact only for one parity: v210-character-qa,
+        2026-11-15, the moment Model got a member). The budget is tight: filled to it with the grid's longest title,
+        the menu fits at 1280 x 800 in every language; one row more and it scrolls in at least one."""
+        budget = getattr(cd, "ROW_BUDGET", None)
+        self.assertIsInstance(budget, int, "chat_destinations.ROW_BUDGET")
+        english = items(lambda message: message)
+        used = rows(layout.place(english, measure, wrap, *SCREENS["1280x800"]))
+        self.assertLessEqual(used, budget, "the grid uses %d tile rows: the budget is %d; put the new tool in a group "
+                             "(chat_destinations.GROUPS), or in a section with an odd number of tiles" % (used, budget))
+        overflowed = []
+        for code in LANGUAGE_CODES:
+            translate = translator(code)
+            shown = items(translate)
+            grid = [entry for entry in shown if entry["placement"] == "grid"]
+            rest = [entry for entry in shown if entry["placement"] != "grid"]
+            longest = max(grid, key=lambda entry: measure(entry["title"], layout.TITLE))
+
+            def filled(target):
+                """The menu with filler tiles in its last section until the grid has ``target`` rows."""
+                extra = 0
+                while True:
+                    filler = [dict(longest, kind="row", feature="budget_%d" % index, value="budget_%d" % index,
+                                   section=grid[-1]["section"]) for index in range(extra)]
+                    geometry = layout.place(grid + filler + rest, measure, wrap, *SCREENS["1280x800"],
+                                            translate("Search Angelo"))
+                    if rows(geometry) >= target or extra > 60:
+                        return geometry
+                    extra += 1
+            at_budget = filled(budget)
+            with self.subTest(language=code):
+                self.assertEqual(rows(at_budget), budget)
+                self.assertEqual(at_budget["max_scroll"], 0, "%d tile rows must fit" % budget)
+                self.assertTrue(at_budget["fits"])
+            beyond = filled(budget + 1)
+            if beyond["max_scroll"] > 0 or not beyond["fits"]:
+                overflowed.append(code)
+        self.assertTrue(overflowed, "ROW_BUDGET %d is loose: %d rows fit in every language" % (budget, budget + 1))
+
+    def test_every_language_keeps_the_grid_within_its_row_budget(self):
+        """``ROW_BUDGET`` counts rows in each language as shown, not only in English: a title that cannot fit two lines
+        in half a tile takes a whole row (``chat_add_layout``), one row more than English, in that language alone. Held
+        at each screen and at that screen's canvas on a 100-dpi display (the narrowest two-column width the GUI audits
+        draw). Evidence: test_blender_plus_menu_audit/fold at 1280 x 775 on Xvfb (2026-11-18), where a Swedish title
+        took a whole row and the top level scrolled, while English counted 9 rows."""
+        budget = cd.ROW_BUDGET
+        for code in LANGUAGE_CODES:
+            translate = translator(code)
+            shown = items(translate)
+            for screen, (width, height, bottom) in SCREENS.items():
+                for scale in (1.0, DPI_100):
+                    geometry = layout.place(shown, measure, wrap, width / scale, height / scale, bottom,
+                                            translate("Search Angelo"))
+                    half = layout.popup_width(width / scale) / 2
+                    whole = [shown[cell["index"]]["title"] for cell in geometry["cells"] if cell["rect"][2] > half]
+                    with self.subTest(language=code, screen=screen, scale=round(scale, 4)):
+                        self.assertLessEqual(rows(geometry), budget, "titles taking a whole row: %s" % whole)
 
     def test_no_title_or_description_is_cut_in_any_language(self):
         for code in LANGUAGE_CODES:

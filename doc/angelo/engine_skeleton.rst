@@ -113,8 +113,10 @@ end bone and is left out.
    forward. Without feet, -Y in the world, Blender's convention (an imported armature's own rotation is often only
    the file format's axes), with a note.
 3. **Hands** by their digits (``hand_rig.find_hands``, shared with the hand-rigging tools), never on the body's
-   midline (a chibi's upper spine has three digit-like chains); without digits, the outermost weighted joint on
-   each side (an IK control moves no skin).
+   midline (a chibi's upper spine has three digit-like chains). Digits all alike, with no thumb to tell apart (a
+   stylised three- or four-fingered hand), still make the bone they hang from the hand (``hand_rig.hand_bones``);
+   its fingers are left unmapped with a note. Without digits, the outermost weighted joint on each side (an IK
+   control moves no skin).
 4. **Trunk and head.** From Hips the trunk follows the child carrying the most of the body (arms and legs left out),
    not the highest point (a backpack or hat can be higher than the head). The arms branch from the lowest trunk bone
    both hands hang from, moved down while it starts above the shoulder joints (a Biped's clavicles hang from its
@@ -127,6 +129,13 @@ end bone and is left out.
    elbow is the joint nearest half way from the shoulder joint to the wrist.
 6. **Eyes and jaw** (optional): one mirrored pair below the head and forward of its joint; one midline child of the
    head pointing forward and down.
+
+Retargeting and the game rig
+============================
+
+Retargeting, the engine game rig, root motion, per-action clips and IK controls build on the same role mapping, so
+any two humanoids pair whatever their names. They are described in ``rigging.rst``; the rig check is their gate
+before and after.
 
 Checks
 ======

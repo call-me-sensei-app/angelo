@@ -8,7 +8,9 @@
  * The authority's tickets and ledger (`bpy_angelo_guard_authority_core.hh`).
  */
 
+#include <utility>
 #include <algorithm>
+#include <functional>
 #include <limits>
 
 #include "bpy_angelo_guard_authority_core.hh"
@@ -24,6 +26,17 @@ bool Authority::inside(const RegionSpec &region, const int x, const int y)
 {
   return region.width > 0 && region.height > 0 && region.x <= x && x < region.x + region.width &&
          region.y <= y && y < region.y + region.height;
+}
+
+bool Authority::owns(const Window &window, const std::string &surface, const uint64_t target)
+{
+  const auto found = window.owners.find(surface);
+  return (found == window.owners.end() ? 0 : found->second) == target;
+}
+
+bool Authority::pointer_on(const Window &window, const std::string &surface, const RegionSpec &spec)
+{
+  return window.pointer_known && inside(spec, window.px, window.py) && owns(window, surface, window.target);
 }
 
 /** When frame `frame` of `window` reached the screen (`Authority::shown`), under the lock. */
@@ -125,11 +138,12 @@ void Authority::sync(Window &window, const double now)
       if (region.epoch != window.epoch) {
         /* Its shield starts again; a shielded control's aim holds while the pointer is still on it
          * (2.0.1). Any other needs its move again, as in 2.0.0. */
-        const bool on_it = window.pointer_known && inside(region.spec, window.px, window.py);
+        const bool on_it = pointer_on(window, surface.first, region.spec);
         region.epoch = window.epoch;
         region.since = now;
         region.entered = region.entered && on_it && region.spec.shield;
         region.moved_in = false;
+        drop_tickets(region.spec);
       }
     }
   }
@@ -138,7 +152,8 @@ void Authority::sync(Window &window, const double now)
 bool Authority::set_regions(const WindowKey window_key,
                             const std::string &surface,
                             const std::vector<RegionSpec> &regions,
-                            const double now)
+                            const double now,
+                            const uint64_t owner)
 {
   if (surface.size() > MAX_TEXT || regions.size() > size_t(MAX_REGIONS_PER_SURFACE)) {
     return false;
@@ -164,13 +179,16 @@ bool Authority::set_regions(const WindowKey window_key,
     }
   }
   warped_here = warped_here && window.pointer_known;
+  /* Where it drew them before: a surface drawn in another region now is laid out anew (below). */
+  const bool owner_kept = owns(window, surface, owner);
+  window.owners[surface] = owner;
   std::vector<Region> next;
   next.reserve(regions.size());
   for (const RegionSpec &spec : regions) {
     Region region{spec, now, window.frame, window.epoch, false};
     /* Drawn under that pointer: as warped into. */
     region.warped = warped_here && inside(spec, window.px, window.py);
-    if (existing != window.surfaces.end()) {
+    if (existing != window.surfaces.end() && owner_kept) {
       /* The same control drawn where it was, when one is: duplicates of a control prefer it. */
       const Region *same = nullptr;
       for (const Region &before : existing->second) {
@@ -200,8 +218,8 @@ bool Authority::set_regions(const WindowKey window_key,
          * view): it keeps its shield, and its aim only while the pointer was on it before and is on it
          * now (2.0.1: a card that moved on every streamed row dropped every aim). One that arrives
          * under a pointer that was not on it is a new control (the break-it review's M1). */
-        const bool before_on = window.pointer_known && inside(old, window.px, window.py);
-        const bool after_on = window.pointer_known && inside(spec, window.px, window.py);
+        const bool before_on = pointer_on(window, surface, old);
+        const bool after_on = pointer_on(window, surface, spec);
         if (after_on && !before_on) {
           break; /* `region` as made above: shown now, unaimed. */
         }
@@ -219,11 +237,14 @@ bool Authority::set_regions(const WindowKey window_key,
   return true;
 }
 
-void Authority::note_move(const WindowKey window_key, const int x, const int y, const double now)
+void Authority::note_move(
+    const WindowKey window_key, const int x, const int y, const uint64_t target, const double now)
 {
   std::lock_guard lock(mutex_);
   Window &window = windows_[window_key];
   sync(window, now);
+  const uint64_t target_before = window.target;
+  window.target = target; /* Where Blender routes the pointer now, moved or not (a sidebar opened under it). */
   if (!window.button_down) { /* A drag's hold ends once its button is up, release seen or not. */
     std::erase_if(tickets_, [](const Ticket &ticket) { return ticket.gesture; });
   }
@@ -253,8 +274,15 @@ void Authority::note_move(const WindowKey window_key, const int x, const int y, 
     window.warp_y1 = std::max(window.warp_y1, y);
   }
   for (auto &surface : window.surfaces) {
+    /* Blender gives the pointer to another region (a sidebar, header, HUD or asset shelf drawn over the
+     * surface's, or a popup), or it is over a popup, menu or tooltip (or another surface's own menu):
+     * the pointer is over that, not the consent regions beneath. */
+    const bool hidden = !owns(window, surface.first, target) ||
+                        (!window.covers.empty() && covered(window, x, y, surface.first));
+    /* Where it was: on this surface's region only where Blender gave it this surface's region. */
+    const bool was_here = owns(window, surface.first, target_before);
     for (Region &region : surface.second) {
-      if (!inside(region.spec, x, y)) {
+      if (hidden || !inside(region.spec, x, y)) {
         region.warped = false; /* Left it: the person's next move in counts again. */
         if (region.spec.shield) {
           region.entered = false; /* Leaving a shielded control drops its aim (2.0.1, review M1). */
@@ -271,7 +299,7 @@ void Authority::note_move(const WindowKey window_key, const int x, const int y, 
       /* A move into it from outside aims at it whenever it happens (2.0.1: before, only after the
        * shield, so a person who moved onto Approve at once and then clicked was refused); a shielded
        * control's press still waits for SHIELD_SECONDS from when it was first shown (`note_press`). */
-      if (!inside(region.spec, window.px, window.py)) {
+      if (!was_here || !inside(region.spec, window.px, window.py)) {
         region.entered = true;
         region.press_aim = -1.0; /* A move in is the person's aim itself. */
       }
@@ -293,9 +321,27 @@ void Authority::note_activate(const WindowKey window_key, const double now)
   std::lock_guard lock(mutex_);
   Window &window = windows_[window_key];
   window.epoch++; /* Its controls start their shield again from when the person sees them. */
+  window.changed = now;
   window.activated = now;
   window.activation_move = true;
   window.active = true;
+}
+
+double Authority::epoch_changed(const WindowKey window_key) const
+{
+  std::lock_guard lock(mutex_);
+  const auto found = windows_.find(window_key);
+  return found == windows_.end() ? -1.0e9 : found->second.changed;
+}
+
+double Authority::restart_from(const WindowKey window_key, const double now) const
+{
+  std::lock_guard lock(mutex_);
+  const auto found = windows_.find(window_key);
+  if (found == windows_.end() || !found->second.active) {
+    return now; /* No record, or in the back: nothing in it was seen since any change. */
+  }
+  return std::min(found->second.changed, now);
 }
 
 bool Authority::press_activating(const WindowKey window_key) const
@@ -312,11 +358,12 @@ bool Authority::returning(const WindowKey window_key) const
   return found != windows_.end() && found->second.returning;
 }
 
-void Authority::note_deactivate(const WindowKey window_key, const double /*now*/)
+void Authority::note_deactivate(const WindowKey window_key, const double now)
 {
   std::lock_guard lock(mutex_);
   Window &window = windows_[window_key];
   window.epoch++;
+  window.changed = now;
   window.returning = true;
   window.active = false; /* Moves and keys in the background (Windows delivers moves) keep `returning`. */
   for (auto &surface : window.surfaces) { /* The person left: every aim goes (2.0.0's rule). */
@@ -460,8 +507,9 @@ bool Authority::focus(const WindowKey window_key,
   if (!persons && now - window.pressed <= FOCUS_SECONDS && now >= window.pressed) {
     const auto found = window.surfaces.find(surface);
     if (found != window.surfaces.end()) {
+      const bool here = owns(window, surface, window.press_target);
       for (const Region &region : found->second) {
-        persons = persons || (region.spec.idname == idname && region.spec.digest == digest &&
+        persons = persons || (here && region.spec.idname == idname && region.spec.digest == digest &&
                               inside(region.spec, window.press_x, window.press_y));
       }
     }
@@ -552,7 +600,8 @@ void Authority::note_release(const WindowKey window_key, const double /*now*/)
   windows_[window_key].button_down = false;
 }
 
-bool Authority::note_press(const WindowKey window_key, const int x, const int y, const double now)
+bool Authority::note_press(
+    const WindowKey window_key, const int x, const int y, const uint64_t target, const double now)
 {
   std::lock_guard lock(mutex_);
   Window &window = windows_[window_key];
@@ -560,6 +609,7 @@ bool Authority::note_press(const WindowKey window_key, const int x, const int y,
   window.button_down = true;
   window.press_x = x;
   window.press_y = y;
+  window.press_target = target;
   /* The click that brings the window forward, wherever it lands, never grants; it aims at the control
    * under it, so the person's next press there does once its shield has passed. */
   /* Only the press that arrives with the activation brought the window forward (the re-review of
@@ -570,10 +620,17 @@ bool Authority::note_press(const WindowKey window_key, const int x, const int y,
   window.press_activating = activating;
   if (activating) {
     window.epoch++;
+    window.changed = now; /* Every epoch change is stamped (the re-review of cf980b8, SHOULD A). */
   }
   sync(window, now);
   Region *hit = nullptr;
   for (auto &surface : window.surfaces) {
+    if (!owns(window, surface.first, target)) {
+      continue; /* Blender gives the press to another region (a sidebar over it, a popup): never this surface's. */
+    }
+    if (!window.covers.empty() && covered(window, x, y, surface.first)) {
+      continue; /* On a popup, menu or tooltip drawn over it: never this surface's press. */
+    }
     for (Region &region : surface.second) {
       if (inside(region.spec, x, y)) {
         if (hit != nullptr) {
@@ -796,6 +853,10 @@ void Authority::define_standard()
   define(CHAT_CLIENTS, Value());
   define(APPROVED_CALLS, Value());
   define(APPROVAL_MODES, Value(std::string("ASK"))); /* Ask narrows; Auto is set only in a scope. */
+  define(REVIEWED_SCRIPTS, Value(false));
+  define(CONTEXT_FOLDERS, Value());
+  define(RULE_DECISIONS, Value(false));
+  define(GLOBAL_RULES, Value());
 }
 
 bool Authority::admits(const std::string &call_id, const std::string &digest)
@@ -817,6 +878,227 @@ bool Authority::admits(const std::string &call_id, const std::string &digest)
     }
   }
   return false;
+}
+
+bool Authority::covered(const Window &window, const int x, const int y, const std::string &surface)
+{
+  for (const auto &entry : window.covers) {
+    const Cover &cover = entry.second;
+    if (cover.restart_only) {
+      continue; /* An overlapping region: Blender's routing decides where its input goes (`owns`). */
+    }
+    if (cover.surface == surface && !surface.empty()) {
+      continue; /* A surface's own menu is drawn over its own controls by that surface itself. */
+    }
+    if (x >= cover.x && x < cover.x + cover.width && y >= cover.y && y < cover.y + cover.height) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void Authority::drop_tickets(const RegionSpec &region)
+{
+  std::erase_if(tickets_, [&](const Ticket &ticket) {
+    return !ticket.dialog && ticket.idname == region.idname && ticket.digest == region.digest;
+  });
+}
+
+void Authority::restart_covered(Window &window, const Cover &cover, const double now)
+{
+  for (auto &surface : window.surfaces) {
+    if (!cover.surface.empty() && surface.first == cover.surface) {
+      continue; /* Its own surface's regions were never covered by it. */
+    }
+    for (Region &region : surface.second) {
+      const RegionSpec &spec = region.spec;
+      if (spec.x < cover.x + cover.width && cover.x < spec.x + spec.width && spec.y < cover.y + cover.height &&
+          cover.y < spec.y + spec.height)
+      {
+        /* On screen again from now and the window's next frame, which its close draws: not aimed at,
+         * not moved into, shielded again (as `sync` restarts a region, and the button fix counts). */
+        region.since = std::max(region.since, now);
+        region.frame = window.frame;
+        region.entered = false;
+        region.moved_in = false;
+        region.press_aim = -1.0;
+        drop_tickets(spec); /* A press Blender gave a modal handler (a menu's outside click) minted for nothing seen. */
+      }
+    }
+  }
+}
+
+void Authority::set_cover(const WindowKey window_key,
+                          const uint64_t key,
+                          const int x,
+                          const int y,
+                          const int width,
+                          const int height,
+                          const double now,
+                          const bool restart_only)
+{
+  std::lock_guard lock(mutex_);
+  Window &window = windows_[window_key];
+  const Cover cover{x, y, width, height, {}, restart_only};
+  const auto found = window.covers.find(key);
+  if (found != window.covers.end()) {
+    const Cover &old = found->second;
+    if (old.x == x && old.y == y && old.width == width && old.height == height &&
+        old.restart_only == restart_only)
+    {
+      return; /* Drawn where it was (every redraw). */
+    }
+    restart_covered(window, old, now); /* Moved or resized: what it covered there is seen again. */
+  }
+  window.covers[key] = cover;
+}
+
+std::vector<Authority::Rect> Authority::sync_covers(const WindowKey window_key,
+                                                    const std::vector<DrawnCover> &drawn,
+                                                    const double now)
+{
+  return sync_covers(window_key, drawn, nullptr, now);
+}
+
+std::vector<Authority::Rect> Authority::sync_covers(const WindowKey window_key,
+                                                    const std::vector<DrawnCover> &drawn,
+                                                    const std::vector<uint64_t> &visible,
+                                                    const double now)
+{
+  return sync_covers(window_key, drawn, &visible, now);
+}
+
+std::vector<Authority::Rect> Authority::sync_covers(const WindowKey window_key,
+                                                    const std::vector<DrawnCover> &drawn,
+                                                    const std::vector<uint64_t> *visible,
+                                                    const double now)
+{
+  std::vector<uint64_t> gone;
+  std::vector<Rect> uncovered; /* Where a restart-only cover was, gone or moved. */
+  const auto shown = [&](const uint64_t region) {
+    return visible == nullptr || std::find(visible->begin(), visible->end(), region) != visible->end();
+  };
+  {
+    std::lock_guard lock(mutex_);
+    const auto window = windows_.find(window_key);
+    if (window != windows_.end()) {
+      Window &w = window->second;
+      /* Consent regions of a surface whose region is gone: forgotten (its pointer may be reused). */
+      for (auto surface = w.surfaces.begin(); surface != w.surfaces.end();) {
+        const auto owner = w.owners.find(surface->first);
+        if (owner != w.owners.end() && owner->second != 0 && !shown(owner->second)) {
+          w.owners.erase(owner);
+          surface = w.surfaces.erase(surface);
+        }
+        else {
+          ++surface;
+        }
+      }
+      for (const auto &entry : w.covers) {
+        if (!entry.second.surface.empty()) {
+          /* A canvas surface's own menu: its surface sets and clears it (`surface_cover`), unless its region is
+           * gone and no close was reported. */
+          if (!shown(entry.second.owner)) {
+            gone.push_back(entry.first);
+          }
+          continue;
+        }
+        const Cover &old = entry.second;
+        const auto now_drawn = std::find_if(drawn.begin(), drawn.end(),
+                                            [&](const DrawnCover &cover) { return cover.key == entry.first; });
+        if (now_drawn == drawn.end()) {
+          gone.push_back(entry.first);
+        }
+        if (old.restart_only &&
+            (now_drawn == drawn.end() || now_drawn->x != old.x || now_drawn->y != old.y ||
+             now_drawn->width != old.width || now_drawn->height != old.height))
+        {
+          uncovered.push_back({entry.first, old.x, old.y, old.width, old.height});
+        }
+      }
+    }
+  }
+  for (const uint64_t key : gone) {
+    clear_cover(window_key, key, now);
+  }
+  for (const DrawnCover &cover : drawn) {
+    set_cover(window_key, cover.key, cover.x, cover.y, cover.width, cover.height, now, cover.restart_only);
+  }
+  return uncovered;
+}
+
+void Authority::surface_cover(const WindowKey window_key,
+                              const std::string &surface,
+                              const int x,
+                              const int y,
+                              const int width,
+                              const int height,
+                              const double now,
+                              const uint64_t owner)
+{
+  /* Keyed apart from any region pointer (the top bit), one per surface. */
+  const uint64_t key = uint64_t(std::hash<std::string>{}(surface)) | (uint64_t(1) << 63);
+  if (width <= 0 || height <= 0) {
+    clear_cover(window_key, key, now);
+    return;
+  }
+  std::lock_guard lock(mutex_);
+  Window &window = windows_[window_key];
+  const auto found = window.covers.find(key);
+  if (found != window.covers.end()) {
+    const Cover &old = found->second;
+    if (old.x == x && old.y == y && old.width == width && old.height == height && old.owner == owner) {
+      return;
+    }
+    restart_covered(window, old, now);
+  }
+  window.covers[key] = Cover{x, y, width, height, surface, false, owner};
+}
+
+void Authority::clear_cover(const WindowKey window_key, const uint64_t key, const double now)
+{
+  std::lock_guard lock(mutex_);
+  const auto window = windows_.find(window_key);
+  if (window == windows_.end()) {
+    return;
+  }
+  const auto found = window->second.covers.find(key);
+  if (found == window->second.covers.end()) {
+    return;
+  }
+  const Cover cover = found->second;
+  window->second.covers.erase(found);
+  restart_covered(window->second, cover, now);
+}
+
+Authority::Readout Authority::readout(const WindowKey window_key) const
+{
+  std::lock_guard lock(mutex_);
+  Readout readout;
+  const auto found = windows_.find(window_key);
+  if (found == windows_.end()) {
+    return readout;
+  }
+  const Window &window = found->second;
+  readout.known = true;
+  readout.epoch = window.epoch;
+  readout.frame = window.frame;
+  readout.presented = window.presented;
+  if (window.presented > 0 && window.frame > 0) {
+    readout.last_present = window.presents[(window.frame - 1) % PRESENTS_KEPT];
+  }
+  readout.activated = window.activated;
+  readout.changed = window.changed;
+  readout.real_move_at = window.real_move_at;
+  readout.real_x = window.real_x;
+  readout.real_y = window.real_y;
+  readout.px = window.px;
+  readout.py = window.py;
+  readout.active = window.active;
+  readout.returning = window.returning;
+  readout.activation_move = window.activation_move;
+  readout.pointer_known = window.pointer_known;
+  return readout;
 }
 
 void Authority::reset()
@@ -865,6 +1147,28 @@ bool Scope::active()
 bool Scope::person()
 {
   return scope_depth[PERSON] > 0 || scope_depth[HARNESS] > 0;
+}
+
+bool Scope::harness()
+{
+  return scope_depth[HARNESS] > 0;
+}
+
+static thread_local std::string scope_control; /* Scope::control(): the innermost person grant's control. */
+
+const std::string &Scope::control()
+{
+  return scope_control;
+}
+
+Scope::Control::Control(std::string value) : previous_(std::move(scope_control))
+{
+  scope_control = std::move(value);
+}
+
+Scope::Control::~Control()
+{
+  scope_control = std::move(previous_);
 }
 
 bool Scope::admits_operator(const Authority &authority, const std::string &idname)

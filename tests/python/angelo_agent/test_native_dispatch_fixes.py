@@ -150,6 +150,26 @@ class DispatchFixTests(unittest.TestCase):
         self.assertEqual(sum(call.approval for call in self.controller.pending.values()), 1)
         self.assertEqual(self.controller.tools.qsize(), 3)
 
+    def test_a_chat_whose_own_setup_spends_the_tick_still_admits_its_first_call(self):
+        """Its setup (the scene and tool holds) admits nothing and, on a loaded machine, can outlast the tick; every
+        admission then refused for time, so the chat never served its own work, even going first. The tick's first
+        admission is owed (``ToolDispatchBudget.owed``): one, and only one, runs past the deadline."""
+        self.controller.state["options"]["approval"] = "ASK"
+        for i in range(3):
+            self.enqueue(str(i))
+        clock, hold = [time.monotonic()], document_scene.hold
+
+        def slow_hold(*args):
+            clock[0] += .02   # The chat's own setup alone outlasts the 8 ms tick.
+            return hold(*args)
+
+        self.executor.precondition.side_effect = lambda *_: "unchanged"
+        with patch("angelo_agent.controller.time.monotonic", side_effect=lambda: clock[0]), \
+                patch.object(document_scene, "hold", slow_hold):
+            self.pump(ToolDispatchBudget(seconds=.008, started=clock[0]))
+        self.assertEqual(self.executor.precondition.call_count, 1, "its own setup refused its every admission")
+        self.assertEqual(self.controller.tools.qsize(), 2)
+
     def test_pending_set_and_per_tick_admission_are_bounded(self):
         self.controller.state["options"]["approval"] = "ASK"
         for i in range(32):

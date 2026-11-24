@@ -2422,8 +2422,12 @@ static void apply_but(
   data->retval = 0;
 #ifdef WITH_PYTHON
   /* Angelo: a property button's real press, before its value is set (a setter or an update reads the
-   * ticket: grant_operators.rst, "Authority in C"). */
-  if (but->rnaprop && !(but->block->handle && but->block->handle->angelo_from_agent)) {
+   * ticket: grant_operators.rst, "Authority in C"). Only an add-on preference's: every guarded setting is one,
+   * and a property of the same name anywhere else (a script can define one on any data) mints nothing (the
+   * re-read of 9b3f450, M3). */
+  if (but->rnaprop && but->rnapoin.type && RNA_struct_is_a(but->rnapoin.type, RNA_AddonPreferences) &&
+      !(but->block->handle && but->block->handle->angelo_from_agent))
+  {
     const wmWindow *win = CTX_wm_window(C);
     if (win && angelo_armed_now(win, but)) {
       BPY_angelo_guard_note_button(
@@ -7603,7 +7607,35 @@ static bool numedit_but_HSVCUBE(Button *but,
     const float fac = mouse_scale_warp_factor(shift);
     data->relative_drag.x += float(mx - data->draglastx) * fac;
     data->relative_drag.y += float(my - data->draglasty) * fac;
-    BLI_rctf_clamp_pt_v(&but->rect, data->relative_drag);
+
+    switch (hsv_but->gradient_type) {
+      case GRAD_HV:
+      case GRAD_HS:
+      case GRAD_H:
+        /* Disable hue wrapping when snapping. */
+        if (snap != SNAP_OFF) {
+          BLI_rctf_clamp_pt_v(&but->rect, data->relative_drag);
+        }
+        else {
+          /* Wrap the hue around. */
+          data->relative_drag[0] = math::mod_periodic(data->relative_drag[0] - but->rect.xmin,
+                                                      but->rect.xmax - but->rect.xmin) +
+                                   but->rect.xmin;
+          data->relative_drag[1] = math::clamp(
+              data->relative_drag[1], but->rect.ymin, but->rect.ymax);
+        }
+        break;
+      case GRAD_SV:
+      case GRAD_V:
+      case GRAD_S:
+      case GRAD_L_ALT:
+      case GRAD_V_ALT:
+        BLI_rctf_clamp_pt_v(&but->rect, data->relative_drag);
+        break;
+      default:
+        BLI_assert_unreachable();
+        break;
+    }
   }
   else {
     data->relative_drag.x = mx;
@@ -8158,7 +8190,8 @@ static int do_but_HSVCIRCLE(
   return WM_UI_HANDLER_CONTINUE;
 }
 
-static bool numedit_but_COLORBAND(Button *but, HandleButtonData *data, int mx)
+static bool numedit_but_COLORBAND(
+    Button *but, HandleButtonData *data, int mx, bool shift, const eSnapType snap)
 {
   bool changed = false;
 
@@ -8171,11 +8204,20 @@ static bool numedit_but_COLORBAND(Button *but, HandleButtonData *data, int mx)
   }
 
   const float dx = float(mx - data->draglastx) / BLI_rctf_size_x(&but->rect);
-  data->dragcbd->pos += dx;
+  data->value += dx * mouse_scale_warp_factor(shift);
+  data->dragcbd->pos = numedit_apply_snapf(but, data->value, 0.0f, 1.0f, snap);
   CLAMP(data->dragcbd->pos, 0.0f, 1.0f);
 
   BKE_colorband_update_sort(data->coba);
   data->dragcbd = data->coba->data + data->coba->cur; /* because qsort */
+
+#ifdef USE_CONT_MOUSE_CORRECT
+  if (button_is_cursor_warp(but)) {
+    data->ungrab_mval[0] = but->rect.xmin + data->dragcbd->pos * BLI_rctf_size_x(&but->rect);
+    data->ungrab_mval[1] = data->dragstarty;
+    BLI_rctf_clamp_pt_v(&but->rect, data->ungrab_mval);
+  }
+#endif
 
   data->draglastx = mx;
   changed = true;
@@ -8227,6 +8269,7 @@ static int do_but_COLORBAND(
 
         data->dragcbd = coba->data + coba->cur;
         data->dragfstart = data->dragcbd->pos;
+        data->value = data->dragfstart;
         button_activate_state(C, but, BUTTON_STATE_NUM_EDITING);
       }
 
@@ -8236,7 +8279,9 @@ static int do_but_COLORBAND(
   else if (data->state == BUTTON_STATE_NUM_EDITING) {
     if (event->type == MOUSEMOVE) {
       if (mx != data->draglastx || my != data->draglasty) {
-        if (numedit_but_COLORBAND(but, data, mx)) {
+        if (numedit_but_COLORBAND(
+                but, data, mx, (event->modifier & KM_SHIFT), event_to_snap(event)))
+        {
           numedit_apply(C, block, but, data);
         }
       }
@@ -9628,12 +9673,8 @@ static void button_activate_state(bContext *C, Button *but, HandleButtonState st
       }
       WorkspaceStatus status(C);
       status.item(IFACE_("Cancel"), ICON_EVENT_ESC);
-#if defined(__APPLE__)
-      status.item(IFACE_("Snap"), ICON_KEY_COMMAND);
-#else
       status.item(IFACE_("Snap"), ICON_EVENT_CTRL);
-#endif
-      if (button_is_float(but)) {
+      if (button_is_float(but) || but->type == ButtonType::ColorBand) {
         status.item(IFACE_("Precision"), ICON_EVENT_SHIFT);
       }
     }
@@ -10330,28 +10371,9 @@ static void angelo_note_hover(const bContext *C,
   if (but == nullptr || event->type != MOUSEMOVE) {
     return;
   }
-  const wmWindow *win = CTX_wm_window(C);
-  ui_angelo_follow_focus(*but, win); /* Its window lost focus since: it starts again. */
   rcti rect;
   button_to_pixelrect(&rect, region, but->block, but);
-  ui_angelo_note_placed(*but, win, region, rect); /* Where it is now, in window pixels. */
-  rect = but->angelo_place;
-  if (win == nullptr || !BLI_rcti_isect_pt_v(&rect, event->xy) ||
-      BPY_angelo_guard_warped_into(
-          win, rect.xmin, rect.ymin, BLI_rcti_size_x(&rect) + 1, BLI_rcti_size_y(&rect) + 1))
-  {
-    return;
-  }
-  /* The person's own move (C noted it as the event arrived: a non-zero delta, not a warp, real
-   * input or, under --enable-event-simulate, a suite's), ARM after it was drawn here. */
-  /* ARM after the frame that first showed it there (the ruling on the 0.3 s arm, (b)). */
-  const double shown = std::max(but->angelo_since,
-                                BPY_angelo_guard_shown(win, but->angelo_frame, but->angelo_since));
-  if (BPY_angelo_guard_moved_here_since(
-          win, event->xy[0], event->xy[1], shown + BPY_angelo_guard_arm_seconds()))
-  {
-    but->angelo_armed = true;
-  }
+  ui_angelo_note_hover_at(*but, CTX_wm_window(C), region, rect, event->xy);
 #else
   UNUSED_VARS(C, region, but, event);
 #endif
@@ -11796,7 +11818,10 @@ static int handle_menu_event(bContext *C,
 
         menu->popup_create_vars.event_xy += mdiff;
 
+        const rcti covered_before = UI_angelo_temporary_cover(region);
         popup_translate(region, mdiff);
+        ui_angelo_note_uncovered(win, covered_before, region); /* Angelo: dragged off what it covered. */
+        ui_angelo_note_covering(win, region, true);
       }
 
       return retval;

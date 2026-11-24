@@ -27,7 +27,8 @@ never changed; everything here is display only.
 import re
 
 from . import canvas_controls, chat_resend, chat_welcome, document_offer, document_scene, drafts, first_run
-from . import notice_kinds, session_page, ui_kit_status
+from . import context_folder_host, crash_resume_ui, notice_kinds, project_rules_host, session_page, share_refusal_notice
+from . import turn_tail, ui_kit_status
 from .ui_text import display_notice, iface_, n_, plural_
 
 MARGIN = 16       # The card's inset from the transcript's edges.
@@ -55,7 +56,18 @@ _OWN = {document_scene.CHANGED: ("warn", ((n_("New chat"), NEW_CHAT),),
                                  lambda controller: getattr(controller, "document_invalid", False)),
         session_page.SHARED: ("info", ((n_("Open live page"), OPEN_PAGE), (n_("Stop sharing"), STOP_SHARING)),
                               _page_live),
-        session_page.STOPPED: ("info", ((n_("Share again"), SHARE_AGAIN),), _page_stopped)}
+        session_page.STOPPED: ("info", ((n_("Share again"), SHARE_AGAIN),), _page_stopped),
+        # A file's rules wait for the person (project_rules_host); the Rules page shows them with Use / Don't use.
+        project_rules_host.REVIEW: ("warn", ((n_("Review rules"), project_rules_host.REVIEW_ACTION),),
+                                    project_rules_host.review_stands),
+        # A request cut off when Angelo closed (crash_resume): Continue, while it still stands.
+        crash_resume_ui.CARD: ("warn", ((n_("Continue"), crash_resume_ui.ACTION),), crash_resume_ui.stands),
+        # A folder this chat has as context (context_folder): its pills are its own (_folder_card), while attached.
+        context_folder_host.ATTACHED: ("info", (), None),
+        context_folder_host.ATTACHED_BEFORE: ("info", (), None),
+        # A network share an agent script was refused, named to the person only (share_refusal_notice).
+        share_refusal_notice.ONE: ("warn", (), None)}
+_FOLDER_CARDS = (context_folder_host.ATTACHED, context_folder_host.ATTACHED_BEFORE)
 # Exception names, stack lines, JSON, addresses, enum capitals, raw ids: such text goes under Details.
 _TECHNICAL = re.compile(r"Traceback|\b[A-Z]\w*(?:Error|Exception)\b|[{}\[\]<>]|\bline \d+|0x[0-9a-fA-F]+|\b[A-Z0-9_]{6,}\b"
                         r"|[0-9a-f]{8}-[0-9a-f]{4}-")
@@ -88,7 +100,7 @@ _SWITCH = {"usage", "credits", "rate", "model", "overloaded", "offline"}  # Kind
 def _content(message):
     """(notice kind, mark, title, sentence, details) for an error row, every string translated for display."""
     from . import console
-    kind = notice_kinds.kind(message)
+    kind = notice_kinds.kind(message, by_text=not is_own_card(message))   # An own card: by its template alone.
     raw = str(message.get("text") or "")
     own = message.get("i18n")  # Angelo's own sentence: plain language, translated at display time, no Details.
     if kind == "usage":
@@ -99,8 +111,9 @@ def _content(message):
     if kind in _KNOWN:
         mark, title, sentence = _KNOWN[kind]
         return kind, mark, iface_(title), console.display_text(message) if own else iface_(sentence), None if own else raw
-    if own:   # An offer (document_identity.OFFER) is a question, not an error; so is a state with a way out (_OWN).
-        mark = "warn" if _offer(message) else _own_actions(message)[0] or "error"
+    if own:   # An offer (document_identity.OFFER) is a question, not an error; a state with a way out (_OWN) is drawn
+        # with the mark it declares (a folder this chat reads is information, never an error).
+        mark = "warn" if _offer(message) else (_own_actions(message)[0] or "error")
         return kind, mark, console.display_text(message), "", None
     if not technical(raw):  # The provider's own plain sentence (never translated: it is not Angelo's text).
         return kind, "error", iface_("Something went wrong"), raw.strip(), None
@@ -171,9 +184,25 @@ def _card(message, key, latest, ui, controller, expanded):
     elif _offer(message) and _offer_stands(message, controller):
         items.append((iface_("Continue"), "welcome_continue_file", None))   # Only the person's click rebinds the chat.
     items += [(iface_(label), action, None) for label, action in _own_actions(message, controller)[1]]
+    body = _folder_card(message, controller, items, body)
     actions = tuple((action, value, label, "secondary") for label, action, value in items)
     return dict(kind=mark, title=title, body=body, actions=actions, details=details or None,
                 expanded=("notice", key) in expanded, details_action=_DETAILS if details else None)
+
+
+def _folder_card(message, controller, items, body):
+    """A folder card's role line and pills while its folder is attached (``context_folder_host.card_folder``, from
+    what is saved, never the disk): Make working folder on a reference folder, and Remove. Its body otherwise."""
+    recipe = message.get("i18n")
+    if not (isinstance(recipe, (list, tuple)) and recipe and recipe[0] in _FOLDER_CARDS):
+        return body
+    record = context_folder_host.card_folder(controller, message)
+    if record is None:
+        return body
+    if not record["working"]:
+        items.append((iface_("Make working folder"), context_folder_host.WORKING_ACTION, record["id"]))
+    items.append((iface_("Remove"), context_folder_host.REMOVE_ACTION, record["id"]))
+    return iface_(context_folder_host.WORKING_LINE if record["working"] else context_folder_host.REFERENCE_LINE)
 
 
 def block(message, key, latest, ui, controller, width, size, line_height, expanded):
@@ -198,8 +227,8 @@ def draw(state, ui, controller, message, key, top, bottom, width, size, line_hei
 def dispatch(context, controller, state, action, value):
     """A notice card's own pill (``chat_view.dispatch_action`` routes every ``notice_`` action here)."""
     import bpy
-    rows = controller.state.get("messages") or [None]
-    own = isinstance(value, tuple) and bool(value) and id(rows[-1]) == value[-1]   # Still the card's own row.
+    latest = turn_tail.last_row(controller.state.get("messages"))   # Past what the turn's end added (S5).
+    own = isinstance(value, tuple) and bool(value) and id(latest) == value[-1]   # Still the card's own row.
     if action == NEW_CHAT:
         bpy.ops.angelo.new_chat()
     elif action == OPEN_PAGE:   # This conversation's own page while it is live, through Angelo's URL opening.
@@ -212,12 +241,22 @@ def dispatch(context, controller, state, action, value):
         (session_page.stop_sharing if action == STOP_SHARING else session_page.share_again)(controller)
     elif action == RESEND:
         if own:
-            chat_resend.resend(controller, rows[-1])
+            chat_resend.resend(controller, latest)
     elif action == PUT_BACK:
         from . import ui
         from .editor_types import read_chat_draft, write_chat_draft
-        if own and drafts.failed_request(controller, rows[-1]) is not None:   # The latest failure, not put back.
+        if own and drafts.failed_request(controller, latest) is not None:   # The latest failure, not put back.
             drafts.put_back(controller, active=controller is ui.get_controller(),
                             spaces=[space for _, space in ui.console_spaces()], saved=ui._drafts,
                             read=read_chat_draft, write=write_chat_draft)
             state["focus_request"] = True   # The composer takes the keyboard, as after a welcome example.
+    elif action == context_folder_host.REMOVE_ACTION:
+        context_folder_host.remove(controller, value if isinstance(value, str) else None)
+    elif action == context_folder_host.WORKING_ACTION and isinstance(value, str):
+        context_folder_host.make_working(controller, value)   # In this press's own C scope (grant_guard.by_click).
+    elif action == crash_resume_ui.ACTION:
+        from . import ui
+        crash_resume_ui.continue_request(controller, ui)
+    elif action == project_rules_host.REVIEW_ACTION:
+        from . import rules_sheet
+        rules_sheet.open_sheet(state, controller, scope="project", review=True)

@@ -41,12 +41,18 @@ _EXPORT = ("writes a file the person chose in a file browser, copies text for th
 _IMPORT = ("brings a file the person chose, or an item already in their library, into the scene, chat or library; "
            "no provider is called")
 NOT_A_GRANT = {
+    # 2.1.0 attachment markup (v210-agent-ux).
+    "angelo.markup_picture": ("opens the picture viewer on a picture of the chat (a chip's, the newest, or the 3D view "
+                              "captured into the chat's own pictures): no file outside the chat, no consent, no spend"),
+    "angelo.markup_viewer": ("the picture viewer's passive canvas: draws marks on a copy of the picture in memory; its "
+                             "paid edits go through Media Studio's own guarded card, its Send is the composer's send"),
     **dict.fromkeys((
         "angelo.show_about", "angelo.about", "angelo.welcome", "angelo.whats_new", "angelo.bake_maps", "angelo.learn",
         "angelo.conversations", "angelo.connection_menu", "angelo.game_physics", "angelo.changes", "angelo.flow_connect", "angelo.render_engines", "angelo.library_open", "angelo.open_media_studio",
         "angelo.toggle_studio", "angelo.show_flows", "angelo.toggle_chat", "angelo.open_chat", "angelo.flow_open",
         "angelo.flow_open_recipe", "angelo.external_app_open", "angelo.waiting_chat_open", "angelo.skeleton_check",
         "angelo.photo_drop", "angelo.media_open_image", "angelo.crash_report_last", "angelo.approval_policy",
+        "angelo.retopology",
     ), _OPENS),
     **dict.fromkeys((
         "angelo.asset_browser_input", "angelo.asset_shelf_add_input", "angelo.card_host",
@@ -73,8 +79,13 @@ NOT_A_GRANT = {
         "angelo.media_add_to_scene", "angelo.media_apply_to_selected", "angelo.media_drop",
         "angelo.render_engine_set", "angelo.render_region", "angelo.render_region_again",
         "angelo.render_region_revert", "angelo.render_region_draw", "angelo.select_through", "angelo.tension_map",
-        "angelo.uv_checker", "angelo.uv_checker_toggle", "angelo.studio_turn_into_flow",
-        "angelo.restore_checkpoint", "angelo.web_shader_uniforms",
+        "angelo.uv_checker", "angelo.uv_checker_toggle", "angelo.studio_turn_into_flow", "angelo.scatter",
+        "angelo.camera_look", "angelo.shape_cut", "angelo.uv_layout", "angelo.uv_layout_run",
+        "angelo.restore_checkpoint", "angelo.web_shader_uniforms", "angelo.splat_to_mesh", "angelo.fit_collision",
+        # Rigging (v210-rigging, 2026-11-18; doc/angelo/rigging.rst): each an undoable edit of the armature in hand or a
+        # new game rig beside it; none reads or writes a file, an account or a setting.
+        "angelo.retarget_animation", "angelo.make_game_rig", "angelo.extract_root_motion", "angelo.pose_body",
+        "angelo.add_ik_controls", "angelo.set_ik_fk",
     ), _SCENE),
     **dict.fromkeys((
         "angelo.editor_type", "angelo.dock_side", "angelo.pop_out", "angelo.return_dock", "angelo.switch_session", "angelo.new_chat",
@@ -85,6 +96,7 @@ NOT_A_GRANT = {
         "angelo.learn_teach", "angelo.flow_save_recipe", "angelo.studio_prompt", "angelo.chat_example", "angelo.multiline",
     ), _LOCAL),
     **dict.fromkeys((
+        "angelo.export_action_clips",   # Rigging: the file the person picks in its save browser, and clips beside it.
         ), _EXPORT),
     **dict.fromkeys((
         "angelo.attach_reference", "angelo.studio_workflow_image",
@@ -121,6 +133,7 @@ NOT_A_GRANT = {
     'angelo.studio_export': 'copies a Media Studio file to a new path the person chose in a file browser, never over an existing file',
     'angelo.job_open': "shows a finished job's output file in the system's file browser or viewer",
     'angelo.studio_video': "adds Media Studio videos to the Sequencer (an undoable edit), or opens one in the system's player or file browser; the confinement refuses the last two to scripts",
+    'angelo.export_splat_ply': "writes the selected splats to a PLY file the person confirmed in its save browser (which starts in the document's folder with one clean name); a path a script names is refused anywhere outside Angelo's own folders and files",
     'angelo.web_export': "writes a web export to a file the person chose; the agent's own export asks on its approval card, and the confinement refuses a script's write outside the project",
     'angelo.web_preview': "serves the scene to the person's browser on 127.0.0.1 with a token and a Host check, or stops it; the agent's own preview asks on its approval card",
     'angelo.workspace_mode': "switches Director and Manual; the agent's own switch asks on its approval card; no data, no permission",
@@ -146,6 +159,7 @@ NOT_A_GRANT = {
                                  "there by hand does; no permission, no code"),
     "angelo.use_project_brief": ("confirms that a chat's public notes belong to this project, after its exact review; "
                                  "its dialog and code grant no edits, files, paid use or approvals"),
+    "angelo.chat_rules": _OPENS,   # The chat's Rules page; its saves are the page's own ticketed controls.
 }
 
 
@@ -190,7 +204,9 @@ GRANT_STATE = {
                      "path:Library/Application Support", "path:.config", "path:angelo", "path:state"), _G_PRIVATE),
     **dict.fromkeys(("team_org_policy.FILE", "managed_policy.LINUX_FILE", "path:managed-settings.json",
                      "path:managed-settings.d", "path:/Library/Managed Preferences"), _G_POLICY),
-    **dict.fromkeys(("update_feed.KEYS_FILE", "update_flow.READY_FILE", "update_install.READY_FILE",
+    **dict.fromkeys(("update_feed.KEYS_FILE", "release_manifest.KEYS_FILE", "path:linux_release_keys.json",
+                     "release_manifest.MANIFEST_NAME", "release_manifest.SIGNATURE_NAME",
+                     "update_flow.READY_FILE", "update_install.READY_FILE",
                      "engine_link_ui.SETTINGS_FILE", "path:update_keys.json",
                      "path:staged", "path:staging", "path:mount", "path:previous.app", "path:agent_runtime.json",
                      "path:config.toml", "path:userpref.blend", "path:config", "path:scripts", "path:addons",
@@ -250,6 +266,15 @@ GRANT_STATE = {
     **dict.fromkeys((
         "conversations.TRASH",
     ), _G_APPROVAL),
+    # 2.1.0 agent UX (v210-agent-ux): each written only in the person's own grant scope (grant_guard entries).
+    "context_folder_grants.NAME": ("which folders of the person's a chat's agent may read, and which one it may write "
+                                   "text files in (Folder as context, AUDIT entries); each grant is held in C too "
+                                   "(grant_authority.CONTEXT_FOLDERS)"),
+    "reviewed_scripts.NAME": ("standing approval: the scripts the person chose to Always run in a project, by digest; "
+                              "each held in C too (grant_authority.REVIEWED_SCRIPTS)"),
+    "project_rules.NAME": ("the person's standing rules and which project files' rules apply: what the agent is "
+                           "told in every request; written only by the person's own save, Use or Don't use; what applies is held in C "
+                           "(grant_authority.RULE_DECISIONS, GLOBAL_RULES)"),
 }
 
 _N_WORK = ("the person's own work and its history: chats, their index, search, drafts and references, goals, "
@@ -265,6 +290,13 @@ _N_RECORD = ("records Angelo keeps about its own processes: crash reports, updat
              "telemetry, audit logs, carry-over notes and markers, locks, process IDs and logs, an import's Undo "
              "record, a custom endpoint's model metadata, a child Blender's scratch home")
 NOT_GRANT_STATE = {
+    "strict_protection.FILE": ("the person's Strict script protection choice, saved at once beside the preferences so "
+                               "a crash can't lose it: read only to turn protection ON at start (On from either "
+                               "wins), never to turn it off; it widens nothing"),
+    "markup_store.DRAFT": ("an unsent markup of a chat's picture (marks, comments, instructions) in the chat's own "
+                           "pictures folder: grants nothing; a script that edits it only changes what the person sees"),
+    "markup_store.SENT": ("a sent markup, frozen with its message: a record of what the person sent, never read to allow "
+                          "anything"),
     "session_page.STOPPED_FILE": ("the conversations whose live session page the person stopped sharing: it can only "
                                   "withhold a read-only page on this computer, never grant a script, a file or a "
                                   "consent; a script that edits it only shows or hides that page"),
@@ -307,6 +339,8 @@ NOT_GRANT_STATE = {
         "path:audit.jsonl", "path:bake.log", "path:child.log",
         "path:convert-failed.log", "path:failed.log", "path:worker.log", "path:writer.log", "path:performance.json",
         "path:usage.json", "path:updates.json", "path:updates", "path:previous.txt", "path:previous",
+        # Linux: the fallback's kept folder and note as Angelo chose them; cleanup removes only what it names.
+        "update_flow.RECOVERY_FILE",
         "path:connections.lock", "path:pycache", "path:tmp", "path:home", "path:datafiles", "path:extensions",
         "path:.gdignore", "path:README.txt",
     ), _N_RECORD),
@@ -356,6 +390,8 @@ NOT_GRANT_STATE = {
         "path:.angelo-web-",
         "path:angelo-assets-",
         "path:angelo-endpoint-check-",
+        "endpoint_catalog.LISTING_PREFIX",   # A catalog listing's empty CODEX_HOME, removed after it.
+        "runtime_listing.LISTING_PREFIX",   # The same prefix where it is defined (the start check reads it).
         "path:angelo-library-",
         "path:angelo-link-live-",
         "path:angelo-merge-check-",
@@ -381,6 +417,8 @@ NOT_GRANT_STATE = {
         "path:.%s.%s.tmp",
         "path:.%s.tmp",
     ), _N_SCRATCH),
+    "path:%s.%s%s.unreadable": ("a rules file this build could not read, moved aside under a time stamp (project_rules): "
+                                "never read again, so it decides nothing"),
 }
 
 _X_NOT_FILE = ("not a file: an operator, tool, message, schema, host, URL, regular expression, data-block, setting or "
@@ -393,7 +431,12 @@ _X_SHIPPED = ("shipped read-only inside the app: Angelo's own code and helpers, 
 _X_OS_STARTUP = ("the operating system's own login and autostart locations (LaunchAgents, the Windows Startup "
                  "folder, XDG autostart, systemd user units), which the agent-script confinement makes read-only to "
                  "scripts (script_confinement_blender.os_startup): not Angelo's state")
+_X_AUDIO_CONFIG = ("the audio stack's per-user configuration (ALSA, OpenAL Soft, PulseAudio, PipeWire, JACK), read by "
+                   "those libraries when a sound device opens and made read-only to agent scripts with the startup "
+                   "locations (script_confinement_blender.os_startup; break-it-confine-fixes-b31e34840ca MUST-3): "
+                   "another program's files, never written by Angelo, not Angelo's state")
 _X_OTHER = "another program's own files or a system location Angelo only reads or runs"
+_X_PATH_RULE = "a name only given to a path rule (where a file would go), never opened, made or written"
 NOT_STATE = {
     **dict.fromkeys((
         "action_operator_spec.PROPERTY_NAME", "action_world.COMMITTED_NAME", "auto_reasons.WRITE_FILE",
@@ -401,15 +444,21 @@ NOT_STATE = {
         "derived_checks.DEFAULT_MATERIAL_NAME", "derived_checks.DEFAULT_PRIMITIVE_NAME",
         "derived_checks.DEFAULT_SHADER_NAME", "external_cli.RUNTIME_NAME", "external_host.KILL_SWITCH_NAME",
         "external_mcp.SERVER_NAME", "fab_catalog.THUMB_HOST", "fab_settings.NAME",
-        "fal_queue.QUEUE_HOST", "flow_nodes.VIDEO_IDNAME", "goal_spec.TOOL_NAME",
+        "fal_queue.QUEUE_HOST", "flow_nodes.VIDEO_IDNAME", "goal_spec.TOOL_NAME", "planning_spec.TOOL_NAME",
         "input_policy.RENDER_OPERATOR", "job_render_outputs.LAYERS_NAME", "managed_policy.DOMAIN",
         "render_extensions.ENGINE_PATH", "script_source.SCRIPT_FILE", "script_store.TOOL_NAME",
         "secret_service_linux.SCHEMA", "secret_service_linux.SECRETS_BUS_NAME", "studio_assets.LIBRARY_NAME",
-        "tension_map_logic.MODIFIER_NAME", "view_passes.UNSET_SPACE", "view_spec.TOOL_NAME",
+        "desktop_linux.PORTAL", "desktop_linux.PORTAL_PATH",   # The desktop portal's D-Bus name and object path.
+        "tension_map_logic.MODIFIER_NAME", "ik_controls.IK_NAME", "ik_controls.ROT_NAME", "ik_controls.FOLLOW_NAME",
+        "view_passes.UNSET_SPACE", "view_spec.TOOL_NAME",
         "web_link_assets.DISPLAY", "worker_chat_arrival.CONSENT", "worker_chat_arrival.STOP",
-        "path:..", "download_spec.NAME",
+        "path:..", "download_spec.NAME", "bake_check_host.SCENE_NAME", "scatter_nodes.GROUP_NAME",
+        "look_nodes.GROUP_NAME", "look_nodes.NODE_NAME",
         # A lens length in millimetres (a number): an orbit's distance divides by it, which the scan reads as a join.
         "external_look_args.LENS_MM",
+        # Strict script protection's preference property (an add-on preference Blender saves with the person's
+        # preferences, never a file of Angelo's); turning it off is guarded (grant_guard.setting_allowed).
+        "strict_protection.NAME",
     ), _X_NOT_FILE),
     **dict.fromkeys((
         "fal_video.VIDEO_FILE", "hidden_copy.SUFFIX", "job_render_outputs.JPEG2000_CODESTREAM",
@@ -419,6 +468,7 @@ NOT_STATE = {
         "path:job.json", "path:result.json", "path:spec.json", "path:world.blend", "path:world.exr",
         "path:linear.hdr", "path:shown.bmp", "path:character.png", "path:parts.png", "path:checks", "path:packed",
         "path:part.crash.txt.partial", "path:package.json",
+        "path:%d-%d.exr",   # bake_check_host: a picture of the bake check, in its scratch folder.
         "download_folders.FOLDER", "download_fetch.TEMPORARY", "path:%s (%d)%s%s",   # angelo_download's file.
         # A connected app's attached picture, decoded into a private temporary folder for the conversation's own
         # reference store to copy (external_agent.AgentUi.attach), then removed.
@@ -434,6 +484,7 @@ NOT_STATE = {
         "path:human_base_meshes.json", "path:base_mesh_thumbs", "path:unity_package", "path:unreal_plugin",
         "path:godot_addon", "path:update_helpers", "path:web_preview", "path:session_page", "path:modules", "path:angelo_identity.json",
         "path:config.ocio", "path:release/branding/angelo/exports",
+        "scatter_spec.PRESET_DIR", "path:biomes", "path:%s.angelo-biome.json",   # The shipped biome presets.
     ), _X_SHIPPED),
     **dict.fromkeys((
         "path:.bun", "path:.cargo", "path:.local", "path:/Applications", "path:/proc/self/mountinfo", "path:/tmp",
@@ -447,6 +498,9 @@ NOT_STATE = {
         "path:nodejs", "path:npm", "path:pnpm", "path:powershell.exe", "path:scoop", "path:shims", "path:stat",
         "path:v1.0",
         "path:/etc/resolv.conf",   # download_names reads this machine's DNS search domains.
+        "path:comm",   # engine_detect reads /proc/<pid>/comm: a process's name, the kernel's.
+        "path:log",   # runtime_launch: Codex's log folder for Angelo threads (codex-state), written by Codex only.
+        "runtime_environment.SYSTEM_PATH",   # The system's own program folders, the PATH of Angelo's Linux runtime.
     ), _X_OTHER),
     **dict.fromkeys((
         "blender_asset_index.PREFIX",
@@ -517,18 +571,34 @@ NOT_STATE = {
         "secret_service_linux.FLATPAK_INFO",
         "update_stage_mac.TASKPOLICY",
         "path:/proc/%d/status",
+        "path:exe",
+        # update_card.linux_recovery: "<name> <n>" when a kept folder or note name beside the install is taken.
+        "path:%s %d%s",
         "path:/proc/meminfo",
         # process_identity: Linux's own process facts (a start time, a parent, an owner), read only.
         "path:/proc/%d/stat", "path:/proc/stat", "process_identity.PROC_STATUS",
         # external_build.bundle_version: another Angelo build's own bundle Info.plist, read to name that build.
         "path:Contents", "path:Info.plist",
+        # addon_compat_live._manifest: an installed extension's own manifest, read only to judge it against an update.
+        "path:blender_manifest.toml",
         "path:/Script/Engine",
         "path:colormanagement",
         "path:fonts",
         "path:installation/bin",
     ), _X_OTHER),
+    # script_confinement_blender.pycache_mirrors: asks importlib's cache_from_source where a folder's bytecode goes.
+    "path:mirror.py": _X_PATH_RULE,
     **dict.fromkeys(("path:LaunchAgents", "path:Start Menu", "path:Startup", "path:Windows", "path:autostart",
                      "path:systemd", "path:user"), _X_OS_STARTUP),
+    # `Preferences`: macOS's ~/Library/Preferences, named only as the folder of OpenAL Soft's alsoft.conf there.
+    **dict.fromkeys(("path:Preferences", "path:alsoft.conf", "path:alsoft.ini", "path:alsa", "path:pulse",
+                     "path:pipewire"), _X_AUDIO_CONFIG),
+    # 2.1.0 agent UX (v210-agent-ux): a message, a data-block name, a sheet's action prefix, a picture suffix.
+    **dict.fromkeys(("context_folder.NO_FOLDER", "project_rules_host.TEXT_NAME", "rules_sheet.PREFIX"), _X_NOT_FILE),
+    # Several folders (2.1.0): the tools' messages to the model.
+    **dict.fromkeys(("context_folder.NAME_FOLDER", "context_folder.UNKNOWN_FOLDER", "context_folder_write.MISSING_FILE",
+                     "auto_reasons.CONFIG_FILE"), _X_NOT_FILE),   # The last: an Auto reason's code.
+    "path:.jpg": _X_SUFFIX,
 }
 
 
@@ -669,6 +739,8 @@ REACHES_GRANT_CODE = {
 # NOT_A_GRANT operators that write grant state (``grant_state_reach``; break-it S1), each with why that is no grant:
 # it narrows, or puts back exactly what the person had granted. Anything else writing grant state fails.
 WRITES_GRANT_STATE = {
+    "angelo.markup_viewer": ("the person's own Send in the picture viewer sends the chat's message as the composer does "
+                             "(console.send_message): the chat saves with its messages; its options never change"),
     "angelo.chat_input": ("routes the person's real keys and clicks in the chat: a sent message saves the chat with its "
                           "messages (and binds a worker's chat to its part file); the chat's options change only "
                           "through set_options, an entry, in the press's C ticket"),
@@ -690,7 +762,8 @@ _NO_TWIN = "no operator does this at a click: only the agent's call, after its c
 APPROVAL_TWINS = {
     "angelo_accept_preview": (("angelo.accept_native_preview",), "the person's Accept is itself a grant: AUDIT"),
     "angelo_discard_preview": (("angelo.discard_native_preview",), "discarding narrows: the card only says what is lost"),
-    "angelo_app_feature": (("angelo.godot_link_install", "angelo.godot_link"), "the + menu row's own grants: AUDIT"),
+    "angelo_app_feature": (("angelo.godot_link_install", "angelo.godot_link", "angelo.markup_picture"),
+                           "the + menu row's own grants: AUDIT; MARKUP opens the picture viewer (NOT_A_GRANT)"),
     "angelo_engine_link": (("angelo.godot_link",), "turning the link on is a grant: AUDIT"),
     "angelo_flow_run": (("angelo.flow_run",), "a paid run: AUDIT"),
     "angelo_studio_generate": (("angelo.studio_generate",), "a paid generation: AUDIT"),
@@ -725,6 +798,7 @@ APPROVAL_TWINS = {
     "angelo_execute_python": ((), "applying an approved script is Approve's and its grouped sibling's: AUDIT, GROUPED"),
     "angelo_write_file": ((), _NO_TWIN),
     "angelo_delete_file": ((), _NO_TWIN),
+    "angelo_context_folder_write": ((), _NO_TWIN),   # The working folder's text file: only the agent's call.
     "angelo_engine_fix": ((), _NO_TWIN),
     "angelo_job_start": ((), _NO_TWIN),
     "angelo_team_library_save": ((), _NO_TWIN),
@@ -1085,10 +1159,28 @@ _WRITES = {"atomic_json", "write_json", "write_text", "write_bytes", "dump", "re
            "rmtree", "rmdir", "mkdir", "makedirs", "touch", "copy", "copy2", "copyfile", "copytree", "move", "symlink"}
 
 
-def _writes(function):
+def _pure_names(tree):
+    """Names a module binds to ``dataclasses``' functions (``from dataclasses import replace [as copy]``): a call of one
+    copies a value and writes nothing, though ``replace`` is also ``os.replace``'s name."""
+    return frozenset(alias.asname or alias.name for node in ast.walk(tree)
+                     if isinstance(node, ast.ImportFrom) and node.module == "dataclasses" for alias in node.names)
+
+
+def _text_substitution(node):
+    """``text.replace("a", "b"[, n])``: a string method, told apart from a path's or a module's ``replace`` by its
+    first two arguments, both string literals (any other ``replace(a, b)`` may move a file and counts as a write)."""
+    return (isinstance(node.func, ast.Attribute) and node.func.attr == "replace" and len(node.args) >= 2
+            and all(isinstance(arg, ast.Constant) and isinstance(arg.value, str) for arg in node.args[:2]))
+
+
+def _writes(function, pure=frozenset()):
+    """Whether ``function`` writes a file: a call of a writing name, or ``open`` in a writing mode. ``pure``: names its
+    module binds to functions that write nothing (``_pure_names``)."""
     for node in ast.walk(function):
         if isinstance(node, ast.Call):
             name = getattr(node.func, "attr", getattr(node.func, "id", ""))
+            if isinstance(node.func, ast.Name) and name in pure or _text_substitution(node):
+                continue
             if name in _WRITES:
                 return True
             if name == "open":   # open(path, "w") or path.open("a"): a mode that writes.
@@ -1149,9 +1241,9 @@ def grant_state_writers(resolver=None):
                 for item in node.body:
                     if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
                         owners[id(item)] = (node, lambda node=node: _self_paths(collector, module, node))
-        cache = {}
+        cache, pure = {}, _pure_names(tree)
         for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or not _writes(node):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or not _writes(node, pure):
                 continue
             keys = set(collector.path_keys(module, node))
             owner = owners.get(id(node))

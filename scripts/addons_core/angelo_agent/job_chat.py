@@ -39,6 +39,7 @@ TITLES = {"RENDER_STILL": n_("Rendering a still"), "RENDER_ANIMATION": n_("Rende
           "BAKE_PHYSICS": n_("Baking physics"),
           "BAKE_SIMULATION": n_("Baking a simulation"), "EXPORT_USD": n_("Exporting USD"),
           "EXPORT_ALEMBIC": n_("Exporting Alembic"),
+          "UV_LAYOUT": n_("Laying out UVs"),
           # angelo_view's RENDERED shading (job_spec.PREVIEW): the agent's look at the scene camera.
           "RENDER_PREVIEW": n_("Rendering a preview for the agent")}
 # Product names, shown as Blender shows them (not translated); any other engine shows its identifier.
@@ -75,10 +76,14 @@ def label_job(job_id, label):
     _LABELS[job_id] = label
 
 
+def heading(record):
+    """What the job does, untranslated (an ``n_`` template, or the kind of one Angelo has no title for)."""
+    return _LABELS.get(record.get("id")) or TITLES.get(record["kind"], record["kind"])
+
+
 def title(record):
     """What the job does, translated (the card's and status bar's heading)."""
-    heading = _LABELS.get(record.get("id")) or TITLES.get(record["kind"], record["kind"])
-    return iface_(heading)
+    return iface_(heading(record))
 
 
 def duration(seconds):
@@ -191,7 +196,9 @@ def progress_text(record):
             text = join([text, plural_(receipt["files"], "{count} file", "{count} files")])
         return text
     if status == "cancelled":
-        by = {"time_budget": iface_("Stopped at its time budget"), "agent": iface_("Cancelled by the agent")}.get(
+        by = {"time_budget": iface_("Stopped at its time budget"), "agent": iface_("Cancelled by the agent"),
+              # Planning started in its chat: queued changes never wait for a press (plan_mode.rst, "Safety").
+              "planning": iface_("Cancelled: its chat started planning")}.get(
             record["reason"], iface_("Cancelled"))
         text = join([by, duration(elapsed)]) if record.get("started") else by
         if receipt.get("kept"):

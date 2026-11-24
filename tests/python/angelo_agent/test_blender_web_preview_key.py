@@ -43,14 +43,14 @@ import addon_utils  # noqa: E402
 
 # Enabled, as in the app: the glTF exporter calls the scene hook (the look in the extras) only of enabled add-ons.
 addon_utils.enable("angelo_agent", default_set=False, persistent=False)
-from angelo_agent import scene_changes, web_export, web_preview  # noqa: E402
+from angelo_agent import scene_changes, web_export, web_export_spec, web_preview  # noqa: E402
 
 checks, observed = {}, {}
 report = {"success": False, "checks": checks, "observed": observed}
 scene = bpy.context.scene
 layer = bpy.context.view_layer
 FOLDER = Path(tempfile.mkdtemp(prefix="angelo-preview-key-"))
-REQUEST = {"meshes": "AUTO", "textures": "AUTO", "merge": True, "selection_only": False}   # The preview's own.
+REQUEST = dict(web_export_spec.PREVIEW_REQUEST)   # The preview's own.
 # Settings whose change would end the session or the check itself, never a preview's concern.
 UNSAFE = {"use_lock_interface", "use_persistent_data", "threads_mode", "threads", "filepath", "use_stamp_note",
           "frame_current"}   # The frame steps the animation and is in the key since 1.0.6 (scene_changes).

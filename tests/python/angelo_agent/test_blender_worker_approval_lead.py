@@ -58,6 +58,7 @@ from angelo_agent import (chat_launcher, chat_view, connect_hero, console, live_
                           worker_sessions)
 from hosted_worker_chat import connect, hosted  # noqa: E402
 from hosted_rail_turns import RailTurns  # noqa: E402
+import qa_hit
 
 PROMPT_S = 10.0   # From the Approve to the script's result in the lead; the benchmark's workers waited minutes.
 HOSTED = hosted()
@@ -138,9 +139,7 @@ def click(x, y):
 def tile_point(session):
     placed = session_rail_draw.last.get(window.as_pointer())
     tile = next(t for t in placed[1].tiles if t.session == session)
-    region = view_region()
-    x, y, w, h = tile.rect
-    return int(region.x + x + w / 2), int(region.y + y + h / 2)
+    return qa_hit.ipoint(qa_hit.RAW, view_region(), tile.rect)   # The rail reads region pixels.
 
 
 def approve_rect(call_id):

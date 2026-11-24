@@ -27,6 +27,7 @@ assert "--factory-startup" in sys.argv and not bpy.app.background, "Run in a win
 addon_utils.enable("angelo_agent", default_set=False, persistent=False)
 import crash_fixtures as cfx  # noqa: E402
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-crash-gpu-qa"))
 OUT.mkdir(parents=True, exist_ok=True)
 state = {"success": False, "checks": {}, "phase": "setup", "screenshots": []}
@@ -61,13 +62,12 @@ def labels(plan):
 
 def click(action):
     """A real pointer click on the card's own control (``card_host``'s hit geometry)."""
-    from angelo_agent import canvas_rtl, card_host
+    from angelo_agent import card_host
     active = card_host._active
     area = next(a for a in window().screen.areas if a.as_pointer() == active.area)
     region = next(r for r in area.regions if r.type == 'WINDOW')
     rect = next(r for r, a, v in reversed(active.plan.hits) if a == action)
-    x = int(region.x + canvas_rtl.pointer_x(rect[0] + rect[2] / 2, region.width))
-    y = int(region.y + rect[1] + rect[3] / 2)
+    x, y = qa_hit.ipoint(qa_hit.PIXELS, region, rect)
     for kind, value in (('MOUSEMOVE', 'NOTHING'), ('LEFTMOUSE', 'PRESS'), ('LEFTMOUSE', 'RELEASE')):
         window().event_simulate(type=kind, value=value, x=x, y=y)
 

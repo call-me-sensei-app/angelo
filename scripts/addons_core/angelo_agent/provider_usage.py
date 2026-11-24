@@ -22,7 +22,7 @@ Normalized fields, so both runtimes can be compared:
 import math
 import threading
 
-from . import unsent_loss   # At load: never imported inside a round's write (a provider's lifecycle lock).
+from . import request_tiers, unsent_loss   # At load: never imported inside a round's write (a provider's lifecycle lock).
 
 TOKENS = ("input_tokens", "cached_input_tokens", "cache_write_input_tokens",
           "output_tokens", "reasoning_output_tokens")
@@ -249,6 +249,8 @@ class CodexThreadUsage:
             self.updates += 1
             if self._turn is not None:
                 self._turn["requests"] += grew
+                if grew:   # One model response: its own usage is the update's ``last`` (request_tiers).
+                    self._fold(self._turn, codex_total(token_usage.get("last")))
             running = self._usage(self._turn, total)
         if callable(notify) and running is not None:
             notify(running)
@@ -257,7 +259,18 @@ class CodexThreadUsage:
         with self._lock:
             self._select(thread_id)
             self._turn = {"baseline": None if self.total is None else dict(self.total),
-                          "updates": self.updates, "valid": True, "requests": 0}
+                          "updates": self.updates, "valid": True, "requests": 0,
+                          "tiers": {}, "summed": dict.fromkeys(request_tiers.FIELDS, 0)}
+
+    @staticmethod
+    def _fold(turn, last):
+        """Add one model response's own usage to the turn's per-request fold; a response without one unknowns it."""
+        if last is None or turn["tiers"] is None:
+            turn["tiers"] = None
+            return
+        turn["tiers"] = request_tiers.added(turn["tiers"], request_tiers.fold([last]))
+        for key in request_tiers.FIELDS:
+            turn["summed"][key] += last[key]
 
     @staticmethod
     def _usage(turn, total):
@@ -266,6 +279,9 @@ class CodexThreadUsage:
         usage = difference(total, turn["baseline"])
         if usage is not None and turn["requests"]:
             usage["requests"] = turn["requests"]
+            # Only responses that add up to the turn are its requests: one update missed leaves the split unknown.
+            if turn["tiers"] is not None and all(turn["summed"][key] == usage.get(key) for key in request_tiers.FIELDS):
+                usage["above_step"] = request_tiers.added(turn["tiers"], {})
         return usage
 
     def finish_turn(self, duration_ms):
@@ -316,6 +332,9 @@ class ClaudeProcessUsage:
             self.model_baseline = models if usage is not None else None
             if served:
                 usage["models"] = served
+            if usage is not None and streamed and "above_step" in streamed and all(
+                    streamed.get(key) == usage.get(key) for key in request_tiers.FIELDS):
+                usage["above_step"] = streamed["above_step"]   # The round's messages add up to it: their tiers.
             usage = streamed if usage is None else usage
         duration = _milliseconds(result.get("duration_ms")) if isinstance(result, dict) else None
         if usage is not None and duration is not None:
@@ -342,6 +361,10 @@ def running_usage(metrics):
     """
     with metrics.lock:
         totals = {key: value for key, value in metrics.usage.items() if key in USAGE_KEYS}
+        reports = dict(getattr(metrics, "usage_reports", None) or {})
+        # The finished turns' requests at their own tiers, while every one of them reported its split.
+        tiers = metrics.usage.get("above_step", {}) if reports.get("above_step", 0) == reports.get("input_tokens", 0) \
+            else None
         partial = dict(getattr(metrics.path, "running", None) or {})
         turns, finished = metrics.counts.get("provider_turn_requests", 0), metrics.finished
     for key in USAGE_KEYS:
@@ -350,7 +373,12 @@ def running_usage(metrics):
             totals[key] = totals.get(key, 0) + value
     if not totals:
         return None
-    return dict(totals, turns=turns, running=bool(partial) and not finished)
+    if partial:   # The turn in progress: its responses so far, at their tiers (None when it can't split them).
+        tiers = request_tiers.added(tiers, request_tiers.clean(partial.get("above_step"), partial))
+    usage = dict(totals, turns=turns, running=bool(partial) and not finished)
+    if tiers is not None:
+        usage["above_step"] = tiers
+    return usage
 
 
 def record_runtime_round(controller, *, claude=False):

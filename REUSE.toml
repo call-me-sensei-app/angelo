@@ -34,6 +34,12 @@ SPDX-FileCopyrightText = "2026 Hyperbond Studio Pte. Ltd."
 SPDX-License-Identifier = "GPL-2.0-or-later"
 
 [[annotations]]
+path = "scripts/addons_core/angelo_agent/linux_release_keys.json"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Hyperbond Studio Pte. Ltd."
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+[[annotations]]
 path = "scripts/addons_core/angelo_agent/agent_runtime.json"
 precedence = "closest"
 SPDX-FileCopyrightText = "2026 Hyperbond Studio Pte. Ltd."
@@ -166,3 +172,9 @@ path = "web_link/**"
 precedence = "closest"
 SPDX-FileCopyrightText = "2026 Hyperbond Studio Pte. Ltd."
 SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "scripts/addons_core/angelo_agent/device_profiles/*.json"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Hyperbond Studio Pte. Ltd."
+SPDX-License-Identifier = "GPL-2.0-or-later"

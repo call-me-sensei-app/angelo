@@ -189,6 +189,13 @@ class ClaudeRoundTests(ClaudeAdapterFixture, unittest.TestCase):
     def test_a_ping_in_a_quiet_stream_is_not_the_model_answering(self):
         self.quiet(stream({"type": "ping"}))
 
+    def test_a_hook_heartbeat_is_not_the_model_answering(self):
+        # Claude Code 2.1.323 and later send this every 30 s while a hook runs long in -p (the shape read from
+        # the 2.1.325 binary): the runtime is alive, the model is not answering.
+        self.quiet({"type": "tool_progress", "tool_use_id": "hook-PreToolUse-toolu_01-heartbeat-0",
+                    "tool_name": "PreToolUse", "parent_tool_use_id": "toolu_01", "elapsed_time_seconds": 30,
+                    "heartbeat": True, "session_id": "fixture-native"})
+
     def test_one_endless_stretch_is_given_up_even_while_it_streams(self):
         self.limits(idle=5, stretch=0.2)
         self.play([message_start(), THINKING_START] + [thinking(0, "again ")] * 200)
@@ -204,7 +211,7 @@ class ClaudeRoundTests(ClaudeAdapterFixture, unittest.TestCase):
         self.turn("fixture-native", "After a restart")
         self.host.record_provider_usage.assert_called_once_with(
             {"input_tokens": 94120, "cached_input_tokens": 90000, "cache_write_input_tokens": 4000,
-             "requests": 1, "output_tokens": 5000, "models": ["claude-opus-5-5"], "turn_ms": 900})
+             "requests": 1, "output_tokens": 5000, "above_step": {}, "models": ["claude-opus-5-5"], "turn_ms": 900})
 
     def test_stop_during_a_round_reports_what_the_round_had_already_used(self):
         self.limits(idle=30, stretch=30)
@@ -271,7 +278,8 @@ class StreamUsageTests(unittest.TestCase):
                                     message_delta(60))
         self.assertTrue(complete)
         self.assertEqual(usage, {"input_tokens": 94230, "cached_input_tokens": 90100, "cache_write_input_tokens": 4000,
-                                 "requests": 2, "output_tokens": 100, "models": ["claude-opus-5-5"]})
+                                 "requests": 2, "output_tokens": 100, "above_step": {},   # None above a step.
+                                 "models": ["claude-opus-5-5"]})
 
     def test_an_unfinished_message_has_no_output_count_and_nothing_is_estimated(self):
         usage, complete = self.feed(message_start("msg_1"), message_delta(40), message_start("msg_2", 10, 100, 0),

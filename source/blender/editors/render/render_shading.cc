@@ -1514,6 +1514,11 @@ static wmOperatorStatus lightprobe_cache_bake_invoke(bContext *C,
   Main *bmain = CTX_data_main(C);
   Scene *scene = CTX_data_scene(C);
 
+  if (!WM_gpu_is_available()) {
+    BKE_report(op->reports, RPT_ERROR, WM_gpu_unavailable_message());
+    return OPERATOR_CANCELLED;
+  }
+
   Vector<Object *> probes = lightprobe_cache_irradiance_volume_subset_get(C, op);
 
   if (probes.is_empty()) {
@@ -1590,6 +1595,11 @@ static wmOperatorStatus lightprobe_cache_bake_exec(bContext *C, wmOperator *op)
   ViewLayer *view_layer = CTX_data_view_layer(C);
   Main *bmain = CTX_data_main(C);
   Scene *scene = CTX_data_scene(C);
+
+  if (!WM_gpu_is_available()) {
+    BKE_report(op->reports, RPT_ERROR, WM_gpu_unavailable_message());
+    return OPERATOR_CANCELLED;
+  }
 
   G.is_break = false;
 

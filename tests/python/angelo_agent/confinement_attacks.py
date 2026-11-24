@@ -183,7 +183,8 @@ def run(source, filename=None, **names):
         else:
             result["findings"] = confinement.run_confined(text, namespace, None, "attack")
     except confinement.ScriptConfined as error:
-        result.update(refused=True, reason=confinement.reason_of(error))
+        result.update(refused=True, reason=confinement.reason_of(error), text=str(error),
+                      what=str(getattr(error, "what", "")))
     except Exception as error:   # noqa: BLE001 - reported to the parent, which decides.
         result["error"] = repr(error)[:200]
     result["confined_after"] = confinement.confined()

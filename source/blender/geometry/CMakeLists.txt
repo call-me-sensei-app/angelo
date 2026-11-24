@@ -49,6 +49,22 @@ set(SRC
   intern/realize_instances.cc
   intern/reorder.cc
   intern/resample_curves.cc
+  intern/mesh_retopology.cc
+  intern/retopology/retopo_bvh.cc
+  intern/retopology/retopo_cleanup.cc
+  intern/retopology/retopo_cleanup_split.cc
+  intern/retopology/retopo_extract.cc
+  intern/retopology/retopo_facts.cc
+  intern/retopology/retopo_features.cc
+  intern/retopology/retopo_field.cc
+  intern/retopology/retopo_finish.cc
+  intern/retopology/retopo_graph_faces.cc
+  intern/retopology/retopo_hierarchy.cc
+  intern/retopology/retopo_holes.cc
+  intern/retopology/retopo_intake.cc
+  intern/retopology/retopo_integer.cc
+  intern/retopology/retopo_refine.cc
+  intern/retopology/retopo_remesh.cc
   intern/reverse_uv_sampler.cc
   intern/separate_geometry.cc
   intern/set_curve_type.cc
@@ -61,6 +77,17 @@ set(SRC
   intern/uv_parametrizer.cc
   intern/volume_grid_resample.cc
 
+  intern/retopology/retopo_bvh.hh
+  intern/retopology/retopo_cleanup.hh
+  intern/retopology/retopo_core.hh
+  intern/retopology/retopo_edges.hh
+  intern/retopology/retopo_extract.hh
+  intern/retopology/retopo_field.hh
+  intern/retopology/retopo_graph.hh
+  intern/retopology/retopo_integer.hh
+  intern/retopology/retopo_mesh.hh
+  intern/retopology/retopo_parallel.hh
+  intern/retopology/retopo_vec.hh
   xpbd/intern/xpbd_constraint_coloring.cc
 
   GEO_add_curves_on_mesh.hh
@@ -81,6 +108,7 @@ set(SRC
   GEO_mesh_copy_selection.hh
   GEO_mesh_merge_verts.hh
   GEO_mesh_primitive_cuboid.hh
+  GEO_mesh_retopology.hh
   GEO_mesh_primitive_cylinder_cone.hh
   GEO_mesh_primitive_grid.hh
   GEO_mesh_primitive_line.hh
@@ -172,6 +200,10 @@ if(WITH_GTESTS)
     tests/GEO_interpolate_curves_test.cc
     tests/GEO_merge_curves_test.cc
     tests/GEO_realize_instances_test.cc
+    tests/retopo_core_test.cc
+    tests/retopo_holes_test.cc
+    tests/retopo_test_meshes.hh
+    tests/GEO_uv_pack_test.cc
   )
   set(TEST_LIB
     PRIVATE bf::intern::clog

@@ -216,6 +216,10 @@ def dispatch(context, controller, state, action, value):
         except goal_controls.HeldElsewhere:
             from .goal_text import held_elsewhere_notice
             controller.emit("message", {"role": "system", **held_elsewhere_notice()})
+    elif action == "popup_add_plan":   # Plan mode: the chat becomes Read only and plans (planning_controls.start).
+        from . import planning_controls
+        state.pop("popover", None)
+        planning_controls.start(controller, person=True)   # The person's press: a goal held here ends, and says so.
     elif action == "popup_add_choose":   # A tool with one option (Work on hands): one click chooses it.
         controller.chosen_tools = chosen_tools.choose(getattr(controller, "chosen_tools", []) or [], value,
                                                       chosen_tools.tool(value).options[0][0])

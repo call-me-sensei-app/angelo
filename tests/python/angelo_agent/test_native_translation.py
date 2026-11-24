@@ -106,6 +106,20 @@ class BypassScannerTests(unittest.TestCase):
             with self.subTest(source=source):
                 self.assertEqual([], scan.scan(source, "case.py")[0])
 
+    def test_file_text_is_a_wrapper_every_tool_reads(self):
+        """``ui_text.file_text`` translates text that leaves the interface (a file's name or contents). A literal it
+        marks must reach the template from any module, UI ones too (Blender's extractor does not know the name), or
+        it ships in English without a failing test."""
+        _, marked = scan.scan("name = file_text('Your previous Angelo', 'Angelo')", "case.py", net=False)
+        self.assertEqual([(msgid, kind) for msgid, _, kind in marked], [("Your previous Angelo", "file_text")])
+        self.assertIn("fragment", {f.kind for f in scan.scan("x = file_text('A' + 'B')", "case.py")[0]})
+        self.assertEqual(scan.explicit_contexts("file_text('Keys', 'Angelo')"), {(1, "Keys"): "Angelo"})
+        self.assertEqual(scan.angelo_only_messages("file_text('Keys', 'Angelo')\nfile_text(NAME)\nfile_text('Note')"),
+                         [("Angelo", "Keys"), ("", "Note")])
+        extractor = (ROOT / "scripts/angelo/i18n/extract_pot.py").read_text(encoding="utf-8")
+        for needed in ("scan.angelo_only_messages(source)", "scan.explicit_contexts(source)"):
+            self.assertIn(needed, extractor)
+
 
 # Modules that mention UI helpers only to build notices or model-side text; the scanner still checks their notices.
 MODEL_SIDE_UI_USERS = {"controller", "controller_external", "external_agent", "providers", "codex_plan", "plan_runaway", "voice", "sessions", "cli_runtime", "external_host",
@@ -233,6 +247,33 @@ class CatalogueTests(unittest.TestCase):
                 errors = [issue for issue in issues if issue.severity == "error"]
                 self.assertEqual([], errors[:10])
                 self.assertEqual(translated, required)
+
+    def test_no_catalogue_file_holds_a_message_twice(self):
+        """GNU msgfmt refuses a catalogue with two entries for one (context, message), a retired ``#~`` one included:
+        every catalogue held "Camera" and "Rotation" twice after an entry merge kept the base's retired copy beside
+        a lane's new one (release/v2.1.0, 2026-11-20). Each file here, the template and the Arabic source too."""
+        import collections
+        files = sorted((ROOT / "locale/angelo").rglob("*.po")) + [ROOT / "locale/angelo/angelo.pot"]
+        found = []
+        for path in files:
+            _, entries = po.read(str(path))
+            counts = collections.Counter(entry.key for entry in entries)
+            found += [f"{path.relative_to(ROOT)}: {key}" for key, n in counts.items() if n > 1]
+        self.assertEqual([], found[:10])
+
+    def test_the_check_refuses_a_message_held_twice(self):
+        german = languages.BY_CODE["de"]
+        header = f"Content-Type: text/plain; charset=UTF-8\nLanguage: {german.po}\n{validate.STATUS_FIELD}: {validate.STATUS_VALUE}\n"
+        template = [po.Entry("Camera", "", "")]
+        active, retired = po.Entry("Camera", "Kamera", ""), po.Entry("Camera", "Kamera", "", obsolete=True)
+
+        def duplicates(entries):
+            issues, _ = validate.check_catalog(german, header, entries, template)
+            return [i for i in issues if i.severity == "error" and "twice" in i.message]
+        self.assertEqual([], duplicates([active]))
+        self.assertTrue(duplicates([active, retired]))
+        self.assertTrue(duplicates([active, po.Entry("Camera", "Kamera", "")]))
+        self.assertEqual([], duplicates([active, po.Entry("Camera", "Kamera", "Angelo", obsolete=True)]))
 
     def test_catalogues_are_marked_machine_produced_pending_review(self):
         for language in languages.LANGUAGES:

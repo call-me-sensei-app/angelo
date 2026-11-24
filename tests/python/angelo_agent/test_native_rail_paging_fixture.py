@@ -13,6 +13,8 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest.mock import patch
 
+import qa_hit  # The suite maps the rail's region pixels through it (RAW: no scale, no mirror).
+
 SOURCE = Path(__file__).with_name('test_blender_session_rail.py')
 ORIGINAL = ['lead', 'real-room', 'real-lamp']
 
@@ -113,7 +115,7 @@ def world(height=605, scale=1.0, fail_bind=False, contracting=False, fault=None)
                  time=NS(monotonic=lambda: clock[0]), traceback=traceback, ui=ui, window=window,
                  session_rail=NS(TEXT_BLOCK=64), parallel_sessions=NS(sessions=lambda: list(sessions)),
                  view_region=lambda: region, plan=plan, check=check, send=send, click=click,
-                 tile_point=tile_point, screenshot=shots.append)
+                 tile_point=tile_point, screenshot=shots.append, qa_hit=qa_hit)
     nodes = [node for node in ast.parse(SOURCE.read_text()).body
              if isinstance(node, ast.FunctionDef) and node.name.startswith('paging_')]
     exec(compile(ast.Module(body=nodes, type_ignores=[]), str(SOURCE), 'exec'), scope)

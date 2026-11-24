@@ -107,13 +107,19 @@ def send(provider, context, params, attempt):
     # Host tool calls arrive inside a Codex turn: approving and running them is not model time.
     turns = provider._plan
     overdue = turn_activity.wait(provider.done, provider._activity, busy=getattr(context, "tools_pending", None),
-                                 cut=None if turns is None else lambda: turns.watch.reason is not None)
+                                 cut=None if turns is None else lambda: turns.watch.reason is not None,
+                                 waiting=None if context.voice else lambda status: context.emit("status", {"text": status}),
+                                 stopped=lambda: context.cancelled)
     if overdue == turn_activity.CUT:
         return _cut(provider, context, rpc, fence, turns.watch.reason)
+    if overdue == turn_activity.STOPPED:   # Stop was not confirmed in time: the host ends the turn as stopped.
+        provider.stop_request(fence)
+        record_interrupted(context, provider._usage.finish_turn(None))
+        return "interrupted", fence, None
     if overdue:
         provider.stop_request(fence)
         record_interrupted(context, provider._usage.finish_turn(None))
-        raise RpcError(turn_activity.problem("Agent", overdue, "Inspect the scene before retrying"))
+        raise RpcError(turn_activity.problem("Agent", overdue, "Inspect the scene before retrying", provider._activity))
     if provider.turn_status == "failed":
         retry = _resend(provider, context, rpc)
         if retry is not None:

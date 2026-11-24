@@ -347,6 +347,10 @@ def _switch_row(page, row, top):
         y += 6 * s
         page.items.append(("glyph", "alert", pad, y + 2.5 * s, 12 * s, tk.AMBER))
         y += page.text_block(row["warning"], pad + 18 * s, y, text_w - 18 * s, 12, tk.AMBER)
+    for label, action, value, style in row.get("buttons", ()):   # Under the text, as a link of its own.
+        y += 6 * s
+        page.button(pad, y, label, style, action, value, size=12.5, height=28)
+        y += 28 * s
     enabled = row.get("enabled", True)
     page.items.append(("switch", w - pad - sw, top + pad, sw, sh, bool(row.get("on")), row["action"], row.get("value"), enabled))
     page.hit(w - pad - sw - 6 * s, top + pad - 6 * s, sw + 12 * s, sh + 12 * s, row["action"], row.get("value"), enabled)

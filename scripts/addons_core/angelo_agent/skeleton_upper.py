@@ -53,6 +53,19 @@ def hands(rig, view, hips, legs, mapping):
         lateral = abs(float((rig.heads[bone] - centre) @ mapping.left))
         if side not in hands or lateral > hands[side][2]:
             hands[side] = (bone, hand, lateral)
+    if len(hands) < 2:   # Digits all alike (no thumb to tell): the bone they hang from is still the hand.
+        for h in hand_rig.hand_bones(skel):
+            bone = view.bones[h]
+            lateral = abs(float((rig.heads[bone] - centre) @ mapping.left))
+            if bone in in_legs or lateral <= HAND_OFF_MIDLINE * height:
+                continue
+            side = side_of(mapping, rig.heads[bone], centre)
+            if side not in hands or (hands[side][1] is None and lateral > hands[side][2]):
+                hands[side] = (bone, None, lateral)
+        for side, (bone, hand, _) in sorted(hands.items()):
+            if hand is None:
+                mapping.notes.append("the %s hand's thumb can't be told from its fingers: the hand is %r, its "
+                                     "fingers are not mapped" % (SIDES[side].lower(), rig.names[bone][:64]))
     if len(hands) < 2:   # No digits to find a hand by (mittens, a game rig without fingers): the outermost bones.
         rest = [b for b in view.bones if b not in in_legs and b != hips
                 and (rig.weighted is None or rig.weighted[b])]   # a hand moves skin; an IK control doesn't

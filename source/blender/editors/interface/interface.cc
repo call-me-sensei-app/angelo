@@ -106,6 +106,7 @@ static uint64_t ui_angelo_frame(const wmWindow *win)
 
 void ui_angelo_start_again(Button &but)
 {
+  but.angelo_restarts++;
   but.angelo_since = ui_angelo_now();
   but.angelo_armed = false;
   but.angelo_placed = false; /* Its next draw stamps the frame that shows it, even at the same rect. */
@@ -133,7 +134,21 @@ bool ui_angelo_follow_focus(Button &but, const wmWindow *win)
   if (win == nullptr || ui_angelo_focus_current(but, win)) {
     return true;
   }
-  ui_angelo_start_again(but); /* Disarmed, counted again from its next frame on screen. */
+  /* Disarmed, and counted again from the change itself, still on screen where it was, as a guard
+   * region is (`Authority::sync`): the person saw it from then, so their move ARM after the change
+   * arms it, wherever the pointer was meanwhile (the review of d719ab2, SHOULD 1: counting from the
+   * first hover after the change refused a person who reached it seconds later). Waiting for a
+   * frame drawn after the change, as before, left a control nothing redraws never armed (build2 on
+   * 336a00f). One moved since is restarted by its next placement (`ui_angelo_note_placed`); one
+   * not placed waits for it. */
+#ifdef WITH_PYTHON
+  /* From the change while the window is in front, from now while it is in the back or unknown (the
+   * re-review of cf980b8, SHOULD A, NIT E), never earlier than it was placed. */
+  but.angelo_since = std::max(but.angelo_since, BPY_angelo_guard_window_restart_from(win));
+#else
+  but.angelo_since = ui_angelo_now();
+#endif
+  but.angelo_armed = false;
   but.angelo_epoch = ui_angelo_epoch(win);
   return false;
 }
@@ -149,6 +164,7 @@ void ui_angelo_note_placed(Button &but,
     return;
   }
   if (but.angelo_placed) { /* Moved on screen: drawn there only from now, and not armed. */
+    but.angelo_restarts++;
     but.angelo_since = ui_angelo_now();
     but.angelo_armed = false;
   }
@@ -161,6 +177,176 @@ void ui_angelo_note_placed(Button &but,
   but.angelo_frame = ui_angelo_frame(win); /* On screen there from its window's next swap. */
   but.angelo_epoch = ui_angelo_epoch(win);
   but.angelo_placed = true;
+}
+
+void ui_angelo_note_hidden(Button &but)
+{
+  /* Not on screen (a menu scrolled a notch, a control hidden): placed anew, and counted from the
+   * frame that shows it again, by its next draw; once, while it stays hidden. */
+  if (but.angelo_placed) {
+    ui_angelo_start_again(but);
+  }
+}
+
+void ui_angelo_restart_uncovered(Button &but, const wmWindow *win, const rcti &uncovered)
+{
+  /* It was drawn beneath what went away, so it is on screen again from the window's next frame,
+   * where it is: disarmed, and counted from that frame's swap (a slow redraw holds input queued
+   * meanwhile, all timed after the close; the review of cf980b8..f6b01a9, SHOULD 1), and from now
+   * at the earliest. Every close redraws its window (`wm_draw_region_clear`). The window manager's
+   * own move after the close never arms it: `BPY_angelo_guard_moved_here_since` takes only real
+   * moves since then. */
+  if (but.angelo_placed && BLI_rcti_isect(&but.angelo_place, &uncovered, nullptr)) {
+    but.angelo_since = std::max(but.angelo_since, ui_angelo_now());
+    but.angelo_armed = false;
+    if (win != nullptr) {
+      but.angelo_frame = ui_angelo_frame(win);
+    }
+  }
+}
+
+void ui_angelo_note_uncovered(const wmWindow *win,
+                              const rcti &uncovered,
+                              const ARegion *removed,
+                              const bool popups,
+                              const AngeloTooltipOwn *own)
+{
+  if (win == nullptr) {
+    return;
+  }
+  ui_angelo_note_uncovered_in(win, WM_window_get_active_screen(win), uncovered, removed, popups, own);
+}
+
+AngeloTooltipOwn ui_angelo_tooltip_own(const Button &but)
+{
+  if (!but.angelo_placed) {
+    return {};
+  }
+  return {&but, but.angelo_place, but.angelo_restarts};
+}
+
+void ui_angelo_note_uncovered_in(const wmWindow *win,
+                                 const bScreen *screen,
+                                 const rcti &uncovered,
+                                 const ARegion *removed,
+                                 const bool popups,
+                                 const AngeloTooltipOwn *own)
+{
+  const auto restart = [&](const ARegion &region) {
+    if (&region == removed || region.runtime == nullptr) {
+      return;
+    }
+    for (Block &block : region.runtime->uiblocks) {
+      for (Button &but : block.buttons()) {
+        /* A tooltip's own control, unchanged since its tooltip opened over it (the same button, place
+         * and restart count): the person was on it, reading what it says; its tooltip hid nothing from
+         * them, so its close keeps its arming (Windows build2 on afb48bd, person-click run-2: near the
+         * window's bottom a tooltip is drawn over its own checkbox, and the press that closed it was
+         * refused). One that started again or moved meanwhile was never seen in its new form, so it
+         * starts again (the review of 3cfdc5f, MAJOR). Only compared, never read: `own` may be gone. */
+        if (own && &but == own->but && but.angelo_placed &&
+            BLI_rcti_compare(&but.angelo_place, &own->place) && but.angelo_restarts == own->restarts)
+        {
+          continue;
+        }
+        ui_angelo_restart_uncovered(but, win, uncovered);
+      }
+    }
+  };
+  if (screen != nullptr) {
+    for (const ScrArea &area : screen->areabase) {
+      for (const ARegion &region : area.regionbase) {
+        restart(region);
+      }
+    }
+    if (popups) {
+      /* The other popups drawn beneath it (a submenu's parent): those before it in drawing order. One
+       * drawn above it was never under it (the review of c0b0845..17a0f0b's NIT). */
+      for (const ARegion &region : screen->regionbase) {
+        if (&region == removed) {
+          break;
+        }
+        restart(region);
+      }
+    }
+  }
+  for (const ScrArea &area : win->global_areas.areabase) {
+    for (const ARegion &region : area.regionbase) {
+      restart(region);
+    }
+  }
+}
+
+void UI_angelo_note_uncovered(const wmWindow *win, const rcti &rect, const ARegion *except)
+{
+  /* What went (an area's overlapping region, the startup cover) was drawn beneath every popup, so no
+   * popup's button was ever under it (the overlap restart reached the open Strict popup's checkbox
+   * when the HUD changed beneath it, and the person's press there was refused). */
+  ui_angelo_note_uncovered(win, rect, except, false);
+}
+
+rcti UI_angelo_temporary_cover(const ARegion *region)
+{
+  /* What a temporary region draws opaquely, never its shadow: a popup's block (its margin left out),
+   * else its rect less the popup margin (a tooltip's box, a search box). A tooltip sits beside its
+   * button with only its shadow over it, so its close restarted the very button the person pressed
+   * (person-click's covered case, the debug run of 44fabbb: rect 972..1596 x 631..697 over the
+   * checkbox's 694..714). */
+  rcti rect;
+  region_winrct_get_no_margin(region, &rect);
+  if (BLI_rcti_compare(&rect, &region->winrct)) {
+    const int margin = int(UI_POPUP_MARGIN);
+    if (BLI_rcti_size_x(&rect) > 2 * margin && BLI_rcti_size_y(&rect) > 2 * margin) {
+      BLI_rcti_pad(&rect, -margin, -margin);
+    }
+  }
+  return rect;
+}
+
+void ui_angelo_note_covering(const wmWindow *win, const ARegion *region, const bool covering)
+{
+#ifdef WITH_PYTHON
+  if (win == nullptr || region == nullptr) {
+    return;
+  }
+  if (covering) {
+    const rcti rect = UI_angelo_temporary_cover(region);
+    BPY_angelo_guard_set_cover(
+        win, region, rect.xmin, rect.ymin, BLI_rcti_size_x(&rect) + 1, BLI_rcti_size_y(&rect) + 1);
+  }
+  else {
+    BPY_angelo_guard_clear_cover(win, region);
+  }
+#else
+  UNUSED_VARS(win, region, covering);
+#endif
+}
+
+void ui_angelo_note_hover_at(
+    Button &but, const wmWindow *win, const ARegion *region, const rcti &rect, const int xy[2])
+{
+#ifdef WITH_PYTHON
+  ui_angelo_follow_focus(but, win); /* Its window lost focus since: it starts again. */
+  ui_angelo_note_placed(but, win, region, rect); /* Where it is now, in window pixels. */
+  const rcti &place = but.angelo_place;
+  if (win == nullptr || !BLI_rcti_isect_pt_v(&place, xy) ||
+      BPY_angelo_guard_warped_into(
+          win, place.xmin, place.ymin, BLI_rcti_size_x(&place) + 1, BLI_rcti_size_y(&place) + 1))
+  {
+    return;
+  }
+  /* The person's own move (C noted it as the event arrived: a non-zero delta, not a warp, real
+   * input or, under --enable-event-simulate, a suite's), ARM after it was drawn here. */
+  /* ARM after the frame that first showed it there (the ruling on the 0.3 s arm, (b)). */
+  const double shown = std::max(but.angelo_since,
+                                BPY_angelo_guard_shown(win, but.angelo_frame, but.angelo_since));
+  if (BPY_angelo_guard_moved_here_since(win, xy[0], xy[1], shown + BPY_angelo_guard_arm_seconds()))
+  {
+    but.angelo_armed = true;
+  }
+#else
+  UNUSED_VARS(but, win, region, rect, xy);
+#endif
 }
 
 /** Angelo: whether `a` and `b` are the same control for a grant's arming: its operator (or the one
@@ -1310,6 +1496,7 @@ static bool but_update_from_old_block(Block *block,
     if (same_place) {
       but->angelo_since = oldbut->angelo_since;
       but->angelo_armed = oldbut->angelo_armed;
+      but->angelo_restarts = oldbut->angelo_restarts;
       but->angelo_place = oldbut->angelo_place;
       but->angelo_placed = oldbut->angelo_placed;
       but->angelo_frame = oldbut->angelo_frame;
@@ -2541,13 +2728,14 @@ void block_draw(const bContext *C, Block *block)
   /* widgets */
   for (Button &but : block->buttons()) {
     if (but.flag & (UI_HIDDEN | UI_SCROLLED)) {
+      ui_angelo_note_hidden(but);
       continue;
     }
 
     button_to_pixelrect(&rect, region, block, &but);
-    ui_angelo_note_placed(but, CTX_wm_window(C), region, rect);
     /* Optimization: Don't draw buttons that are not visible (outside view bounds). */
     if (!but_pixelrect_in_view(region, &rect)) {
+      ui_angelo_note_hidden(but); /* Angelo: not on screen (clipped out of its region). */
       continue;
     }
 
@@ -2558,6 +2746,7 @@ void block_draw(const bContext *C, Block *block)
         panel_width -= int(floor(UI_PANEL_MARGIN_X / block->aspect * 2.0f));
       }
       if (BLI_rcti_size_x(&rect) > int(float(panel_width) * 1.2f)) {
+        ui_angelo_note_hidden(but); /* Angelo: not drawn. */
         continue;
       }
     }
@@ -2565,7 +2754,14 @@ void block_draw(const bContext *C, Block *block)
     /* XXX: figure out why invalid coordinates happen when closing render window */
     /* and material preview is redrawn in main window (temp fix for bug #23848) */
     if (rect.xmin < rect.xmax && rect.ymin < rect.ymax) {
+      /* Angelo: placed only where it is drawn: a control clipped out, too wide for its panel or
+       * degenerate is on screen from the frame that draws it (the review of cf980b8..f6b01a9,
+       * SHOULD 2: one clipped out kept a place from long ago and armed once its region grew). */
+      ui_angelo_note_placed(but, CTX_wm_window(C), region, rect);
       draw_button(C, region, &style, &but, &rect);
+    }
+    else {
+      ui_angelo_note_hidden(but);
     }
   }
 

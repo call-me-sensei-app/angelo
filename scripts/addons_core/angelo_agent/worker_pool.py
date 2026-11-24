@@ -32,7 +32,7 @@ import time
 import uuid
 from pathlib import Path
 
-from . import thread_start, edit_tool_hold, owned_paths
+from . import thread_start, edit_tool_hold, owned_paths, strict_flag
 
 IDLE_SECONDS = 120.0   # An untaken worker launched ahead stops after this: about 6x the lookup-to-start time measured.
 TICK = 0.5
@@ -163,6 +163,9 @@ def take(part, lead=None):
     for entry in sorted(_pool, key=lambda item: (not item["done"].is_set(), item["since"])):
         if entry["error"] is not None or (entry["done"].is_set() and not entry["worker"].alive()):
             continue
+        if not strict_flag.matches(entry["worker"]):   # Launched before Strict script protection changed: stops.
+            _release(entry)
+            continue
         _pool.remove(entry)
         owned_paths.require_writable(part)   # Its part: only where C lets Angelo write (worker_routing.launch's).
         Path(part).parent.mkdir(parents=True, exist_ok=True)   # A worker saving into a missing folder cannot start.
@@ -195,7 +198,8 @@ def reuse(done_session_id, item):
             or done_session_id in worker_sessions.died or not worker_sessions.finished(done_session_id)
             or worker_sessions.awaiting_person(done_session_id)
             or getattr(cold, "part", None) is None or getattr(cold, "process", None) is not None
-            or getattr(cold, "ahead", False) or item.get("thread") is not None):
+            or getattr(cold, "ahead", False) or item.get("thread") is not None
+            or not strict_flag.matches(worker)):   # Launched before Strict script protection changed: never reused.
         return False
     from . import worker_chat_lifecycle as lifecycle
     try:   # A': the done chat's journal is sealed before its process takes the part (its park closed it already).

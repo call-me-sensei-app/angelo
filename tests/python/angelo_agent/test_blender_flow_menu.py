@@ -35,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_flow_view, inside
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 import qa_input  # noqa: E402  (synthetic clicks; after_clicks)
+import qa_hit
 product_env.clear('DISABLE_DEFAULT_CHAT')
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-flow-menu-qa"))
 OUT.mkdir(parents=True, exist_ok=True)
@@ -197,7 +198,7 @@ def tinted(v):
     return v[1] > v[0] + 25   # The teal tiles and teal fills: green well above red; the UI's greys never are.
 
 
-def menu_tiles(px, region, scale):
+def menu_tiles(px, region):
     """Each visible row's tile area (window pixels): the share of teal-tinted pixels there, split into rows that have
     a glyph and rows that have none (a template, one of your flows)."""
     from angelo_agent import flow_menu
@@ -208,8 +209,7 @@ def menu_tiles(px, region, scale):
         if row["kind"] not in ("row", "header") or ry < ly or ry + rh > ly + lh:
             continue
         top = flow_menu.HEADER_GAP if row["kind"] == "header" else 0
-        tile = (region.x + (rx + 8) * scale, region.y + (ry + top + (rh - top - 32) / 2) * scale, 32 * scale,
-                32 * scale)
+        tile = qa_hit.rect(qa_hit.LAYOUT, region, (rx + 8, ry + top + (rh - top - 32) / 2, 32, 32))
         if row.get("glyph") == "add":   # New Flow: a 16 px plus, no tile (section 2).
             plus.append(round(share(px, tile, tinted), 3))
             continue
@@ -227,10 +227,8 @@ def menu_region():
 def menu_row_point(value):
     from angelo_agent import flow_menu
     _, region = menu_region()
-    scale = flow_menu._open["scale"]
     index = next(i for i, row in enumerate(flow_menu._open["rows"]) if row.get("value") == value)
-    rx, ry, rw, rh = flow_menu._open["layout"]["rows"][index]
-    return region.x + (rx + rw / 2) * scale, region.y + (ry + rh / 2) * scale
+    return qa_hit.point(qa_hit.LAYOUT, region, flow_menu._open["layout"]["rows"][index])
 
 
 def check_menu(name, path, rows_expected):
@@ -238,11 +236,11 @@ def check_menu(name, path, rows_expected):
     target, region = menu_region()
     scale = flow_menu._open["scale"]
     px = pixels(path)
-    tiles, bare, plus = menu_tiles(px, region, scale)
-    x, y, w, h = (v * scale for v in flow_menu._open["layout"]["rect"])
-    panel = main_colour(px, (region.x + x + 20 * scale, region.y + y + 3 * scale, w - 40 * scale, 4 * scale))
+    tiles, bare, plus = menu_tiles(px, region)
+    x, y, w, h = flow_menu._open["layout"]["rect"]
+    panel = main_colour(px, qa_hit.rect(qa_hit.LAYOUT, region, (x + 20, y + 3, w - 40, 4)))
     state["measured"][name] = {"tiles": tiles, "bare": bare, "plus": plus, "panel": panel, "drawn": flow_menu.drawn,
-                               "width": w}
+                               "width": w * scale}
     rows = [row["value"] for row in flow_menu._open["rows"] if row["kind"] == "row"]
     checks[name + "_lists_the_registry_rows"] = rows == [row["value"] for row in rows_expected if row["kind"] == "row"]
     checks[name + "_draws_its_card_panel"] = panel is not None and apart(panel, rgb(card_kit.CARD)) <= 12
@@ -341,15 +339,15 @@ def tick():
             line, _problem = flow_window.status(space.node_tree)
             from angelo_agent import card_kit
             s = prefs.system.ui_scale
-            bar_bottom = region.y + region.height - flow_window.HEIGHT * s
-            status_band = (region.x + drawn["text_x"], bar_bottom + 6 * s, 120 * s, 9 * s)   # The status line.
+            status_band = qa_hit.rect(qa_hit.PIXELS, region,   # The status line.
+                                      (drawn["text_x"], region.height - flow_window.HEIGHT * s + 6 * s, 120 * s, 9 * s))
             text_share = share(px, status_band, lambda v: apart(v, rgb(card_kit.CARD)) > 40)
             state["measured"]["flow_window"] = {"drawn": drawn, "status_text_share": round(text_share, 3)}
             checks["the_bar_names_the_flow_and_its_step_count"] = (
                 drawn["title"] == flow_window.flow_label(space.node_tree.name) and drawn.get("status") == line
                 and text_share > 0.03)
             lx, ly, lw, lh = drawn["link"]   # The shared pill: PANEL inside a 1 px LINE border.
-            pill = main_colour(px, (region.x + lx + lw * .55, region.y + ly + 3 * s, lw * .4, lh - 6 * s))
+            pill = main_colour(px, qa_hit.rect(qa_hit.PIXELS, region, (lx + lw * .55, ly + 3 * s, lw * .4, lh - 6 * s)))
             state["measured"]["flow_window"]["pill"] = pill
             checks["the_bar_links_back_to_media_studio"] = pill is not None and apart(pill, rgb(card_kit.PANEL)) <= 12
             if hasattr(area, "angelo_owned"):   # A native build with the flag (review A2, A1); else recorded as skipped.
@@ -368,7 +366,8 @@ def tick():
                 checks["no_region_toggle_arrows"] = all(m < 0.02 for m in marks.values())
                 import qa_flow_view
                 _region, rects = qa_flow_view.graph_bounds(area, s)
-                headers = [main_colour(px, (region.x + l + 10 * s, region.y + t - 14 * s, max(1, r - l - 20 * s), 6 * s))
+                headers = [main_colour(px, qa_hit.rect(qa_hit.RAW, region, (l + 10 * s, t - 14 * s, max(1, r - l - 20 * s),
+                                                                             6 * s)))
                            for l, b_, r, t in rects]
                 state["measured"]["flow_window"]["node_headers"] = headers
                 # Calibrated on the card-language header (the node backdrop, lighter and cooler); the old maroon
@@ -379,7 +378,7 @@ def tick():
                 state["notes_a2"] = "Area.angelo_owned not in this build (Python overlay on an older app): A1/A2 skipped"
             add = drawn["rects"]["add"]
             state["nodes_before"] = len(space.node_tree.nodes)
-            press(region.x + add[0] + add[2] / 2, region.y + add[1] + add[3] / 2, target)
+            press(*qa_hit.point(qa_hit.PIXELS, region, add), target)
             state["phase"] = "add_menu"
             return .6
         if phase == "add_menu":
@@ -412,7 +411,7 @@ def tick():
             drawn = flow_window._bars[target.screen.areas[0].as_pointer()]["drawn"]
             region = next(r for r in target.screen.areas[0].regions if r.type == 'WINDOW')
             run = drawn["rects"]["run"]
-            press(region.x + run[0] + run[2] / 2, region.y + run[1] + run[3] / 2, target)
+            press(*qa_hit.point(qa_hit.PIXELS, region, run), target)
             state["phase"] = "ran"
             return .6
         if phase == "ran":
@@ -426,8 +425,7 @@ def tick():
             target = flow_open.flow_window(windows())
             drawn = flow_window._bars[target.screen.areas[0].as_pointer()]["drawn"]
             region = next(r for r in target.screen.areas[0].regions if r.type == 'WINDOW')
-            lx, ly, lw, lh = drawn["link"]
-            press(region.x + lx + lw / 2, region.y + ly + lh / 2, target)
+            press(*qa_hit.point(qa_hit.PIXELS, region, drawn["link"]), target)
             state["phase"] = "studio"
             return .6
         if phase == "studio":
@@ -453,17 +451,17 @@ def tick():
             if pill:   # Studio draws it (its hook): a real click, and its pixels are the shared pill's.
                 from angelo_agent import card_kit
                 px = pixels(OUT / "flow-menu-5-media-studio.png")
-                x, y, w, h = pill
+                x, y, w, h = qa_hit.rect(qa_hit.mirrored_about(setup.get("mirror")), region, pill)
                 import qa_frames
                 studio_px = px[region.y:region.y + region.height, region.x:region.x + region.width]
                 if qa_frames.drawn(studio_px):
-                    body = main_colour(px, (region.x + x + w * .6, region.y + y + 4, w * .35, h - 8))
+                    body = main_colour(px, (x + w * .6, y + 4, w * .35, h - 8))
                     checks["turn_into_a_flow_is_visible_in_media_studio"] = body is not None and apart(
                         body, rgb(card_kit.PANEL)) <= 12
                 else:   # The window readback came back flat (a capture fault, not a draw one): the pill drew its hit.
                     state["notes"] = "Media Studio's capture is one flat colour (readback); the pill is checked by its hit"
                     checks["turn_into_a_flow_is_visible_in_media_studio"] = w > 0 and h > 0
-                press(region.x + x + w / 2, region.y + y + h / 2, target)
+                press(x + w / 2, y + h / 2, target)
             else:   # Not placed in Studio yet (D's hook): the same operator its click runs.
                 state["notes"] = "Turn into a flow's pill is not drawn by Studio in this build; operator called"
                 with bpy.context.temp_override(window=target, screen=target.screen, area=area, region=region):

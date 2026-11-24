@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """One automatic resend of a Codex turn that a transient provider failure ended before anything happened.
 
-codex app-server retries a failed model request itself only when the server advised a delay
-(``Retry-After``: it emits ``error`` with ``willRetry`` and tries again). A plain HTTP 429 becomes
+codex app-server retries a failed model request itself when the server advised a delay
+(``Retry-After``: it emits ``error`` with ``willRetry`` and tries again), and, on a provider entry that allows it,
+when the request failed or went silent (``provider_registry.STREAM_SETTINGS``: on Gemini a failed or silent request
+is re-sent once). A plain HTTP 429 becomes
 "exceeded retry limit, last status: 429 Too Many Requests" (``responseTooManyFailedAttempts``) with no
 retry at all: in a recorded run it failed its turn 73 ms after one request, and ChatGPT's websocket error
 frames never carry a ``Retry-After``. The throttle observed allowed about five requests per rolling
@@ -18,7 +20,11 @@ minute (a request every 15 s succeeded). 5xx answers Codex gave up on end the tu
 * the turn did nothing (``note``): no tool call reached the host, no model output of any kind streamed
   (message, reasoning, web search, any item but the person's own message) and no model response
   acknowledged the input. Nothing ran, so nothing can run twice or be half-applied;
-* Codex did not retry it itself (no ``error`` with ``willRetry`` in the turn): retries never stack;
+* Codex did not retry it itself (no ``error`` with ``willRetry`` in the turn): retries never stack. When that
+  notice names its wait (``retryDelayMs``, the fork's), ``announce`` rests the turn's clocks until then and the live
+  row counts it down (``turn_activity.TurnActivity.advise``). A runtime
+  re-send of any kind (a throttle, a 5xx, a broken or silent stream) sets ``_codex_retried`` and so rules the
+  resend out;
 * the request has not resent yet (one per request, plan corrections included), it is not voice, and
   Stop or a newer request does not arrive during the wait (``wait``): then nothing more is sent.
 
@@ -52,6 +58,7 @@ from .plan_progress import SEPARATOR
 from .provider_errors import codex_error_info, codex_error_kind, codex_error_text
 
 RETRYING = "Provider busy, retrying…"  # Codex retries the turn itself (no known delay).
+NETWORK = "Provider unreachable"        # Status key: the runtime waits to reconnect (a network wait, chat_titles).
 WAITING = "Provider busy, waiting"     # Status key; its detail is the whole seconds left (chat_titles).
 NOTE = ("[Host note] A provider error ended the previous turn before you received the message above, so nothing ran "
         "in that turn. Anything the message above reports as already done still stands. Respond to that message now.")
@@ -100,6 +107,41 @@ def wait(seconds, stopped, emit=None, clock=time.monotonic, sleep=time.sleep):
         sleep(min(POLL_SECONDS, remaining))
 
 
+def named_wait(delay_ms):
+    """Seconds of the wait a retry notice names (``retryDelayMs``, the fork's; Claude Code's ``retry_delay_ms``), or
+    None unless it is a finite number of milliseconds above zero (``turn_activity.announced_seconds``)."""
+    from .turn_activity import announced_seconds
+    return announced_seconds(delay_ms)
+
+
+def wait_kind(params):
+    """What a Codex retry notice's wait is for: ``retryWaitKind`` "network" is the runtime waiting to reconnect."""
+    from .turn_activity import NETWORK_WAIT, PROVIDER_WAIT
+    return NETWORK_WAIT if params.get("retryWaitKind") == "network" else PROVIDER_WAIT
+
+
+def retry_status(delay_ms, kind=None):
+    """The live row's status for a runtime's retry notice: a network wait's notice, a named wait counted down, else
+    ``RETRYING``."""
+    from .turn_activity import NETWORK_WAIT
+    if kind == NETWORK_WAIT:
+        return NETWORK
+    seconds = named_wait(delay_ms)
+    return waiting(seconds) if seconds is not None else RETRYING
+
+
+def announce(activity, delay_ms, kind=None):
+    """Rest ``activity``'s clocks for the wait a retry notice names (``turn_activity.TurnActivity.advise``); True
+    when that wait is now being waited out (False: no activity, no wait named, or one too long to wait for, which
+    ends the turn instead)."""
+    from .turn_activity import PROVIDER_WAIT
+    seconds = named_wait(delay_ms)
+    if activity is None or seconds is None:
+        return False
+    activity.advise(seconds, kind or PROVIDER_WAIT)
+    return activity.waiting() is not None
+
+
 def reset(provider):
     """A new turn attempt's record of what the turn did (``note``) and the TurnError it ended with."""
     provider._turn_output = provider._turn_user_recorded = provider._codex_retried = provider._retrying_shown = False
@@ -120,9 +162,11 @@ def note(provider, context, method, params):
             if codex_error_kind(params.get("error")) == "rate":   # Throttled: counted as Angelo's own resend is.
                 from .codex_attempts import receipt_count
                 receipt_count(context, COUNTS["rate"])
-            if not provider._retrying_shown and not context.voice:  # Voice keeps its own status line.
-                provider._retrying_shown = True
-                context.emit("status", {"text": RETRYING})
+            kind = wait_kind(params)
+            named = announce(getattr(provider, "_activity", None), params.get("retryDelayMs"), kind)
+            if (named or not provider._retrying_shown) and not context.voice and not context.cancelled:
+                provider._retrying_shown = True   # Voice keeps its own line; Stop's own status stays.
+                context.emit("status", {"text": retry_status(params.get("retryDelayMs") if named else None, kind)})
         else:
             provider.last_error = codex_error_text(params.get("error")) or "Provider error"
             fact = getattr(context, "record_context_fact", None)

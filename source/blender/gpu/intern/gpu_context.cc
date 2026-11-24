@@ -28,6 +28,7 @@
 #include "GPU_context.hh"
 
 #include "GPU_batch.hh"
+#include "GPU_init_exit.hh"
 #include "GPU_pass.hh"
 #include "gpu_backend.hh"
 #include "gpu_context_private.hh"
@@ -678,6 +679,12 @@ GPUSecondaryContextData GPU_create_secondary_context()
   /* Contexts can only be created on the main thread. */
   BLI_assert(BLI_thread_is_main());
 
+  /* No GPU context was ever created (a machine without a usable GPU): nothing to share. Every
+   * function below takes the empty data as "no secondary context". */
+  if (!GPU_is_init()) {
+    return GPUSecondaryContextData{.ghost_context = nullptr, .gpu_context = nullptr};
+  }
+
   GHOST_IContext *main_thread_ghost_context = GHOST_IContext::getActiveDrawingContext();
   GPUContext *main_thread_gpu_context = GPU_context_active_get();
 
@@ -727,18 +734,27 @@ GPUSecondaryContextData GPU_create_secondary_context()
 
 void GPU_activate_secondary_context(const GPUSecondaryContextData &data)
 {
+  if (data.ghost_context == nullptr) {
+    return;
+  }
   data.ghost_context->activateDrawingContext();
   GPU_context_active_set(data.gpu_context);
 }
 
 void GPU_deactivate_secondary_context(const GPUSecondaryContextData &data)
 {
+  if (data.ghost_context == nullptr) {
+    return;
+  }
   GPU_context_active_set(nullptr);
   data.ghost_context->releaseDrawingContext();
 }
 
 void GPU_destroy_secondary_context(GPUSecondaryContextData &data)
 {
+  if (data.ghost_context == nullptr) {
+    return;
+  }
   GHOST_IContext *cur_ghost_context = GHOST_IContext::getActiveDrawingContext();
   GPUContext *cur_gpu_context = GPU_context_active_get();
 

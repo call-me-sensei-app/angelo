@@ -24,13 +24,15 @@ TICKET_SECONDS = 5.0
 DIALOG_SECONDS = 180.0
 BROWSE_SECONDS = 300.0   # C's: a file browser's pick.
 _STANDARD = {"approved_scripts": None, "trusted_scripts": False, "always_allow": False, "chat_clients": None,
-             "approved_calls": None, "approval_modes": "ASK"}
+             "approved_calls": None, "approval_modes": "ASK",
+             "reviewed_scripts": False, "context_folders": None, "rule_decisions": False, "global_rules": None}
 _lock = threading.RLock()
 _here = threading.local()
 _ledger = {}
 _tickets = []
 _unarmed = []   # C's record of the person's press on a control not yet armed (``unarmed``).
 _regions = {}
+_covers = {}   # C's canvas-menu covers (``cover``), by window and surface.
 _confined = [0]
 _automatic = []   # Operators Angelo's own decision may run (allow_automatic).
 _strict = [True]   # C exactly by default: a host test opens the scope its code would run in (strict).
@@ -39,6 +41,17 @@ _strict = [True]   # C exactly by default: a host test opens the scope its code 
 def strict(on=True):
     """C exactly (see the module's docstring); ``strict(False)`` goes back to the default."""
     _strict[0] = bool(on)
+
+
+def strict_for(test):
+    """C exactly for the whole of ``test`` (a TestCase), whatever mode an earlier file's cleanup left, and back after it.
+    A test of the guard's own rule (who may widen, on which thread) asks for it: in one process the suite's files share
+    this module, and a file that tested strictly may end with ``strict(False)``."""
+    previous = _strict[0]
+    strict()
+    test.addCleanup(strict, previous)
+
+
 PERSON, AUTOMATIC, HARNESS = "person", "automatic", "harness"
 
 
@@ -216,14 +229,31 @@ def press(idname, digest):
         _tickets.append((idname, digest, time.monotonic(), TICKET_SECONDS, "press"))
 
 
-def consent_regions(window, surface, regions):
+def consent_regions(window, surface, regions, region):
     if confined():
         raise PermissionError("Not while an agent script is running.")
     if type(regions) is not tuple or any(type(r) is not tuple or len(r) != 7 for r in regions):
         raise TypeError("a region is (x, y, width, height, idname, digest, shield)")
+    if type(region) is not int:
+        raise TypeError("the region they are drawn in is its pointer")
+    if not region:
+        raise ValueError("consent regions need the region they are drawn in")
     with _lock:
         _regions[(window, surface)] = regions
     return True
+
+
+def cover(window, surface, rect, region=0):
+    """C's ``cover``: a canvas surface's own menu over the others' regions (no person's pointer here to refuse)."""
+    if confined():
+        raise PermissionError("Not while an agent script is running.")
+    if not isinstance(surface, str) or (rect is not None and (type(rect) is not tuple or len(rect) != 4)):
+        raise TypeError("a cover is None or (x, y, width, height)")
+    if rect is not None and not region:
+        raise ValueError("a cover needs the region it is drawn in")
+    with _lock:
+        _covers[(window, surface)] = rect
+    return None
 
 
 def unarmed_press(idname, digest, spot):
@@ -338,9 +368,19 @@ def stand_in_for_the_person(module_globals):
     """For a host test module whose tests act as the person (their own click set the consent they then read): its
     ``setUpModule``/``tearDownModule`` hold a harness scope on the main thread for the whole module. A test that
     proves a refusal confines itself (``confine``) or runs on another thread."""
+    entered = []
+
     def set_up():
+        if module_globals.get("tearDownModule") is not tear_down:   # It would never leave: the scope would leak.
+            raise RuntimeError("tearDownModule was replaced after stand_in_for_the_person: never replace it; "
+                               "register the module's own cleanup with unittest.addModuleCleanup")
         _here.harness = _depth(HARNESS) + 1
+        entered.append(True)
 
     def tear_down():
+        if not entered:   # The module replaced setUpModule after this call (re-read of 1c2c4edaf48, M-2): say so.
+            raise RuntimeError("setUpModule was replaced after stand_in_for_the_person: chain the twin's hook "
+                               "(keep it as _twin_set_up = setUpModule and call it first)")
+        entered.pop()
         _here.harness = _depth(HARNESS) - 1
     module_globals["setUpModule"], module_globals["tearDownModule"] = set_up, tear_down

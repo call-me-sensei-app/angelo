@@ -21,6 +21,7 @@ for _path in (str(HERE.parents[2] / "scripts/addons_core"), str(HERE)):
 
 import bench_mcp_grading  # noqa: E402
 import eval_answers as answers  # noqa: E402
+import eval_firsthour_tasks as firsthour  # noqa: E402
 import eval_gate  # noqa: E402
 import eval_grading as grading  # noqa: E402
 import eval_grading_live  # noqa: E402
@@ -105,7 +106,8 @@ class GuardTests(unittest.TestCase):
                           "engine-link-compare",   # Each brief's closed check (engine_link_compare.check_*).
                           "steering"}   # Closed checks over the named objects (eval_steer).
                          | set(scenario_specs.TASK_SETS)
-                         | set(scenario_specs.ONESHOT_TASK_SETS))   # One-shot tests: each brief's own closed checks.
+                         | set(scenario_specs.ONESHOT_TASK_SETS)   # One-shot tests: each brief's own closed checks.
+                         | {firsthour.task_set(case) for case in firsthour.CASES})   # Each case's own checks.
 
     def test_a_task_without_a_check_or_a_reason_fails_the_guard(self):
         edit = {"id": "new_edit", "kind": "edit", "prompt": "Make it nicer.", "checks": []}

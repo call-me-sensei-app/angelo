@@ -21,6 +21,7 @@ chat's kept copies, and the next save rewrites the journal.
 import json
 from collections.abc import Mapping
 
+from . import share_refusal_notice
 from .owned_values import owned
 
 # The fields an ``activity`` event may set on its row (Controller._pump_events).
@@ -81,6 +82,8 @@ def store(controller, data):
                              "arguments": fields.get("arguments", {}), "status": "queued"})
         messages[controller._activities[identity]].update(fields)
         controller._touched(controller._activities[identity])  # After the change, under the lock (transcript_rows).
+    if "status" in fields:   # A share its script was refused is named in this chat, to the person only.
+        share_refusal_notice.note(controller)
 
 
 def bind_key(controller, api_key):

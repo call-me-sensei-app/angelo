@@ -21,6 +21,7 @@ import bpy
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import splash_frames  # noqa: E402  (Blender only)
+import qa_hit
 
 ARGS = sys.argv[sys.argv.index("--") + 1:]
 
@@ -190,11 +191,10 @@ def _press(x, y):
 
 def card_point(action, value=None):
     """Window coordinates of the visible card's control (mirrored back in a right-to-left language)."""
-    from angelo_agent import canvas_rtl, card_host
+    from angelo_agent import card_host
     _area, region = _region(card_host._active.area)
     rect = next(r for r, a, v in reversed(card_host._active.plan.hits) if a == action and (value is None or v == value))
-    x = canvas_rtl.pointer_x(rect[0] + rect[2] / 2, region.width)
-    return int(region.x + x), int(region.y + rect[1] + rect[3] / 2)
+    return qa_hit.ipoint(qa_hit.PIXELS, region, rect)
 
 
 def click_card(action, value=None):
@@ -202,11 +202,10 @@ def click_card(action, value=None):
 
 
 def click_welcome(action):
-    from angelo_agent import canvas_rtl, intro
+    from angelo_agent import intro
     _area, region = _region(intro._open["area"])
     rect = next(r for r, a, v in intro._open["plan"]["hits"] if a == action)
-    _press(int(region.x + canvas_rtl.pointer_x(rect[0] + rect[2] / 2, region.width)),
-           int(region.y + rect[1] + rect[3] / 2))
+    _press(*qa_hit.ipoint(qa_hit.PIXELS, region, rect))
 
 
 def key(name):
@@ -217,12 +216,12 @@ def key(name):
 
 def control_rect(action):
     """The window rectangle ``(x0, y0, x1, y1)`` covering a card control's hits (for crops in the report)."""
-    from angelo_agent import canvas_rtl, card_host
+    from angelo_agent import card_host
     _area, region = _region(card_host._active.area)
     rects = [r for r, a, _ in card_host._active.plan.hits if a == action]
-    xs = [canvas_rtl.pointer_x(x, region.width) for r in rects for x in (r[0], r[0] + r[2])]
-    return (int(region.x + min(xs)), int(region.y + min(r[1] for r in rects)),
-            int(region.x + max(xs)), int(region.y + max(r[1] + r[3] for r in rects)))
+    boxes = [qa_hit.rect(qa_hit.PIXELS, region, r) for r in rects]
+    return (int(min(b[0] for b in boxes)), int(min(b[1] for b in boxes)),
+            int(max(b[0] + b[2] for b in boxes)), int(max(b[1] + b[3] for b in boxes)))
 
 
 def light():

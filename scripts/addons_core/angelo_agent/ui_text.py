@@ -40,6 +40,7 @@ or anything a model sees. No ``bpy`` at import, so the rules stay host-testable
 
 import json
 import math
+import re
 
 DOMAIN_CONTEXT = None
 RTL_LANGUAGES = frozenset({"ar", "fa", "he", "ur"})
@@ -86,8 +87,11 @@ def _fill(translated, message, fields):
         return message.format(**fields)
 
 
+_PRESENTATION = re.compile("[\ufb50-\ufdff\ufe70-\ufefc]")   # Arabic Presentation Forms-A and -B (``rtl_text``).
+
+
 def _visual_rtl(text):
-    return any("\ufb50" <= ch <= "\ufeff" for ch in text)   # Arabic presentation forms: a pre-shaped catalogue entry.
+    return _PRESENTATION.search(text) is not None   # Arabic presentation forms: a pre-shaped catalogue entry.
 
 
 def _fill_visual(translated, fields):
@@ -96,11 +100,25 @@ def _fill_visual(translated, fields):
     The shipped Arabic is pre-shaped and in visual order, where a run of placeholders joined by
     neutral characters ("{job} · {title}: {state}") reads left to right; filling Arabic into it there
     would put the fields in the wrong order. Reading order is exact both ways (``rtl_text``).
+
+    A filled-in string (a path, a share, a file or model name, text from a person or a model) is one unit
+    (``rtl_text.isolate``): its neutral characters ("\\\\", "/", ".", brackets, quotes) take its own first strong
+    direction, never the sentence's, so "\\\\server\\share" or "/srv/a/b.blend" is drawn whole. A value that is
+    itself a translated sentence (visual Arabic) is text of the paragraph's own direction and flows into it as before,
+    keeping any unit inside it.
     """
     from . import rtl_text
-    logical = {name: rtl_text.to_logical(value) if isinstance(value, str) and _visual_rtl(value) else value
-               for name, value in fields.items()}
+    logical = {name: _unit(rtl_text, value) for name, value in fields.items()}
     return rtl_text.to_visual(rtl_text.to_logical(translated).format(**logical))
+
+
+def _unit(rtl_text, value):
+    """A field value for ``_fill_visual``: a translated sentence in reading order, any other string isolated."""
+    if not isinstance(value, str):
+        return value   # Numbers and the like: digits keep their layout (an isolate with no letter is not one).
+    if _visual_rtl(value):
+        return rtl_text.to_logical(value, isolates=True)
+    return rtl_text.isolate(value)
 
 
 def join(parts, separator=" · "):
@@ -108,18 +126,32 @@ def join(parts, separator=" · "):
 
     Arabic catalogue text is in visual order, so pieces concatenated left to right read last-first and
     their numbers merge across the separator. Pieces are joined in reading order and the line is put in
-    visual order as a whole. Other languages get the plain join.
+    visual order as a whole; a piece that is not translated Arabic (a name, a shortcut, a person's text) is one
+    unit, as a filled-in field is (``_fill_visual``). Other languages get the plain join.
     """
     parts = [str(part) for part in parts]
     if not any(_visual_rtl(part) for part in parts):
         return separator.join(parts)
     from . import rtl_text
-    return rtl_text.to_visual(separator.join(rtl_text.to_logical(part) if _visual_rtl(part) else part
-                                             for part in parts))
+    return rtl_text.to_visual(separator.join(_unit(rtl_text, part) for part in parts))
 
 
 def iface_(message, msgctxt=None, /, **fields):
     return _fill(_gettext("iface", message, msgctxt), message, fields)
+
+
+def file_text(message, msgctxt=None, /, **fields):
+    """``iface_`` for text that leaves the interface (a file's name or contents): in the person's language, filled in
+    reading order and never in Blender's visual form (Arabic's shipped catalogue is pre-shaped and reversed for
+    drawing, which a file system or a text editor would show backwards)."""
+    translated = _gettext("iface", message, msgctxt)
+    if _visual_rtl(translated):
+        from . import rtl_text
+        translated = rtl_text.to_logical(translated)
+    try:
+        return translated.format(**fields) if fields else translated
+    except (KeyError, IndexError, ValueError):
+        return message.format(**fields) if fields else message
 
 
 def tip_(message, **fields):

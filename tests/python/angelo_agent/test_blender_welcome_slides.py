@@ -37,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))   # qa_frames
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-welcome-slides-qa"))
@@ -99,11 +100,7 @@ def welcome_region():
 
 def to_window(rect):
     """A welcome rectangle (layout pixels) as window pixels, mirrored back in a right-to-left language."""
-    from angelo_agent import ui_text
-    region = welcome_region()
-    x, y, w, h = rect
-    left = region.width - x - w if ui_text.is_rtl() else x
-    return region.x + left, region.y + y, w, h
+    return qa_hit.rect(qa_hit.PIXELS, welcome_region(), rect)
 
 
 def point(action, value=None):
@@ -197,10 +194,10 @@ def card_region():
 
 def click_card(action, value=None):
     """A real click on the visible card's own control (mirrored back in a right-to-left language)."""
-    from angelo_agent import canvas_rtl, card_host
+    from angelo_agent import card_host
     region = card_region()
     rect = next(r for r, a, v in reversed(card_host._active.plan.hits) if a == action and (value is None or v == value))
-    press(region.x + canvas_rtl.pointer_x(rect[0] + rect[2] / 2, region.width), region.y + rect[1] + rect[3] / 2)
+    press(*qa_hit.point(qa_hit.PIXELS, region, rect))
 
 
 def note_lines():
@@ -306,7 +303,7 @@ def tick():
             state["phase"] = "setup_dark"
             return .6
         if phase == "setup_dark":
-            from angelo_agent import card_host, ui_text
+            from angelo_agent import card_host
             language, scale = state["setup_todo"][0]
             tag = "%s-x%g" % (language.split("_")[0], scale)
             _, ops = note_lines()
@@ -320,11 +317,9 @@ def tick():
                 left = min(op[0] for op in state["note_ops"])
                 bottom = min(op[1] for op in state["note_ops"]) - 0.4 * size
                 top = max(op[1] for op in state["note_ops"]) + size
-                width = cx + cw - left
-                if ui_text.is_rtl():
-                    left = region.width - left - width
-                x0, y0 = int(region.x + left), int(region.y + bottom)
-                x1, y1 = int(x0 + width), int(region.y + top)
+                band = qa_hit.rect(qa_hit.PIXELS, region, (left, bottom, cx + cw - left, top - bottom))
+                x0, y0 = int(band[0]), int(band[1])
+                x1, y1 = int(x0 + band[2]), int(band[1] + band[3])
                 change = float(numpy_abs_mean(pixels(state["light_capture"])[y0:y1, x0:x1], pixels(dark)[y0:y1, x0:x1]))
                 state.setdefault("setup_note_change", {})[tag] = round(change, 1)
                 checks["setup_light_note_is_on_screen_" + tag] = change > 6

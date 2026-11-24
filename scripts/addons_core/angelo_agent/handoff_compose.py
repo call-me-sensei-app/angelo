@@ -46,6 +46,8 @@ _CONTROL_PASSES = ("chronological projection", "index", "selection", "member loo
 
 def _person_only(message, reader):
     # HostSummaries has admitted this exact record's keys; no callback runs between.
+    if message.get("person_only") is True:   # document_offer.person_only's mark: an admitted key, read uncharged,
+        return True                         # so the work credit counts only model-visible rows (id_diet's pin).
     recipe = message.get("i18n")
     if (type(recipe) is list or type(recipe) is tuple) and recipe:
         reader.visit()

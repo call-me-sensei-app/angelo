@@ -1,0 +1,173 @@
+{
+ "schema": "angelo-biome/1",
+ "name": "Mixed temperate forest",
+ "description": "Broadleaf and conifer canopy, shrubs and an undergrowth of ferns and grass.",
+ "layers": [
+  {
+   "name": "Broadleaf trees",
+   "assets": [
+    {
+     "query": "deciduous tree",
+     "kind": "model"
+    },
+    {
+     "query": "oak tree",
+     "kind": "model",
+     "weight": 0.5
+    }
+   ],
+   "density": 0.025,
+   "spacing": 1.0,
+   "transform": {
+    "scale": [
+     0.7,
+     1.3
+    ],
+    "align": 0.0,
+    "yaw": true,
+    "tilt": 0.0
+   },
+   "seed": 21,
+   "rules": {
+    "slope": {
+     "min": 0,
+     "max": 30,
+     "soft": 5
+    },
+    "noise": {
+     "scale": 50,
+     "amount": 0.3
+    }
+   }
+  },
+  {
+   "name": "Conifers",
+   "assets": [
+    {
+     "query": "pine tree",
+     "kind": "model"
+    }
+   ],
+   "density": 0.015,
+   "spacing": 1.0,
+   "transform": {
+    "scale": [
+     0.7,
+     1.2
+    ],
+    "align": 0.0,
+    "yaw": true,
+    "tilt": 0.0
+   },
+   "seed": 22,
+   "rules": {
+    "slope": {
+     "min": 0,
+     "max": 35,
+     "soft": 5
+    },
+    "noise": {
+     "scale": 60,
+     "amount": 0.5
+    }
+   }
+  },
+  {
+   "name": "Shrubs",
+   "assets": [
+    {
+     "query": "bush",
+     "kind": "model"
+    }
+   ],
+   "density": 0.12,
+   "spacing": 1.0,
+   "transform": {
+    "scale": [
+     0.6,
+     1.3
+    ],
+    "align": 0.2,
+    "yaw": true,
+    "tilt": 0.0
+   },
+   "seed": 23,
+   "rules": {
+    "slope": {
+     "min": 0,
+     "max": 35,
+     "soft": 5
+    },
+    "noise": {
+     "scale": 15,
+     "amount": 0.5
+    }
+   }
+  },
+  {
+   "name": "Undergrowth",
+   "assets": [
+    {
+     "query": "fern",
+     "kind": "model"
+    },
+    {
+     "query": "grass",
+     "kind": "model",
+     "weight": 1.0
+    }
+   ],
+   "density": 0.6,
+   "spacing": 1.0,
+   "transform": {
+    "scale": [
+     0.6,
+     1.2
+    ],
+    "align": 0.4,
+    "yaw": true,
+    "tilt": 0.0
+   },
+   "seed": 24,
+   "rules": {
+    "slope": {
+     "min": 0,
+     "max": 35,
+     "soft": 5
+    },
+    "noise": {
+     "scale": 6,
+     "amount": 0.5
+    }
+   }
+  },
+  {
+   "name": "Fallen wood",
+   "assets": [
+    {
+     "query": "log",
+     "kind": "model"
+    }
+   ],
+   "density": 0.01,
+   "spacing": 1.0,
+   "transform": {
+    "scale": [
+     0.8,
+     1.2
+    ],
+    "align": 1.0,
+    "yaw": true,
+    "tilt": 0.0
+   },
+   "seed": 25,
+   "rules": {
+    "slope": {
+     "min": 0,
+     "max": 20,
+     "soft": 5
+    }
+   }
+  }
+ ]
+}

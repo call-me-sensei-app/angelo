@@ -19,7 +19,7 @@ takes both pills away: the request is on its way again.
 
 import json
 
-from . import drafts, notice_kinds, request_submissions
+from . import drafts, notice_kinds, request_submissions, turn_tail
 from .ui_text import n_
 
 LABEL = n_("Resend")   # The card's pill; its tooltip (``canvas_controls.label``) says what it does and costs.
@@ -80,17 +80,18 @@ class _Recovery:
 
     def request(self, controller, message=None):
         rows = controller.state.get("messages") or []
+        index = turn_tail.last(rows)   # Its error, past what the turn's end added after it.
+        row = rows[index] if index is not None else None
         if (controller is not self.controller or self.fence != request_submissions.fence(controller)
-                or not rows or rows[-1].get("role") != "error"
-                or (message is not None and message is not rows[-1])
-                or any(rows[-1] is _mine(controller).get(name) for name in ("_put_back_row", "_resent_row"))):
+                or row is None or row.get("role") != "error"
+                or (message is not None and message is not row)
+                or any(row is _mine(controller).get(name) for name in ("_put_back_row", "_resent_row"))):
             return None
-        row = rows[-1]
         # A mirror may rebuild the same history from its journal. Rebind only the exact error,
         # same request fence and same strict person request before it; equal text alone is no owner.
         if row is not self.row and json.dumps(row, sort_keys=True, ensure_ascii=False, default=str) != self.error:
             return None
-        found = drafts.request_before_error(rows, len(rows) - 1)
+        found = drafts.request_before_error(rows, index)
         if found is None or _snapshot(found) != self.payload:
             return None
         self.row = row
@@ -147,8 +148,9 @@ def resend(controller, row):
         if mine.get("_resent_row") is row:
             mine.pop("_resent_row", None)
         rows = controller.state.get("messages") or []
-        target = rows[-1] if rows and rows[-1].get("role") == "error" else None
-        found = drafts.request_before_error(rows, len(rows) - 1) if target is not None else None
+        index = turn_tail.last(rows)
+        target = rows[index] if index is not None and rows[index].get("role") == "error" else None
+        found = drafts.request_before_error(rows, index) if target is not None else None
         if found is None or _snapshot(found) != payload:
             # A turn was allocated but definitely never sent. Keep its refusal in the transcript,
             # not in the unrelated composer. Mirrors keep lead-owned rows across journal reloads.
@@ -158,7 +160,7 @@ def resend(controller, row):
                 add_row(controller, "error", body)
             else:
                 controller._append_row(dict(body, role="error"))
-            target = controller.state["messages"][-1]
+            target = turn_tail.last_row(controller.state["messages"])   # The error just added.
         controller._resend_refused = (target, {"notice": error_notice(error)})
         controller._resend_recovery = _Recovery(controller, target, payload, kind)
         controller.version += 1

@@ -96,6 +96,11 @@ def _bar(view, state, popup, geometry, items, width, height):
             view.shape(cx - 7, cy - 7, 14, 14, ui_tokens.TEAL, 7)
             view.shape(cx - 5.4, cy - 5.4, 10.8, 10.8, ui_tokens.HIGHLIGHT, 5.4)
             view.shape(cx - 2.5, cy - 2.5, 5, 5, ui_tokens.TEAL, 2.5)
+        elif item.get("glyph") == "plan":   # Plan first: a short checklist (chat_add_menu's tile, small).
+            cx, cy = rect[0] + (rect[2] / 2 if compact else 17), rect[1] + rect[3] / 2
+            for row in (-1, 0, 1):
+                view.shape(cx - 7, cy - 1.5 + row * 5, 3, 3, ui_tokens.TEAL, 1.5)
+                view.shape(cx - 2, cy - 1 + row * 5, 9, 2, ui_tokens.TEAL, 1)
         else:
             view.icon("plus", rect[0] + (rect[2] / 2 if compact else 17), rect[1] + rect[3] / 2, ui_tokens.TEXT)
         if not compact:   # Icon-only when the field needs the room; the hover strip still names the button.

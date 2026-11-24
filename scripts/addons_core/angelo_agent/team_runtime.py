@@ -15,7 +15,8 @@ import json
 
 from . import managed_policy
 from .protocol import RpcError
-from .provider_registry import EXTERNAL_CODEX_MODES, TEAM_MODES, is_endpoint, organization_mode, service_mode, spec_for
+from .provider_registry import (EXTERNAL_CODEX_MODES, TEAM_MODES, is_endpoint, organization_mode, service_mode, spec_for,
+                                stream_settings)
 
 SIGN_IN = "Sign in to your Angelo team in Preferences > AI Providers"
 ENDPOINT_KEY = "Add your key for your organization's model server in Preferences > AI Providers"
@@ -52,6 +53,7 @@ def model_provider_entry(mode):
         # A TOML dotted key (``-c`` values are TOML), not an inline table: header names are bare keys.
         del entry["env_key"]
         entry["env_http_headers." + spec["auth_header"]] = spec["env_key"]
+    entry.update(stream_settings(entry["wire_api"]))   # A silent stream is re-sent before the host gives up.
     entry.update(spec.get("provider_settings", {}))
     compression = request_compression(mode)
     if compression:

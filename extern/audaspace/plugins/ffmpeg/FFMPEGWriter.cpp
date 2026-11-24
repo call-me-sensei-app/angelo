@@ -541,7 +541,12 @@ FFMPEGWriter::FFMPEGWriter(const std::string &filename, DeviceSpecs specs, Conta
 		if((m_input_size = m_codecCtx->frame_size))
 			m_input_buffer.resize(m_input_size * samplesize);
 
-		if(avio_open(&m_formatCtx->pb, filename.c_str(), AVIO_FLAG_WRITE))
+		// Angelo: the file protocol only (see FFMPEGReader).
+		AVDictionary* options = nullptr;
+		av_dict_set(&options, "protocol_whitelist", "file", 0);
+		const int opened = avio_open2(&m_formatCtx->pb, filename.c_str(), AVIO_FLAG_WRITE, nullptr, &options);
+		av_dict_free(&options);
+		if(opened < 0)
 			AUD_THROW(FileException, "File couldn't be written, file opening failed with ffmpeg.");
 
 		if(avformat_write_header(m_formatCtx, nullptr) < 0)

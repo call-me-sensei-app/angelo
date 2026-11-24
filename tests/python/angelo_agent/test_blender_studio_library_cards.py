@@ -35,6 +35,7 @@ import sys  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_frames, inside the app.
 
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-studio-library-cards-qa"))
@@ -113,13 +114,6 @@ def drawn_capture(name, target):
     return qa_frames.drawn(pixels(capture(name, target)))
 
 
-def drawn_x(region, x):
-    """Where layout x ``x`` is drawn: a right-to-left interface (Arabic) mirrors Angelo's canvases across the region,
-    and card_host mirrors the pointer back before hit-testing (canvas_rtl), so samples and clicks mirror too."""
-    from angelo_agent import ui_text
-    return region.width - x if ui_text.is_rtl() else x
-
-
 def judge_card(name, target, area, confirm_style):
     """Capture the visible card and read it: centred over ``area``, card-coloured, its confirm in ``confirm_style``."""
     from angelo_agent import card_draw, card_kit as kit
@@ -127,13 +121,17 @@ def judge_card(name, target, area, confirm_style):
     path = capture(name, target)
     px = pixels(path)
     region = next(r for r in area.regions if r.type == 'WINDOW')
+    # A right-to-left interface (Arabic) mirrors the card across the region and card_host mirrors the pointer back
+    # before hit-testing (canvas_rtl): samples and clicks go where qa_hit.PIXELS draws them.
     x, y, w, h = active.plan.card
-    centre = (region.x + x + w / 2, region.y + y + h / 2)
-    middle = (region.x + region.width / 2, region.y + region.height / 2)
-    fill = px[int(region.y + y + h - 8), int(region.x + x + w / 2)]
+    centre = qa_hit.point(qa_hit.PIXELS, region, active.plan.card)
+    middle = qa_hit.point(qa_hit.RAW, region, (0, 0, region.width, region.height))
+    fx, fy = qa_hit.xy(qa_hit.PIXELS, region, x + w / 2, y + h - 8)
+    fill = px[int(fy), int(fx)]
     confirm = next(op for op in active.plan.ops if op[0] == "button" and op[3] != "secondary")
     bx, by, bw, bh = confirm[1]
-    button = px[int(region.y + by + bh * 0.2), int(region.x + drawn_x(region, bx + 6))]
+    cx, cy = qa_hit.xy(qa_hit.PIXELS, region, bx + 6, by + bh * 0.2)
+    button = px[int(cy), int(cx)]
     key = name.rsplit(".", 1)[0]
     state["observed"][key] = {"card": list(active.plan.card), "region": [region.width, region.height],
                               "fill": fill.tolist(), "button": button.tolist(), "style": confirm[3]}
@@ -147,9 +145,9 @@ def click(action, area):
     """A real click on the visible card's control ``action``."""
     active = card()
     region = next(r for r in area.regions if r.type == 'WINDOW')
-    (x, y, w, h), _action, _value = next(hit for hit in active.plan.hits if hit[1] == action)
-    import qa_input   # The pointer arrives, then the press a pass later; mirrored where the card is (drawn_x).
-    qa_input.press(window_of(area), region.x + drawn_x(region, x + w / 2), region.y + y + h / 2)
+    rect, _action, _value = next(hit for hit in active.plan.hits if hit[1] == action)
+    import qa_input   # The pointer arrives, then the press a pass later; mirrored where the card is.
+    qa_input.press(window_of(area), *qa_hit.point(qa_hit.PIXELS, region, rect))
 
 
 def invoke(operator, area):

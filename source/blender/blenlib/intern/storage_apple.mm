@@ -27,6 +27,10 @@ bool BLI_file_alias_target(const char *filepath,
                            /* NOLINTNEXTLINE: readability-non-const-parameter. */
                            char r_targetpath[FILE_MAXDIR])
 {
+  if (BLI_fileops_gate_refuses_lookup(filepath, true)) {
+    /* A lookup that would reach the network for a confined thread (BLI_fileops.hh, `lookup_refused`). */
+    return false;
+  }
   /* clang-format off */
   @autoreleasepool {
     /* clang-format on */
@@ -124,6 +128,10 @@ static bool test_file_is_offline(const char *path)
 
 eFileAttributes BLI_file_attributes(const char *path)
 {
+  if (BLI_fileops_gate_refuses_lookup(path, true)) {
+    /* A lookup that would reach the network for a confined thread (BLI_fileops.hh, `lookup_refused`). */
+    return eFileAttributes(0);
+  }
   int ret = 0;
 
   /* clang-format off */

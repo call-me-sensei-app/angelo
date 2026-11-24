@@ -415,6 +415,7 @@ def release(arguments, runner, platform=sys.platform):
         problems += release_checks.agent_runtime_problems(runtime, "macos", exclusive=True)
     if not arguments.allow_no_agent_runtime:
         problems += release_checks.release_marker_problems(app, "macos")
+        problems += release_checks.pin_problems(release_checks.agent_runtime_pin())   # Its runtime must start.
     problems += ["%s is a Git LFS pointer, not its content" % path for path in release_checks.lfs_pointer_files(app)]
     if problems:
         raise ReleaseError("refusing to sign:\n  " + "\n  ".join(problems))

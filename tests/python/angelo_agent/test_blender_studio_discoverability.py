@@ -38,6 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_flow_view, inside
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 import qa_input  # noqa: E402  (synthetic clicks; after_clicks)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-studio-discoverability-qa"))
@@ -302,11 +303,11 @@ def flow_window_checks(target, path):
 
 
 def click_welcome(action, value=None):
-    from angelo_agent import canvas_rtl, intro
+    from angelo_agent import intro
     area = next(a for a in window().screen.areas if a.as_pointer() == intro._open["area"])
     region = next(r for r in area.regions if r.type == 'WINDOW')
     rect = next(r for r, a, v in intro._open["plan"]["hits"] if a == action and (value is None or v == value))
-    press(region.x + canvas_rtl.pointer_x(rect[0] + rect[2] / 2, region.width), region.y + rect[1] + rect[3] / 2)
+    press(*qa_hit.point(qa_hit.PIXELS, region, rect))
 
 
 def welcome_fits():
@@ -442,9 +443,8 @@ def tick():
             # under it change against the capture before the click.
             area = next(a for a in window().screen.areas if a.as_pointer() == flow_menu._open["area"])
             region = next(r for r in area.regions if r.type == 'WINDOW')
-            x, y, w_, h_ = flow_menu._open["layout"]["rect"]
-            scale = flow_menu._open["scale"]
-            box = (region.x + x * scale, region.y + y * scale, region.x + (x + w_) * scale, region.y + (y + h_) * scale)
+            x, y, w_, h_ = qa_hit.rect(qa_hit.LAYOUT, region, flow_menu._open["layout"]["rect"])
+            box = (x, y, x + w_, y + h_)
             state["flows_menu_changed"] = round(changed_share(state["flows_before"], after, box), 4)
             state["flows_rows"] = flows_rows()
             # Calibrated offscreen (flow_menu.paint over the chat's ground, 1.0.5): the popup's CARD panel is close to

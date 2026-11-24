@@ -5,7 +5,7 @@
 /** \file
  * \ingroup pythonintern
  *
- * Read the progress of, and stop, Blender's own window-manager jobs (renders,
+ * Read the progress of, and stop, Blender's own window-manager jobs (renders, UV packs,
  * bakes and background exports) that the Angelo job contract started, and
  * redraw job listeners when a job's state changes. Python has
  * `bpy.app.is_job_running` but no progress or stop for these job types.
@@ -109,6 +109,7 @@
 #include "bpy_angelo_desktop.hh"
 #include "bpy_angelo_jobs.hh"
 #include "bpy_angelo_jobs_caches.hh"
+#include "bpy_angelo_jobs_guard.hh"
 #include "bpy_angelo_jobs_work.hh"
 #include "bpy_angelo_update_quit.hh"
 #include "bpy_capi_utils.hh"
@@ -131,8 +132,12 @@ static const AngeloJobType job_types[] = {
     {"BAKE_GEOMETRY_NODES", WM_JOB_TYPE_BAKE_GEOMETRY_NODES, false},
     {"USD_EXPORT", WM_JOB_TYPE_USD_EXPORT, false},
     {"ALEMBIC_EXPORT", WM_JOB_TYPE_ALEMBIC_EXPORT, false},
+    /* Checks its own stop flag and `G.is_break` (`object_retopology.cc`). */
+    {"RETOPOLOGY", WM_JOB_TYPE_RETOPOLOGY, false},
     /* Mantaflow's bake checks `G.is_break` only (`physics_fluid.cc`, `fluid_bake_sequence`). */
     {"FLUID", WM_JOB_TYPE_OBJECT_SIM_FLUID, true},
+    /* Pack Islands' job (UV Layout runs one per tile); its packer checks the job's stop flag. */
+    {"UV_PACK", WM_JOB_TYPE_UV_PACK, false},
 };
 
 static bool require_main_thread()
@@ -477,6 +482,10 @@ static bool require_event_simulate(const char *function)
 {
   if ((G.f & G_FLAG_EVENT_SIMULATE) == 0) {
     PyErr_Format(PyExc_RuntimeError, "%s needs --enable-event-simulate", function);
+    return false;
+  }
+  if (BPY_angelo_guard_thread_confined()) { /* A test seam is a suite's, never an agent script's. */
+    PyErr_Format(PyExc_PermissionError, "%s is not for an agent script", function);
     return false;
   }
   return true;
@@ -1121,7 +1130,8 @@ PyObject *BPY_angelo_jobs_module()
     return nullptr;
   }
   if (PyModule_AddFunctions(mod, BPY_angelo_jobs_work_methods()) < 0 ||
-      PyModule_AddFunctions(mod, BPY_angelo_jobs_caches_methods()) < 0)
+      PyModule_AddFunctions(mod, BPY_angelo_jobs_caches_methods()) < 0 ||
+      PyModule_AddFunctions(mod, BPY_angelo_jobs_guard_methods()) < 0)
   {
     Py_DECREF(mod);
     return nullptr;

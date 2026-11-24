@@ -384,6 +384,10 @@ void OBJECT_OT_voxel_remesh(wmOperatorType *ot);
 void OBJECT_OT_voxel_size_edit(wmOperatorType *ot);
 void OBJECT_OT_quadriflow_remesh(wmOperatorType *ot);
 
+/* `object_retopology.cc` */
+
+void OBJECT_OT_retopology(wmOperatorType *ot);
+
 /* object_data_transfer.cc */
 
 /**

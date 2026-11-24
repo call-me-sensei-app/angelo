@@ -8,6 +8,7 @@ Objective-C runtime (ctypes), so no native change ships. No bpy.
   while the system may still sleep, so its timers and the agent's turn run at full speed while nothing is shown.
 * ``show_app``: a regular app again (Dock icon, menu bar), unhidden, its windows in front and active: the person's
   window. Returns whether the switch back to Regular took (the caller retries on a tick when it didn't).
+* ``hidden_state``: whether the app is hidden and regular, as AppKit reports them; the session's tick reads it.
 * ``on_reopen``: a Finder or Dock launch of Angelo while this hidden app runs reaches it as a reopen AppleEvent
   (LaunchServices reopens the running app; no second process starts); it calls back, so the session can reveal
   itself as the person's own launch does (review 5, 1).
@@ -76,6 +77,15 @@ def show_app():
         send(window, b"makeKeyAndOrderFront:", None, restype=None, argtypes=(ctypes.c_void_p,))
     send(app, b"activateIgnoringOtherApps:", True, restype=None, argtypes=(ctypes.c_bool,))
     return bool(regular) and send(app, b"activationPolicy", restype=ctypes.c_long) == 0
+
+
+def hidden_state():
+    """``{"hidden", "regular"}`` as AppKit reports them (``isHidden``, the activation policy): the session's tick reads
+    whether the person brought the hidden app up themselves."""
+    ctypes, objc, send = _runtime()
+    app = send(objc.objc_getClass(b"NSApplication"), b"sharedApplication")
+    return {"hidden": bool(send(app, b"isHidden", restype=ctypes.c_bool)),
+            "regular": send(app, b"activationPolicy", restype=ctypes.c_long) == 0}
 
 
 def _four(code):

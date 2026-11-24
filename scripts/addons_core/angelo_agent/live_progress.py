@@ -168,6 +168,10 @@ def note(facts, now, stall_seconds=STALL_SECONDS, quiet_seconds=QUIET_SECONDS):
     """
     if facts.tool is not None or facts.step is not None or not facts.watched or facts.last_model is None:
         return None
+    from .codex_retry import NETWORK, WAITING
+    from .plan_progress import split
+    if split(facts.status)[0] in (WAITING, NETWORK):   # The row already says what the turn waits for: not a stall.
+        return None
     keepalives = facts.last_heard is not None
     heard = _latest(facts.last_heard if keepalives else facts.last_model, facts.started)
     if now - heard >= stall_seconds and (keepalives or not facts.thinking):

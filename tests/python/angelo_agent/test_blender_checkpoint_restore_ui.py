@@ -41,6 +41,7 @@ from angelo_agent.memory_evidence import scope_token
 from angelo_agent.memory_projects import MAX_PROJECT_BYTES
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 ui._authentication.start = lambda *args, **kwargs: None
 type(ui._authentication).start = lambda *args, **kwargs: None

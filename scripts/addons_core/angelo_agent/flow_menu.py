@@ -29,7 +29,8 @@ from bpy.app.handlers import persistent
 from bpy.props import FloatProperty, StringProperty
 from bpy.types import Operator
 
-from . import chat_add_menu, flow_open, grant_guard, input_policy, live_windows, ui_text, ui_tokens as tk
+from . import chat_add_menu, flow_menu_guard, flow_open, grant_guard, input_policy, live_windows, ui_text
+from . import ui_tokens as tk
 
 IDENTITY = "angelo.flow_menu"
 FLOWS, STEPS, ENGINES = "FLOWS", "STEPS", "ENGINES"   # i18n: menu kinds, never shown
@@ -190,6 +191,7 @@ def close(reason="closed"):
     _redraw()
     window = live_windows.find(bpy.context.window_manager, _open["window"], live=False)   # The cursor needs no screen.
     _open = None
+    flow_menu_guard.closed(window)   # What it covered starts again (the grant guard).
     if window is not None:
         try:
             window.cursor_modal_restore()
@@ -225,23 +227,8 @@ def _draw():
     if state is None or area is None or region is None or area.as_pointer() != state["area"]:
         return
     paint(state, region.width, region.height, chat_view.ui_scale())
-    _consent_regions(state, region)
+    flow_menu_guard.consent_regions(state, region)
     drawn += 1
-
-
-def _consent_regions(state, region):
-    """Rows as C's regions (``flowmenu.row``): a row's grant (an engine setup) runs in its press's ticket scope."""
-    geometry, items, hits = state.get("layout"), state["rows"], []
-    if not geometry:
-        return
-    lx, ly, lw, lh = geometry["list_rect"]
-    for index, (rx, ry, rw, rh) in enumerate(geometry["rows"]):
-        top, bottom = min(ry + rh, ly + lh), max(ry, ly)
-        if items[index]["kind"] in chat_add_menu.ACTIONABLE and top > bottom:
-            hits.append(((rx, bottom, rw, top - bottom), "row", index))
-    grant_guard.canvas_regions(bpy.context.window, region, "flowmenu", hits, state.get("scale") or 1.0,
-                               ui_text.is_rtl(), prefix="flowmenu.", focus=("row", state["cursor"]) if state["keyboard"]
-                               else None)
 
 
 def paint(state, region_width, region_height, scale):
@@ -479,9 +466,11 @@ def _set_cursor(window, hand):
 
 @persistent
 def _load_pre(*_args):
-    """Opening a file drops every modal operator and replaces the windows: the menu goes with them."""
+    """Opening a file drops every modal operator and replaces the windows: the menu goes with them, its cover too."""
     global _open
+    window = _open and live_windows.find(bpy.context.window_manager, _open["window"], live=False)
     _open = None
+    flow_menu_guard.closed(window)
 
 
 def register():

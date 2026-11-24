@@ -32,6 +32,8 @@ set(SRC
   intern/wm_angelo_gpu_startup_record.cc
   intern/wm_angelo_gpu_startup_intern.hh
   intern/wm_angelo_input_hold.cc
+  intern/wm_angelo_pointer_region.cc
+  intern/wm_angelo_pointer_region.hh
   intern/wm_dragdrop.cc
   intern/wm_draw.cc
   intern/wm_event_query.cc

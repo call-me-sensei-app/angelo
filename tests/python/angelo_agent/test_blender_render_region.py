@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 import qa_input  # noqa: E402  (synthetic clicks and drags)
 import render_region_scenes  # noqa: E402  (an ordinary look-dev scene: the pixel suite's product shot)
+import qa_hit
 product_env.clear('DISABLE_DEFAULT_CHAT')
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-render-region-qa"))
 OUT.mkdir(parents=True, exist_ok=True)
@@ -117,8 +118,7 @@ def image_point(window, fx, fy):
     """Window pixel of the image's fraction (fx, fy) in the render window."""
     area = render_area(window)
     region = next(r for r in area.regions if r.type == 'WINDOW')
-    x, y = region.view2d.view_to_region(fx, fy, clip=False)
-    return region.x + x, region.y + y
+    return qa_hit.xy(qa_hit.RAW, region, *region.view2d.view_to_region(fx, fy, clip=False))
 
 
 def pill_point(action):
@@ -137,9 +137,9 @@ def card_point(action):
         for area in window.screen.areas:
             if area.as_pointer() == active.area:
                 region = next(r for r in area.regions if r.type == 'WINDOW')
-                for (x, y, w, h), name, _value in active.plan.hits:
+                for rect, name, _value in active.plan.hits:
                     if name == action:
-                        return window, (region.x + x + w / 2, region.y + y + h / 2)
+                        return window, qa_hit.point(qa_hit.PIXELS, region, rect)
     return None, None
 
 

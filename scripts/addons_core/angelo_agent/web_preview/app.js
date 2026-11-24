@@ -14,6 +14,7 @@ import { setupPanel } from "./panel.js";
 import { Look } from "./look.js";
 import { setupCompare } from "./compare.js";
 import { ownPresses } from "./drag.js";
+import { setupFraming } from "./framing.js";
 
 const LIBS = "./vendor/three/examples/jsm/libs/";
 const $ = (id) => document.getElementById(id);
@@ -45,6 +46,7 @@ let latest = null, sceneVersion = -1;
 let content = null, mixer = null, version = -1, framed = false, loading = false, pending = false, text = {};
 const timer = new THREE.Timer();
 const compare = setupCompare({ renderer, scene, camera, controls, canvas, look, text: () => text });
+const framing = setupFraming({ camera, controls, $ });   // The Camera / Selection / All / Follow toolbar.
 
 function lookbar() {
   // The person's lighting and background choices, and the look the export carries, as the toolbar shows them.
@@ -68,31 +70,6 @@ function resize() {
 }
 new ResizeObserver(resize).observe(canvas);
 
-function frame(root, gltf) {
-  // First load only: later reloads keep the person's view while they edit in Blender.
-  const box = new THREE.Box3().setFromObject(root);
-  if (box.isEmpty()) return;
-  const center = box.getCenter(new THREE.Vector3());
-  const radius = box.getSize(new THREE.Vector3()).length() / 2 || 1;
-  const shot = gltf.cameras.find((item) => item.isPerspectiveCamera);
-  if (shot) {   // Start from the scene's camera, as Blender renders it.
-    shot.updateWorldMatrix(true, false);
-    camera.position.setFromMatrixPosition(shot.matrixWorld);
-    camera.quaternion.setFromRotationMatrix(shot.matrixWorld);
-    camera.fov = shot.fov;
-    const ahead = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-    controls.target.copy(camera.position).addScaledVector(ahead, camera.position.distanceTo(center));
-  } else {
-    camera.position.copy(center).add(new THREE.Vector3(1, 0.7, 1).normalize().multiplyScalar(radius * 2.6));
-    controls.target.copy(center);
-  }
-  camera.near = radius / 200;
-  camera.far = radius * 200;
-  camera.updateProjectionMatrix();
-  controls.update();
-  framed = true;
-}
-
 async function loadScene() {
   if (loading) { pending = true; return; }
   loading = true;
@@ -115,7 +92,8 @@ async function loadScene() {
     scene.add(root);
     mixer = gltf.animations.length ? new THREE.AnimationMixer(root) : null;
     gltf.animations.forEach((clip) => mixer.clipAction(clip).play());
-    if (!framed) frame(root, gltf);
+    // The first scene with something in it is framed; later ones keep the person's view.
+    framed = (await framing.loaded(root, gltf, !framed)) || framed;
     await look.apply(gltf);
     if (latest) applyShaders(latest);
     if (latest) chips(latest);
@@ -172,6 +150,7 @@ function show(report) {
     ["compare-done", "compare_done"], ["angelo-side", "angelo_side"], ["web-side", "web_side"]])
     $(id).textContent = text[key] || "";
   $("empty").textContent = text.empty || "";
+  framing.setText(text);
   if (report.status === "failed") { status("down", text.failed || ""); return; }
   const budget = report.budget || {};
   $("v-download").textContent = budget.bytes != null ? bytes(budget.bytes) : "–";
@@ -291,6 +270,7 @@ events.addEventListener("version", (event) => {
 });
 events.addEventListener("capture", () => { capture(); });
 events.addEventListener("viewport", () => { compare.arrived(); });
+events.addEventListener("focus", () => { framing.focused(); });
 events.addEventListener("closed", () => { status("down", text.offline || ""); events.close(); });
 events.onerror = () => status("down", text.offline || "");   // It reconnects by itself while Angelo runs.
 

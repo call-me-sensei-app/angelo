@@ -56,6 +56,7 @@ from angelo_agent.approvals import approval_message, review_arguments  # noqa: E
 from angelo_agent.controller import ToolCall  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 REPORT = OUT / "job-card.json"
 state = {"phase": "boot", "success": False, "checks": {}, "screenshots": [],

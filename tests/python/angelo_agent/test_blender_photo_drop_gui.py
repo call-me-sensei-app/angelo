@@ -42,6 +42,7 @@ for name, folder in (("ANGELO_STATE_DIR", "state"), ("ANGELO_CONNECTIONS_DIR", "
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 REPORT = OUT / "photo-drop-gui.json"
@@ -99,7 +100,7 @@ def spot(world):
     """``world`` in window pixels of the main 3D view."""
     area, region = view3d()
     point = view3d_utils.location_3d_to_region_2d(region, region.data, world)
-    return region.x + point.x, region.y + point.y
+    return qa_hit.xy(qa_hit.RAW, region, point.x, point.y)
 
 
 def drop(path, world):
@@ -128,7 +129,7 @@ def hit(action):
         return None
     _area, region = view3d()
     rect = next((r for r, a, _v in plan.hits if a == action), None)
-    return (region.x + rect[0] + rect[2] / 2, region.y + rect[1] + rect[3] / 2) if rect else None
+    return qa_hit.point(qa_hit.PIXELS, region, rect) if rect else None
 
 
 def click(xy):

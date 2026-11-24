@@ -8,7 +8,8 @@ interface scale with the display's pixel size) and, in a right-to-left language,
 clicked beside the control whenever that scale is not 1: under Xvfb at 75 dpi (pixel size 0.78) about fifty suites
 missed their first chat click and timed out (merge-11's VM GUI runs of 9d7a54eab7f; pipeline-gates fixed eight).
 
-The one mapping is ``qa_input.chat_point`` / ``chat_rect`` (or ``window_click(..., scale=chat_view.ui_scale())``).
+The one mapping is ``qa_input.chat_point`` / ``chat_rect`` (or ``window_click(..., scale=chat_view.ui_scale())``),
+which since 2.1.0 call ``qa_hit`` (every surface's mapping; ``qa_hit.point``/``ipoint``/``rect``/``xy`` count too).
 This test follows every value a suite or its helper module takes from the chat's canvas state (``chat_view._views``,
 a flow window's ``chat_view_view``) through assignments, unpacking, loops, local and imported helper functions and
 their parameters, and fails on any of them added to a region's or area's ``x``/``y`` by hand, or handed to
@@ -25,8 +26,9 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 # GUI suites and the helper modules they import; this module's own tests and qa_input (the mapping) excepted.
-SKIP = {"qa_input.py", Path(__file__).name}
+SKIP = {"qa_input.py", "qa_hit.py", Path(__file__).name}
 SANITIZERS = {"chat_point", "chat_rect"}   # qa_input's mappings: what they return is window pixels.
+QA_HIT_MAPPINGS = {"xy", "point", "ipoint", "rect"}   # qa_hit's, called on the module: window pixels of a surface.
 SOURCES = {"chat_view_view"}               # flow_window: the canvas state of a chat shown inside a flow window.
 # The chat state's fields the chat records in region pixels itself: marble_draw._region_rect applies the scale and
 # the mirror to the waiting mark's square. Every other field (hits, geometry, the composer's rects) is in points.
@@ -36,6 +38,14 @@ PIXEL_FIELDS = {"marble_drawn"}
 def scanned_files():
     return sorted(path for path in HERE.glob("*.py")
                   if path.name not in SKIP and not path.name.startswith(("test_native_", "conftest")))
+
+
+def _maps(func):
+    """A call to one of the mappings: ``chat_point``/``chat_rect``, or ``qa_hit.<mapping>`` named on the module."""
+    if _call_name(func) in SANITIZERS:
+        return True
+    return (isinstance(func, ast.Attribute) and func.attr in QA_HIT_MAPPINGS and isinstance(func.value, ast.Name)
+            and func.value.id == "qa_hit")
 
 
 def _call_name(func):
@@ -173,7 +183,7 @@ class Project:
         stack = [node]
         while stack:
             sub = stack.pop()
-            if isinstance(sub, ast.Call) and _call_name(sub.func) in SANITIZERS:
+            if isinstance(sub, ast.Call) and _maps(sub.func):
                 continue
             if _pixel_field(sub):
                 continue
@@ -347,12 +357,15 @@ def go(region, area):
 
     def test_the_mappings_and_other_canvases_are_not_flagged(self):
         source = '''
+import qa_hit
 import qa_input
 from angelo_agent import chat_view, studio_input
 def go(window, region, area):
     rect = chat_view._views[area]["hits"][0][0]
     x, y = qa_input.chat_point(region, rect)
     box = qa_input.chat_rect(region, rect)
+    hx, hy = qa_hit.ipoint(qa_hit.LAYOUT, region, rect)
+    edge = qa_hit.rect(qa_hit.LAYOUT, region, rect)[0] + 1
     studio = studio_input.state()["hits"][0][0]
     qa_input.window_click(window, region, rect, "send", scale=chat_view.ui_scale())
     return region.x + studio[0], region.y + region.height / 2, x + 1, box[0] + 2

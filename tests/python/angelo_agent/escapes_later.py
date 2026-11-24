@@ -23,6 +23,8 @@ import sys
 
 import bpy
 
+import child_blender   # A child Angelo runs the suite's code from its own file.
+
 CHILD_ENV = ("ANGELO_PROBE_PLANTED", "ANGELO_PROBE_KEPT", "LD_PRELOAD", "PYTHONSTARTUP")
 
 
@@ -118,8 +120,7 @@ def _open_with_autorun(path):
             "bpy.ops.wm.open_mainfile(filepath=%r, load_ui=False, use_scripts=True)\n"
             "ob = bpy.data.objects['probe']\nscene = ob.users_scene[0]\n"
             "scene.frame_set(3)\nprint('CHILD ' + json.dumps({'x': ob.location[0]}))\n") % str(path)
-    done = subprocess.run([bpy.app.binary_path, "--background", "--factory-startup", "--python-expr", code],
-                          capture_output=True, text=True, timeout=600)
+    done = child_blender.run(code, capture_output=True, text=True, timeout=600)
     for line in done.stdout.splitlines():
         if line.startswith("CHILD "):
             return json.loads(line[6:])["x"]
@@ -234,8 +235,7 @@ def without_the_add_on(check):
             "_, got = script_confinement.run_confined(src, ns, None, 'child', finish=lambda n: n.get('result'))\n"
             "print('CHILD ' + json.dumps({'confined': got}))\n") % ([os.path.dirname(os.path.abspath(__file__))]
                                                                      + folders,)
-    done = subprocess.run([bpy.app.binary_path, "--background", "--factory-startup", "--python-expr", code],
-                          capture_output=True, text=True, timeout=600)
+    done = child_blender.run(code, capture_output=True, text=True, timeout=600)
     found = [line for line in done.stdout.splitlines() if line.startswith("CHILD ")]
     result = json.loads(found[-1][6:]) if found else {"output": (done.stdout + done.stderr)[-600:]}
     check("runs_without_the_add_on", result.get("confined") is True, result)

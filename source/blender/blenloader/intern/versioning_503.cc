@@ -726,8 +726,9 @@ void blo_do_versions_503(FileData * /*fd*/, Library * /*lib*/, Main *bmain)
   if (!MAIN_VERSION_FILE_ATLEAST(bmain, 503, 26)) {
     for (Scene &scene : bmain->scenes) {
       SequencerToolSettings *sequencer_tool_settings = seq::tool_settings_ensure(&scene);
-      sequencer_tool_settings->ripple_flag = SEQ_RIPPLE_ALL_CHANNELS | SEQ_RIPPLE_MARKERS |
-                                             SEQ_RIPPLE_CLEAR_RANGES;
+      /* Angelo: files from before ripple editing get the new-scene default, Clear Ranges off
+       * (`seq::tool_settings_init`). Files that store a setting keep it. */
+      sequencer_tool_settings->ripple_flag = SEQ_RIPPLE_ALL_CHANNELS | SEQ_RIPPLE_MARKERS;
     }
   }
 

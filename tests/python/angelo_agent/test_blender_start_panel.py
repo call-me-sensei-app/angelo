@@ -41,6 +41,7 @@ from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 product_env.clear('DISABLE_INTRO')
@@ -106,13 +107,12 @@ def card_actions():
 
 
 def click_card(action, value=None):
-    from angelo_agent import card_host, canvas_rtl
+    from angelo_agent import card_host
     active = card_host._active
     area = next(a for a in window().screen.areas if a.as_pointer() == active.area)
     region = next(r for r in area.regions if r.type == 'WINDOW')
     rect = next(r for r, a, v in reversed(active.plan.hits) if a == action and (value is None or v == value))
-    x = canvas_rtl.pointer_x(rect[0] + rect[2] / 2, region.width)
-    x, y = int(region.x + x), int(region.y + rect[1] + rect[3] / 2)
+    x, y = qa_hit.ipoint(qa_hit.PIXELS, region, rect)
     import qa_input
     if action in qa_input.GRANT_ACTIONS:   # It reaches a grant: only a person's click (move, then press).
         return qa_input.press(window(), x, y)

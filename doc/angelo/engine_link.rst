@@ -362,11 +362,15 @@ Angelo suggests the link when an engine's editor is open, and tells the agent wh
 offer it at the right moment (``engine_detect``, ``engine_suggest``, ``engine_suggest_ui``).
 
 * **What is detected**: whether Godot, Unity or the Unreal Editor runs (macOS: ``proc_listallpids`` and
-  ``proc_name`` from libproc; Windows: a Toolhelp32 snapshot; neither starts a process or asks for a permission),
+  ``proc_name`` from libproc; Windows: a Toolhelp32 snapshot; Linux: ``/proc/<pid>/comm`` of this user's
+  processes, whose 15-byte names still begin each editor's name; none starts a process or asks for a permission),
   and, once a launch, whether one is installed where its installer or launcher puts it (``INSTALL_GLOBS``). Names
   are matched in memory (``engine_of``: any name starting ``godot``; ``Unity``, not the Hub; ``UnrealEditor`` and
   ``UE4Editor``, not the windowless ``UnrealEditor-Cmd``) and dropped: only engine ids leave the module, and nothing
-  holding a process name or a path is stored, logged or sent. Other operating systems detect nothing.
+  holding a process name or a path is stored, logged or sent. On Linux the places are Steam, Flathub and the
+  distribution's ``godot`` for Godot, the Unity Hub's ``/opt/unityhub`` package, its ``~/Unity/Hub/Editor`` editors
+  and its Flathub build, and Epic's extracted download or a source build of Unreal in the home folder or ``/opt``.
+  Other operating systems detect nothing.
 * **Off the main thread**: a main-thread timer (``engine_suggest_ui.tick``) starts one scan at a time on a worker
   thread and reads its result 0.1 s later (``COLLECT``), so a running engine is acted on at once; the main thread
   does no detection. A scan every 10 s while an engine is left to suggest, then every 60 s (the agent's facts only).

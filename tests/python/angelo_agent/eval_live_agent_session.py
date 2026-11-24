@@ -25,7 +25,6 @@ import os, sys  # noqa: E401  The suite's own folder, for its first import:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
 
-import copy
 import json
 from pathlib import Path
 import time
@@ -75,57 +74,15 @@ bpy.context.preferences.filepaths.temporary_directory = str(OUT)
 addon_utils.enable("angelo_agent", default_set=False, persistent=False)
 from angelo_agent import ui  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
-from angelo_agent.scene_validation import VerificationContext, verify  # noqa: E402
 import bench_gpu, eval_approval, eval_effort, eval_grading_live, eval_parallel, eval_rig_tasks as rig  # noqa: E402,E401  (GPU; approval; effort; --parallel-agents; rig arm)
 import eval_abnormal_end as end, eval_diagnostics, eval_send_record, eval_warm_up  # noqa: E402,E401  (stops; diagnostics; record at send; warm-up)
 import eval_live_tasks as live  # noqa: E402
+from eval_closed_checks import bind_checks, closed_checks, grading_targets, scene_digest  # noqa: E402
 import eval_provider_limits as limits  # noqa: E402
 import scenario_session  # noqa: E402
 import survey_report  # noqa: E402
 from eval_receipts import (ProgressWatch, attempts_since, begin_opening, opening_wait,  # noqa: E402
                            receipt_marker, receipt_since, summarize_receipt, task_extras, warm_up_cursor)
-
-
-def scene_digest(scene):
-    """Names, types and transforms: a read-only turn must leave these unchanged."""
-    return sorted((obj.name, obj.type, tuple(round(v, 6) for v in obj.location),
-                   tuple(round(v, 6) for v in obj.dimensions)) for obj in scene.objects)
-
-
-def bind_checks(checks, obj):
-    """Concrete checks for the agent's actual objects; ``$bevel`` names its BEVEL modifier.
-
-    ``obj`` is the eval object, or a dict of check alias -> object for a task
-    graded on several objects; each ``$bevel`` binds to its own target's bevel.
-    """
-    targets = obj if isinstance(obj, dict) else {"$eval": obj}
-    bound = copy.deepcopy(checks)
-    for check in bound:
-        if check.get("name") == "$bevel":
-            target = targets.get(check.get("target", "$eval"))
-            bevel = next((m.name for m in target.modifiers if m.type == "BEVEL"), None) if target else None
-            check["name"] = bevel or "missing bevel modifier"
-    return bound
-
-
-def grading_targets(scene, obj):
-    """The aliases task checks name: the eval object, the scene and the coverage set's other objects."""
-    return {"$eval": obj, "$scene": scene, "$copy": scene.objects.get(live.COPY_OBJECT),
-            "$rig": scene.objects.get(live.RIG_OBJECT), "$sketch": scene.objects.get(live.SKETCH_OBJECT),
-            "$text": scene.objects.get(live.TEXT_OBJECT), "$strokes": scene.objects.get(live.STROKES_OBJECT),
-            "$hair": scene.objects.get(live.HAIR_OBJECT)}
-
-
-def smooth_shaded(obj):
-    """Smooth faces on the base mesh, or a verified face smooth-shading node graph."""
-    if obj.type == "MESH" and obj.data.polygons and all(face.use_smooth for face in obj.data.polygons):
-        return True
-    for modifier in obj.modifiers:
-        if modifier.type == "NODES":
-            check = {"kind": "smooth_shading_graph", "target": "$eval", "modifier": modifier.name, "expected": True}
-            if verify(VerificationContext({"$eval": obj}, list(obj.users_scene[0].objects)), [check])["success"]:
-                return True
-    return False
 
 
 def stop_playback(window):
@@ -254,6 +211,10 @@ class Trial:
         fixture = live.prepare_fixture(bpy, scene, task)  # The harness makes it, never the agent.
         if fixture:
             self.record["harness_fixture"] = fixture
+        if task["kind"] == "firsthour":   # The person's state before their message (eval_firsthour_tasks).
+            import eval_firsthour_tasks
+            self.record["harness_fixture"] = ["firsthour:" + eval_firsthour_tasks.prepare(bpy, task["id"])]
+            scene = self.window.scene
         if any(scene.objects.get(name) is None for name in live.required_objects(task)):
             return self.complete("skipped", reason="the object from an earlier task is missing")
         self.grading.before(bpy, scene, task, self.record)  # Fixtures, ground truth and the before-probe.
@@ -432,22 +393,12 @@ class Trial:
                 passed = passed and not missing
         elif route == "scenario":
             passed = self.scenario.grade(bpy, scene, task, self.record, self.workspace(), self.window)
-        else:
-            if task.get("targets"):  # The delegation set grades the objects it names.
-                objects = {alias: scene.objects.get(name) for alias, name in live.task_targets(task).items()}
-                obj = objects.get("$eval")
-                result = (verify(VerificationContext(objects, list(scene.objects)), bind_checks(task["checks"], objects))
-                          if all(objects.values()) else {"success": False, "status": "fail", "reason": "object missing"})
-            else:
-                obj = scene.objects.get(live.EVAL_OBJECT)
-                result = (verify(VerificationContext(grading_targets(scene, obj), list(scene.objects)),
-                                 bind_checks(task["checks"], obj))
-                          if obj is not None else {"success": False, "status": "fail", "reason": "object missing"})
-            passed = bool(result["success"])
-            if obj is not None and task.get("smooth_shading"):
-                result["smooth_shaded"] = smooth_shaded(obj)
-                passed = passed and result["smooth_shaded"]
-            self.record["host_check"] = result
+        elif route == "firsthour":
+            import eval_firsthour_tasks
+            passed, checks = eval_firsthour_tasks.grade(bpy, task["id"])
+            self.record["host_check"] = {"success": passed, "checks": checks}
+        else:   # The task's closed checks over the scene (eval_closed_checks).
+            passed, self.record["host_check"] = closed_checks(scene, task)
         passed = self.grading.after(bpy, scene, task, self.record, passed,
                                     self.controller.state["messages"][self.message_index:])
         self.record["host_check_passed"] = passed

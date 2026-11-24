@@ -13,6 +13,7 @@ from .action_schemas import OPERATION_SCHEMAS
 from .agent_guidance import BLENDER_API_FACTS
 from .job_spec import native_jobs_available
 from .claude_plan_guidance import CLAUDE_PLAN_INSTRUCTIONS  # noqa: F401  (a Claude session's plan text, read with the base)
+from .agent_guidance import PLAN_SENTENCE
 from .claude_plan_guidance import SCULPT_SENTENCE, STUDIO_SENTENCE
 from .tool_guidance import split, told
 
@@ -173,7 +174,7 @@ def claude_base(allowed):
 
 # What names a tool a worker's chat lacks: after the base, the plan text and the chat's own text, so a lead and its
 # workers share all of those byte for byte; a chat reads only the blocks whose tools it has (tool_guidance).
-CLAUDE_TAIL = ("\nangelo_goal holds a goal across turns when the person asks for that continuation.", "\n" + SCULPT_SENTENCE, " " + STUDIO_SENTENCE,
+CLAUDE_TAIL = ("\nangelo_goal holds a goal across turns when the person asks for that continuation.", "\n" + PLAN_SENTENCE, "\n" + SCULPT_SENTENCE, " " + STUDIO_SENTENCE,
                ("\n" + JOB_SENTENCE.strip()) if JOB_SENTENCE else "",
                "\nangelo_blend_file reports .blend datablocks, unused data, libraries and missing files.",
                """

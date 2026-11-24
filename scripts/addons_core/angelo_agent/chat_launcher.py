@@ -299,9 +299,11 @@ def _pre_view():
 
 
 def _covered(area):
-    """The welcome screen or a modal card is over this view: Angelo waits under neither."""
-    from . import card_host, intro
+    """The welcome screen, a modal card or the picture viewer is over this view: Angelo's chrome waits under each."""
+    from . import card_host, intro, markup_overlay
     if intro.is_open() and intro._open.get("area") == area.as_pointer():
+        return True
+    if markup_overlay.covers(area.as_pointer()):
         return True
     card = card_host.active_card()
     return card is not None and getattr(card, "modal", False) and card_host.shown_on(area.as_pointer())

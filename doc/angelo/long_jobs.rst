@@ -87,6 +87,13 @@ Module                        Responsibility
                               read and written directly (see `Fluid bakes`_).
 ``job_fluid_plan.py``         A fluid bake's grid, memory and disk estimates, expected files and
                               unsafe folder names, before it starts. Pure.
+``job_retopology.py``         ``RETOPOLOGY``: Object > Retopology on its target into a new object,
+                              the receipt read from the facts measured on it (``retopology.rst``).
+``job_retopology_spec.py``    Its fields, bounds, operator call and receipt. Pure.
+``job_uv_layout.py``          ``UV_LAYOUT``: the ``uv_layout`` operation's layout on its target, one
+                              Pack Islands job per tile; a cancel puts every UV back
+                              (``uv_layout.rst``).
+``job_uv_layout_spec.py``     Its ``layout`` field (the operation's own parameters) and receipt. Pure.
 ``job_bake_maps.py``          ``BAKE_MAPS``: a texture set's bakes one after another on Blender's
                               bake job, read back, written on a worker thread, published at once
                               (see `Texture sets`_).
@@ -144,6 +151,11 @@ Module                        Responsibility
                               the AI Providers page (``providers_page_model``).
 ``desktop_os.py``             The power and attention calls through ctypes: macOS power
                               assertion, Windows power request, Windows taskbar flash.
+``desktop_linux.py``          Linux: the desktop's notification service, the portal's
+                              Suspend inhibition and its reduced-motion setting, all done by
+                              one worker thread (``Service``); the main thread never waits.
+``desktop_linux_bus.py``      That worker's own private session-bus connection through GIO by
+                              ctypes (never GIO's shared one), and D-Bus value conversion.
 ``bpy_angelo_desktop*.mm/cc`` macOS Notification Center (UserNotifications); a stub elsewhere.
 ``view_render.py``            ``angelo_view``'s RENDERED look: a render through the same manager
                               that is not a job tool (see "Looks"). ``view_finished.py`` shows
@@ -185,14 +197,19 @@ Kind                   Fields (required in bold)                    Blender job
                        sources, cage, extrusion, ray_distance,
                        image, resolution
 ``BAKE_MAPS``          **output**, target or targets, maps,         Cycles object bakes,
-                       packing, resolution, margin, format, depth,  one per channel
-                       material, samples, sources, cage,
-                       extrusion, ray_distance
+                       packing, for_engine, for_link, resolution,   one per channel
+                       margin, format, depth, material, samples,
+                       sources, cage, extrusion, ray_distance
 ``BAKE_PHYSICS``       (none)                                       Bake All Dynamics
 ``BAKE_SIMULATION``    **target**, output (required for a fluid     Geometry-nodes bake;
                        domain)                                      Mantaflow bake
 ``EXPORT_USD``         **output**, frame_start, frame_end           USD export job
 ``EXPORT_ALEMBIC``     **output**, frame_start, frame_end           Alembic export job
+``RETOPOLOGY``         **target**, faces, symmetry                  Object > Retopology
+                                                                    (a new object;
+                                                                    ``retopology.rst``)
+``UV_LAYOUT``          **target**, layout                           Pack Islands, once per
+                                                                    tile (``uv_layout.rst``)
 =====================  ===========================================  ======================
 
 Every kind also takes ``minutes`` (the time budget, default per kind, at most
@@ -219,7 +236,10 @@ person's selection or active object:
   sources and the target handed to its bake operator in a context override.
   ``cage`` is a mesh with the target's faces that encloses the sources;
   ``extrusion`` (how far out rays start) and ``ray_distance`` (how far they
-  reach, 0 for no limit) default to the person's own bake settings. Every one of
+  reach, 0 for no limit) default to the person's own bake settings; while those
+  are still Blender's defaults (0 and 0, which never reach a source outside the
+  target) and there is no cage, they are measured from the meshes (`Measured
+  distances`_) and the approval and receipt say so (``measured_distances``). Every one of
   Blender's twelve Cycles bake types works either way. Displacement is not among
   them: Blender bakes it only from an object's own Multires levels, with another
   operator, which is not a job kind.
@@ -910,7 +930,25 @@ only while a job is queued or running.
   may still sleep, and a sleep the person asks for (a closed lid, the Sleep
   command) still happens. The assertion ends with the process, so a crash never
   leaves the computer awake. The agent's looks (``PREVIEW``) never hold it; a
-  job queued behind a look does. Linux: nothing is held. Stock Blender 5.2 holds
+  job queued behind a look does. Linux: the desktop portal's Suspend inhibition
+  (``org.freedesktop.portal.Inhibit``, which GNOME and KDE pass to their power
+  managers). The hold is asked for on ``desktop_linux``'s worker thread, which
+  owns a private bus connection opened at add-on registration (on the main
+  thread, so it never runs confined; in background Blender, a headless or worker
+  session, the first caller that is not an agent script starts it, and a script
+  starts nothing): the job poll only queues it and reads the
+  answer later, so a portal that stalls never stalls Angelo. The request carries
+  a ``handle_token``, so its object path is known before any answer: when Inhibit
+  times out, Close for that path follows at once, and releasing closes it the
+  same way; every inhibition ends with the worker's connection at the latest,
+  when Angelo quits. ``KeepAwake.status`` says ``pending`` (asked, the portal
+  has not answered; ``held`` is False), ``held``, ``unsupported`` (no
+  session bus, or no portal on it) or ``failed`` (any error: a refusal, a
+  timeout, a bad value). **On every platform** a hold that failed or is
+  unsupported is not asked for again until the run of jobs ends (``KeepAwake``
+  latches it; ``release`` at the end clears it): a job poll calls ``hold`` four
+  times a second, and before this latch macOS and Windows retried a failed hold
+  on every poll. Stock Blender 5.2 holds
   no assertion during a render or bake (none of these calls is in its source).
 * **The end of a long job is announced.** A job that ran for 60 s or more
   (``NOTIFY_AFTER_SECONDS``) and ended on its own (done, failed, or stopped by
@@ -920,7 +958,11 @@ only while a job is queued or running.
   published. It never carries a job's reason or note (a failed publication's
   reason can name a local path). On macOS it is Notification Center, under
   Angelo's name and icon, shown also while Angelo is in front (the person may be
-  on another display or at a locked screen). A cancel by the person or the
+  on another display or at a locked screen). On Linux it is the desktop's
+  notification service (``org.freedesktop.Notifications``: GNOME, KDE Plasma,
+  XFCE, dunst, mako, ...), queued to the same worker: it is "posted" when the
+  bus has that service (running or activatable, learned when the worker opened
+  its connection), else "unsupported". A cancel by the person or the
   agent, a file load or a crash is not announced. The text is interface text,
   translated at display time, given to the system in reading order (the Arabic
   catalogue is stored in visual order; ``for_the_system``), and never sent to a
@@ -930,7 +972,8 @@ only while a job is queued or running.
   the computer; the permission is read again at every job start, so a change in
   System Settings counts for the next job. When notifications are not allowed,
   unavailable (an ad-hoc signed development build, a process outside an
-  application bundle) or unsupported (Windows, Linux), Angelo asks for attention
+  application bundle) or unsupported (Windows; Linux without a notification
+  service, which has no attention call yet), Angelo asks for attention
   instead: the Dock icon bounces once, or the Windows taskbar button flashes
   until Angelo comes to the front.
 * **Never in an automation run** (``app_notices.automation_off``): no question,
@@ -1022,6 +1065,14 @@ bakes one map at a time into an image node the person sets up.
   of `The tools`_ (default: the scene's bake settings). Height is then the
   distance along the target's normal from its surface to the sources', in
   scene units (two position bakes and a normal bake, read as emission).
+* **For an engine** (``for_engine``: ``GODOT``, ``UNITY``, ``UNREAL``, ``WEB``,
+  the engines of ``engine_rules.TARGETS``). Sets the packing files dropped into
+  that engine's own material editor read (``bake_maps_spec.ENGINE_PACKING``):
+  ``UNREAL``, ``UNITY``, and ``GLTF`` for Godot (StandardMaterial3D's ORM
+  texture) and three.js. With ``for_link`` the set is sent through an Angelo
+  engine link, which carries a glTF file, so it is baked ``GLTF`` (the only
+  packing a glTF file holds as baked, `Baked materials at export`_). A
+  ``packing`` that disagrees is refused with the one that fits.
 * **Packing** (``bake_maps_spec.files``). ``SEPARATE`` one file per map;
   ``ORM`` base color (alpha in A) and occlusion/roughness/metallic in R/G/B;
   ``GLTF`` the same as glTF's ``OcclusionRoughnessMetallic``; ``UNREAL`` ORM with
@@ -1098,6 +1149,7 @@ bakes one map at a time into an image node the person sets up.
 
 The receipt lists ``outputs`` (``file``, ``map``, ``depth``, ``target``, ``tile``),
 ``maps`` (their count), ``facts`` per target and ``materials``.
+
 Validation: ``test_native_bake_maps`` (request, presets, finishing, the writers
 decoded independently); ``test_native_bake_maps_memory`` (every file and
 preparation's tracemalloc peak within its estimate, a bake's reservation, and a
@@ -1112,7 +1164,116 @@ material); ``test_native_job_request_canonical`` (every job kind's canonical
 request is one the agent's schema takes and validates to itself: the executor
 and the job host each validate what the one before returned, so a
 ``BAKE_MAPS`` request keeps one target as ``target`` and leaves ``margin`` to the
-runner).
+runner); ``test_native_bake_engine`` (engine packings, ``for_engine``/``for_link``,
+the step's request); ``test_native_bake_cage`` (measured distances in closed forms on
+boxes: outside, inside, both, overlapping and rising parts, thick sources, gaps,
+reach bounding only the inward search, rare needs, scale); ``test_native_bake_check`` (CIELAB against published values,
+the comparison's facts, the views); ``test_blender_bake_check`` (the pictures: the same material at exactly 0, a
+changed half and its worst tile, a larger source's silhouette, the person's Render Result kept, nothing left);
+``test_blender_bake_delta_job`` (GUI: a high-to-low job for Unreal through ``angelo_job_start`` from Blender's
+default distances, Unreal's files, the measured distances used and the bake check in the receipt, nothing of the
+person's changed, no stall); ``test_native_job_request_canonical`` (every job kind's canonical request is one the
+agent's schema takes and validates to itself: the executor and the job host each validate what the one before
+returned, so a ``BAKE_MAPS`` request keeps one target as ``target`` and leaves ``margin`` to the runner).
+
+Measured distances
+~~~~~~~~~~~~~~~~~~
+
+Status (2.1.0): ``for_engine``/``for_link``, the measured distances and the
+bake check are proven end to end in the running app by a high-to-low job the
+agent starts (``test_blender_bake_delta_job``). The receipt's facts for a
+high-to-low target carry the ``extrusion`` and ``ray_distance`` used and, when
+they were measured, ``measured_distances``. Admission runs again at a job's
+start; whether the request asked for distances is read from what it asked, not
+from the measured values the first admission wrote into it.
+
+Blender casts each texel's ray from the target's surface pushed out by the
+extrusion, back along its normal, at most the ray distance, and bakes the first
+source surface it meets (``bake_cage``, ``bake_cage_host``). At 4,096
+area-weighted points of the target and its vertices (fixed seed), Angelo
+measures along each face normal against one BVH of the sources' evaluated
+meshes, counting every surface a ray passes: a point inside the sources needs
+the distance at which it has left every source volume (overlapping or sunken
+parts count as one; a separate part beyond open space, such as the far side of
+a crevice, is never reached); a point outside them needs the distance inward to
+the first surface. The cast outward counts every surface to the end of the
+sources, since whether a point is inside depends on all of them, so a point
+inside is covered however thick the source above it (a shell, a part rising
+from the surface). Only the search inward from a point outside every source is
+bounded: a source farther than a quarter of the target's bounding-box diagonal
+is not its surface. The extrusion is the 99.5th percentile of the
+outward needs times 1.1, the ray distance adds the inward needs' percentile
+times 1.1 (never 0, which Blender reads as no limit). ``measured_distances``
+gives both, the percentiles (``outward``, ``inward``), ``covered_share`` (points
+inside the sources or with one within reach inward) and ``missed_share`` (covered
+points the distances leave out, such as a rare spike past the percentile, where
+a cage would help). When no point is covered the person's
+settings are kept. Approval and start measure the same geometry once (a digest
+of the arrays read).
+
+Bake check
+~~~~~~~~~~
+
+How close a baked material looks to the one it was baked from, as facts the
+agent and the person judge (``bake_check``, no verdict). The target is drawn
+with its own material and with the baked one from three unlike views framing
+its bounding sphere (``bake_check.views``: front, three-quarter from above,
+nearly straight down) under one light, and the pictures are compared:
+``delta_e_mean`` and ``delta_e_p95`` (CIE76 in CIELAB, D65, over the pixels both
+cover; about 2 is the smallest difference a person tells apart side by side),
+``lightness_share`` (how much of it is lightness, which shading maps change,
+rather than colour), ``only_one_share`` (pixels only one picture covers: alpha
+or a lost part) and ``worst`` (the tile with the largest mean difference, by
+view and as a box of picture fractions, as ``angelo_view`` regions are given).
+A job that makes a baked material publishes its set, makes the materials and
+then draws the pictures (``bake_check_host``): a scene of its own with linked
+copies (the sources for a high-to-low bake, else the target with its own
+materials; the target with the baked material on object-level slots), one sun
+and a dim world, Cycles at 128 px with one seed and the denoiser, transparent
+film for coverage. Each picture is Blender's render job, never a render in
+place on the main thread (one held it 0.6 s on the reference Mac in 2.1.0's dry
+cut): started as the person's F12 is, without opening a render view, and read
+once that job has ended. Its renders go into Angelo's own Render Result slot and
+the person's is put back, unless another render ran meanwhile (what that render
+made stays in view); a Render Result it made is removed unless another render
+ran; everything it adds is removed. The facts are each target's ``bake_check``
+in the receipt.
+
+* **Never ending the person's work.** Starting a render job does what F12 does
+  first: it stops animation playback and ends every other running job, waiting
+  for each on the main thread. So a picture starts only when that would end
+  nothing: no playback, no one's running work, no running render, preview,
+  bake, composite or shader compilation. It waits up to 30 s per picture for
+  that; past it the check stops and says so
+  (``{"skipped": "busy", "waited_s", "blocked_by"}``), and any wait is in the
+  facts (``waited_s``). File listings and prefetches it can't see restart by
+  themselves. The next release's native option starts Angelo's own renders (the
+  check's and the agent's looks) without F12's setup, which removes the wait.
+* **While a picture renders** the status bar shows Rendering, the render-region
+  controls show busy, Esc goes to the render (Blender's own render job), and the
+  check scene's Lock Interface holds edits while the job reads the shared meshes
+  and materials (its sync, short at 128 px), as it does for the person's render
+  with Lock Interface on.
+* **Stop and close.** Stop ends a running picture's job, and the check's scene
+  is removed only once that job has ended (a guarded timer, never during the
+  person's operation), since the job reads it. A picture another render ended
+  (the person's F12, the status bar's cancel) is rendered again once; then the
+  check says why (``{"error": "...interrupted..."}``). A stop or an error while
+  it draws keeps the finished set (``{"skipped": "stopped"}`` or
+  ``{"error": ...}``). If the job's window closed, the pictures start from the
+  document's first live window. Scripts (``bake_check_host.check``) render in
+  place.
+
+Baking as a step
+~~~~~~~~~~~~~~~~
+
+A job that chains a bake (the planned Make game-ready job) starts it with
+``bake_maps_spec.engine_step(target, engine, output, sources, link,
+resolution)``: an ``angelo_job_start`` request for one target's texture set for
+that engine, with its baked material, which goes through the same admission and
+approval as any other. It reads the finished job's receipt
+(``bake_maps_spec.STEP_RECEIPT``: ``outputs``, ``maps``, ``facts``,
+``materials``); nothing else about the bake changes.
 
 Baked materials at export
 ~~~~~~~~~~~~~~~~~~~~~~~~~

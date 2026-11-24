@@ -7,7 +7,11 @@ from .ui_text import iface_
 
 
 def message(name, args, usage_label=""):
-    """Title, body and warning of the card; only ENGINE_LINK so far (``app_feature_spec.ACTIONS``)."""
+    """Title, body and warning of the card (``app_feature_spec.ACTIONS``)."""
+    if args["feature"] == "MARKUP":
+        from . import markup_ui
+        return {"title": iface_(markup_ui.MENU_LABEL), "body": iface_(markup_ui.MENU_WHY),
+                "warning": iface_("Nothing is sent until you send it.")}
     from . import engine_link_ui
     if args["action"] == "ADD_TO_PROJECT":
         return {"title": iface_(engine_link_ui.INSTALL_ROW[args["engine"]]),

@@ -18,6 +18,7 @@ import rail_positions_checks as geometry
 import rail_positions_fixture as fx
 import rail_positions_run as run
 from rail_positions_run import S, check, pause, plan, tiles, until
+import qa_hit
 
 
 def scrolling(tag):
@@ -169,7 +170,7 @@ def minimized(tag, waits, by_click):
     found, frame = fx.find_circle(S.window)
     if by_click and found is not None:
         _area, region = fx.window_region(S.window)
-        qa_input.press(S.window, region.x + found[0], region.y + found[1])
+        qa_input.press(S.window, *qa_hit.xy(qa_hit.RAW, region, found[0], found[1]))
     else:
         check(tag + '__the_button_can_be_clicked', not by_click, 'rail_minimized.hit is True nowhere')
         parallel_setting.set_rail_minimized(False)

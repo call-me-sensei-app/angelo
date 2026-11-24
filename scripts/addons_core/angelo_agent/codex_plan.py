@@ -49,7 +49,7 @@ from .tool_specs import READ_ONLY_TOOLS, TOOL_MAP, TOOLS, PART_NAMES, cube_batch
 from .ui_text import n_, notice
 
 # Reviewed Python and file effects stay in-turn: their result is what the model needs next.
-IN_TURN_ONLY = frozenset({"angelo_execute_python", "angelo_write_file", "angelo_delete_file"})
+IN_TURN_ONLY = frozenset({"angelo_execute_python", "angelo_write_file", "angelo_delete_file", "angelo_context_folder_write"})
 # Edits a plan may end a turn with, and the standalone verification that proves one.
 PLAN_TOOLS = frozenset(tool["name"] for tool in TOOLS
                        if tool["name"] not in READ_ONLY_TOOLS and tool["name"] not in IN_TURN_ONLY

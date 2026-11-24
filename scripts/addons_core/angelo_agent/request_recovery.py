@@ -64,6 +64,11 @@ from .recovery_evidence import MAX_BYTES, MAX_RECORDS
 FIELD = "recovery_observation"
 CITATION_SCHEMA = {"type": "string", "pattern": "^recovery:[a-f0-9]{32}$"}
 READ_TOOLS = ("angelo_scene_object", "angelo_scene_settings")
+# A cut-off request's continuation (crash_resume): one target, read by any scene read the model receives.
+CONTINUE_TARGET = "scene"
+CONTINUE_REASON = ("Angelo closed while this request ran, and a step may have applied with no final read-back. Scene edits "
+                   "wait until you read the current scene with a read tool (the turn observation alone is not that read), "
+                   "and run from your next step.")
 # Tools whose authority concerns this scene, rather than account/memory/file work.
 EXEMPT_MUTATIONS = frozenset({"angelo_discard_preview", "angelo_set_workspace_mode",
                               "angelo_workers_start"})   # Starts workers on their own files; this scene is untouched.
@@ -72,6 +77,20 @@ UNCLASSIFIED = frozenset({"UNKNOWN", "INTERNAL_ERROR"})
 MAY_HAVE_CHANGED = ("partial_changes_possible", "mutation_started", "cleanup_pending", "cleanup_error",
                     "cleanup_warning", "rollback_error")
 MAX_CHANGES, MAX_CHANGE_BYTES = 64, 16384
+
+
+# The reads that look at this scene: a continuation's informed look (the 2.1.0 break-it review, C-1). An allow-list,
+# so a read of anything else (a file, the task memory, a library, a goal, the web, a job) or a read-only tool added
+# later never counts until it is named here.
+SCENE_READS = frozenset({"angelo_inspect_scene", "angelo_scene_delta", "angelo_scene_object",
+                         "angelo_scene_relationships", "angelo_scene_search", "angelo_scene_settings", "angelo_read_data",
+                         "angelo_view", "angelo_scene_verify", "angelo_inspect_sculpt", "angelo_sculpt_view",
+                         "angelo_sculpt_review"})
+
+
+def continue_read(name):
+    """A read of the scene itself (``SCENE_READS``): a continuation's look."""
+    return name in SCENE_READS
 
 
 def scene_mutation(name, arguments=None):
@@ -181,6 +200,23 @@ class RecoveryBarrier(ModelSteps):
             self.closed_hold = None  # The last hold that closed: what it showed, and the step its reads completed in.
             self.generation = 0
             self.clear_steps()
+            armed, self._continue = getattr(self, "_continue", None), None
+            if armed is not None:   # The request this clear starts continues a cut-off one (arm_continue).
+                self.pending = {"code": "INTERRUPTED", "holding": True, "targets": [CONTINUE_TARGET], "read": set(),
+                                "gone": set(), "closed": False, "before": {}, "changes": [], "current": [],
+                                "unexplained": [], "not_captured": [], "bytes": 0, "continue": armed}
+                self.generation += 1
+
+    def arm_continue(self, facts):
+        """The next request continues one Angelo was running when it closed, and ``facts`` (the journal's words)
+        may have applied (``crash_resume``): from its start (``clear``), scene edits wait until the model has read
+        the scene with a read tool, then run from its next step. ``disarm`` if that request never starts."""
+        with self._lock:
+            self._continue = str(facts)[:4000] or CONTINUE_REASON
+
+    def disarm(self):
+        with self._lock:
+            self._continue = None
 
     def _keep(self, records):
         for handle, row in records.items():
@@ -320,6 +356,9 @@ class RecoveryBarrier(ModelSteps):
             if pending is None:
                 return {"holding": False, "reason": "No recovery is open."}
             unread = [handle for handle in pending["targets"] if handle not in pending["read"]]
+            if pending.get("continue") and unread:
+                return {"holding": True, "reason": CONTINUE_REASON, "may_have_applied": pending["continue"],
+                        "read_tools": self._names(READ_TOOLS + ("angelo_inspect_scene", "angelo_scene_search"))}
             if pending["closed"]:
                 reason = ("An unclassified or internal failure may have changed the scene in ways no read can show. "
                           "Scene edits wait for the next request; read tools stay available" + (
@@ -385,6 +424,8 @@ class RecoveryBarrier(ModelSteps):
                 raise RefusalError("Every target was read again in this step. Scene edits wait for your next step, "
                                    "so that what changed (recovery.changes) reaches you before any edit runs.",
                                    code="RECOVERY_REQUIRED", details={"recovery": description})
+            if pending.get("continue"):
+                raise RefusalError(CONTINUE_REASON, code="RECOVERY_REQUIRED", details={"recovery": description})
             unread = description.get("read") or ()
             again = (" Read again: " + ", ".join(unread[:16]) + " (" + ", ".join(description["read_tools"]) + ")."
                      if unread else "")   # A hold that names no target says what it waits for in its reason.
@@ -400,6 +441,12 @@ class RecoveryBarrier(ModelSteps):
         if not isinstance(result, dict) or not credit:
             return result
         with self._lock:
+            pending = self.pending
+            if (pending is not None and pending.get("continue") and not result.get("error")
+                    and not scene_mutation(tool) and continue_read(tool)):
+                pending["read"].add(CONTINUE_TARGET)   # Any scene read the model receives is the informed look.
+                if self._complete() and "complete_step" not in pending:
+                    pending["complete_step"] = self.steps
             self.observe(records if not result.get("error") else {}, shown, gone)
             return self.annotate_read(result, shown | gone)
 

@@ -20,7 +20,7 @@ its next, until the person shares again, a choice kept across restarts (``STOPPE
 import sys
 import time
 
-from . import session_page_ended as page_ended, swallowed_errors
+from . import session_page_ended as page_ended, session_page_pending, swallowed_errors
 from .ui_text import n_
 
 INTERVAL = 0.5          # Seconds between publishes of a changing conversation.
@@ -38,8 +38,9 @@ PAGE_TEXT = {   # Key -> English; translated as the page's state is built (``_st
     "status_stopping": n_("Stopping"), "status_done": n_("Done"),
     "closed": n_("This live page has ended: the session ended or sharing was stopped in Angelo."),
     "offline": n_("Angelo isn't answering. The page reconnects when it does."),
-    "step": n_("Now"), "stream": n_("Progress"), "result": n_("Result"), "views": n_("Latest views"),
-    "no_views": n_("Views the agent takes appear here."),
+    "step": (n_("Now", "Live page"), "Live page"), "stream": n_("Progress"),   # i18n: a catalogue context, never shown
+    "result": n_("Result"), "views": n_("Latest views"), "no_views": n_("Views the agent takes appear here."),
+    "view_unavailable": n_("Unavailable"),   # A view the page stopped waiting for (its tile's title).
     "scene_loading": n_("Loading the scene…"),
     "scene_none": n_("The scene appears here once Angelo exports it."),
     "scene_unavailable": n_("This browser can't draw the 3D scene. Everything else here still updates."),
@@ -60,13 +61,15 @@ class Pages:
     the page's state for a conversation; ``scene_version``: the exporter's counter; ``stopped``: the apps (labels)
     whose sessions the person stopped sharing, a choice about the app that holds for its next conversation, a new chat
     or a move alike (``on_stopped(label, stopped)`` keeps each change); ``on_refused(controller)``: a conversation
-    whose app's sharing is stopped asked for its page."""
+    whose app's sharing is stopped asked for its page; ``retry(controller, entry)``: a tick with no change reads
+    what the page waits on (``entry["waiting"]``, ``session_page_pending``) when due, True when what it shows
+    changed."""
 
     def __init__(self, make_site, build, clock=time.monotonic, scene_version=lambda: 0, on_shared=None, stopped=(),
-                 on_stopped=None, on_refused=None):
+                 on_stopped=None, on_refused=None, retry=None):
         self._make_site, self._build, self._clock = make_site, build, clock
         self._scene_version, self._on_shared, self._on_stopped = scene_version, on_shared, on_stopped
-        self._on_refused = on_refused
+        self._on_refused, self._retry = on_refused, retry
         self._entries, self._stopped = {}, set(stopped)
 
     def link(self, controller, label, app="", key=None):
@@ -84,7 +87,8 @@ class Pages:
         if entry is None:
             site = self._make_site()
             entry = self._entries[identity] = {"site": site, "label": label, "app": app or label, "key": key,
-                                               "seen": None, "at": float("-inf"), "started": self._clock()}
+                                               "seen": None, "at": float("-inf"), "started": self._clock(),
+                                               "waiting": session_page_pending.Pending(self._clock)}
             self._publish(entry, controller, first=True)
             if self._on_shared is not None:
                 self._on_shared(controller, entry)
@@ -151,10 +155,15 @@ class Pages:
             if entry["site"].viewers <= 0:
                 continue
             seen = (controller.version, self._scene_version())
-            # A picture the page could not serve yet (still being written) is read again on the next tick.
-            if (seen == entry["seen"] and not entry.get("pending")) or self._clock() - entry["at"] < INTERVAL:
+            if self._clock() - entry["at"] < INTERVAL:
+                continue
+            # Unchanged: published again only when what the page shows changed (its waits are bounded).
+            unchanged = seen == entry["seen"]
+            if unchanged and self._retry is None:
                 continue
             try:
+                if unchanged and not self._retry(controller, entry):
+                    continue
                 self._publish(entry, controller)
             except Exception as error:  # noqa: BLE001 - a page's defect ends that page, never the session.
                 page_ended.failed(identity, "it stopped after an error", error, _say)   # i18n: the app's English
@@ -186,6 +195,7 @@ def pages():
             _pages.end_all()
         _pages = Pages(make_site=_make_site, build=_build, scene_version=_scene_version, on_shared=_said_shared,
                        stopped=_read_stopped(directory), on_refused=_said_stopped,
+                       retry=session_page_pending.retry,
                        on_stopped=lambda label, stopped: _keep_stopped(directory, label, stopped))
         _pages.directory = directory
     return _pages
@@ -372,8 +382,9 @@ def _fonts():
 
 def _strings():
     from .ui_text import iface_, is_rtl
-    # Arabic catalogues hold the visual (left-to-right) form Blender draws; a browser lays text out itself.
-    return {key: (text if is_rtl() else iface_(text)) for key, text in PAGE_TEXT.items()}
+    # Arabic catalogues hold Blender's visual form (a browser lays text out); a pair carries its context (S-3).
+    pairs = {key: text if isinstance(text, tuple) else (text, None) for key, text in PAGE_TEXT.items()}
+    return {key: text if is_rtl() else iface_(text, context) for key, (text, context) in pairs.items()}
 
 
 def _usage(controller, entry):
@@ -395,7 +406,7 @@ def _usage(controller, entry):
 
 
 def _build(controller, entry):
-    from . import external_host, goal_store, session_page_state, shared_replace
+    from . import external_host, goal_store, session_page_state
     from .external_agent import conversation_state
     from .external_requests import default_roots
     host = external_host._host
@@ -407,17 +418,7 @@ def _build(controller, entry):
         usage=_usage(controller, entry), now=time.monotonic(), started=entry["started"],
         turn_started=started[1] if started else None, app=entry["app"], roots=roots,
         scene_version=_scene_version(), strings=_strings())
-    site = entry["site"]
-    for identity in state["pictures"] if site.viewers > 0 else ():   # None read on the send path: nobody looks.
-        if not site.has_picture(identity):
-            try:   # A capture still being written is refused whole (publish_picture) and read again later.
-                site.publish_picture(identity, shared_replace.read_bytes(controller.references.attached_image(identity)))
-            except (OSError, ValueError, AttributeError):
-                pass   # A picture gone or never this conversation's: the page shows what it has.
-    served = [identity for identity in state["pictures"] if site.has_picture(identity)]
-    entry["pending"] = site.viewers > 0 and len(served) < len(state["pictures"])
-    state["pictures"] = served   # Only what the page can show: never a picture it would ask for in vain.
-    return state
+    return session_page_pending.shown(controller, entry, state)
 
 
 def _preview_server():

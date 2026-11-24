@@ -131,13 +131,31 @@ Blender's own button, or, for Approve, Angelo's automatic token, are taken. It a
    * - Trust and approval
      - ``trusted_scripts``, ``set_approval`` (Auto), ``approve`` and ``apply_approved_tool`` (also Angelo's
        automatic decision), ``forget_agent_changes`` (code agent scripts wrote in a folder loads as the person's
-       own again; its C door, ``forget_changes``, also refuses any caller outside the person's own grant scope)
+       own again; its C door, ``forget_changes``, also refuses any caller outside the person's own grant scope;
+       reached from the add-on's preferences, the AI Providers page's Agent permissions and the + menu's Apps and
+       settings, each in the person's own click)
    * - Code from elsewhere
      - ``import_blender_settings`` (add-ons), ``godot_link_install``, ``godot_link`` (on), ``render_engine_setup``
+   * - Reading the person's files (2.1.0)
+     - ``context_folder`` (Folder as context; its entry ``context_folder_host.attach``)
+
+2.1.0 grants made from the chat's own cards and pages rather than an operator have their entries guarded the same
+way (``grant_guard.entry``; each module's tests run them under ``agent_script``): writing standing rules and letting a
+file's rules apply or not (``project_rules.RulesStore.set_global``, ``RulesStore.decide`` in either direction,
+``project_rules_host.write_project_text``), and Always run this exact script in this project
+(``trusted_scripts.TrustedScripts.remember_script``, ``reviewed_scripts.ReviewedScripts.add``), and the folder
+grant itself (``context_folder.Grants.grant``, below ``context_folder_host.attach``). Each of these stores writes its
+file before it widens what it holds in memory, so a refused or failed write grants nothing, not even for the session
+(re-review r2 S-c); a narrowing change (removing a folder, forgetting a script, clearing or declining rules) applies in
+memory first and a failed write is reported, never undone (r3 S-4). Forgetting a script and removing a folder narrow
+and are never refused to the person's own controls; agent code changes no rules decision in either direction (G2; the
+2.1.0 break-it review, R-1), so declining or clearing rules is refused to it too.
 
 Not grants: opening pages and menus, copying text, the narrowing operators above (those that narrow the person's
 accounts, sign-ins or consents are refused to agent code all the same), library items added to the scene, exports,
-checks and refreshes, and sending feedback, which opens the form in the browser for the person to send.
+checks and refreshes, sending feedback, which opens the form in the browser for the person to send, and Continue
+after Angelo closes (it asks the agent to go on under the chat's own approval policy, holding until the recovered
+scene has been read; it widens nothing).
 
 **Nothing escapes by being missing from a list.** The lists and scanners are ``grant_inventory`` (in the tests
 folder). Every Angelo operator is in ``AUDIT``, in ``GROUPED`` (a guarded sibling, as Apply Approved Script is of
@@ -244,7 +262,59 @@ it was made or drawn, so a slow first draw takes none of the person's time. Anot
 control swapped into a button's slot counts from the frame that shows it, and a
 control drawn off screen counts from its first draw in a window. A window losing focus,
 or coming forward again, starts every control in it again and drops every aim, as a
-consent region does (``note_deactivate``'s and ``note_activate``'s epoch);
+consent region does (``note_deactivate``'s and ``note_activate``'s epoch): disarmed and
+counted again from the change itself (``epoch_changed``), still on screen where it was, so
+the person's move onto it 0.3 s or more after the change arms it, whenever they reach it
+and with no redraw to wait for (a control nothing redraws, the pointer resting on it as the
+window comes forward, never armed before; build2 on 336a00f, 2026-11-23). A window
+still in the back counts its controls from now instead, since nothing in it was seen
+since (a press that reaches it, as macOS allows, changes nothing of that), and the press
+that brings a window forward restarts them from that press. A control a popup, menu,
+search box or tooltip covered is on screen again only from the frame its close draws
+(``ui_angelo_note_uncovered``, from ``region_temp_remove``, a popup's resize and its drag):
+the window manager's own move after a close never arms it, so a double-click whose first
+press closes a menu never grants the control beneath with its second. A control
+``block_draw`` doesn't draw (hidden, scrolled away, clipped out of its region, too wide
+for its panel) starts again, and counts from the frame that draws it; a control partly
+clipped is placed by its whole rect. The guard's consent regions follow the same rule
+(``Authority::set_cover``): every temporary region the window draws (``sync_covers``), the
+startup cover while it shows, and Angelo's own canvas menus (``GUARD.cover``: the Flows popup,
+never over its own rows) are covers; a move over one never aims at a consent region beneath
+and a press on one is never its press, and when one goes or moves what it covered starts
+again from the next frame. A tooltip counts as a cover and fails closed: a click on a tooltip
+over a consent control is refused, though Blender passes the click through to the control.
+A temporary region covers only what it draws opaquely (``UI_angelo_temporary_cover``: a
+popup's block, a tooltip's box), never its shadow. A tooltip's close never restarts the button
+it describes, while that button is where the tooltip opened over it: the person was on it,
+reading it (near a window's bottom Blender draws the tooltip over its own button, and the
+press that closed it was refused). Every other button its box hid starts again.
+A drag's image is no cover (small, offset from the pointer, and the drop ends the drag). A
+cover only ever refuses or restarts. A surface's consent regions also take only the moves and
+presses Blender's own routing gives the region they are drawn in (``GUARD.consent_regions``'
+``region``; the window manager's ``wm_event_pointer_region``, whose area and region steps are
+the ones ``wm_event_do_handlers`` takes, so the two never differ): a sidebar (N panel),
+toolbar, transparent header, HUD or asset shelf drawn over a card takes the person's input
+where it is opaque (its panels, a header's buttons, the shelf's tiles), and the card beneath
+sees none of it; where such a region is transparent, Blender gives the input to the card's
+region and the card takes it as anywhere. Every overlapping region the window draws is a
+restart-only cover: it refuses nothing, and when it hides, shrinks or moves, the consent
+regions and Blender's own buttons it covered start again (where it was transparent too: a
+restart is the only cost of failing closed). With region overlap off, a sidebar is a region of
+its own beside the card's, and the same routing applies. The temporary-region and canvas-menu
+covers stay as well: routing already keeps their input from what is beneath, and the covers
+restart it when they close. A canvas menu's cover names the region it is drawn in and is set
+during an agent's run too; every close clears it (a file load included), and the window's
+next draw drops it once its region is gone, as it forgets the consent regions of a surface
+whose region is gone (a freed region's address is never reused for them). A restart also
+drops a ticket its control's press minted, so a press Blender gave a window-level handler (a
+menu taking an outside click) leaves nothing for a later press to take; in the rare case a
+cover or a focus change restarts the control between its press and its release, that press is
+refused too. A Flows close made on an agent script's (confined) thread is refused by C: the
+cover stays, refusing the controls beneath, until the popup opens and closes again or its
+region goes. A known limit: on X11
+without a compositing manager, a raised window shows nothing until Blender redraws it,
+while the restart counts from the activation, so a redraw slower than 0.3 s arms on the
+person's first moves after it (Linux is not in 2.1.0);
 ``window_state`` gives every surface's arming that one record. A press that comes sooner, or with no
 move onto the control since, is answered quietly (the coordinator's ruling on the
 0.3 s arm, 2026-11-16): C records it with the control (``unarmed``), and the guarded
@@ -413,8 +483,11 @@ surface's real path (Auto, a script's Review, a connection's key) covered by rea
 presses.
 
 **The ledger.** The grant state lives in C: trusted scripts per chat, Always
-allow scripts, approved scripts, external clients' allowed script files, and the
-rest as it moves there. Each namespace narrows to one value; any other value is
+allow scripts, approved scripts, external clients' allowed script files, the
+scripts the person chose to Always run in a project (``reviewed_scripts``), each
+chat's Folder as context (``context_folders``), and the standing rules' decisions
+and All projects text by digest (``rule_decisions``, ``global_rules``; all 2.1.0),
+and the rest as it moves there. Each namespace narrows to one value; any other value is
 set only inside a grant scope, opened by a taken ticket (``grant``) or Angelo's
 own automatic decision (``automatic``), on that thread. Agent code writes nothing
 there in either direction: ``set`` and ``remove`` refuse it, narrowing included
@@ -477,3 +550,11 @@ found on that boundary, and where each stands:
   agent script or a keymap entry. The fix is a separate helper process that holds
   keys, the ledger and the consent surface (the helper-process design,
   2026-11-15), planned for 2.1 or 2.2.
+* **What a mirror reads (2.1.0 review round 2, N-1), accepted at parity.** Every
+  mirrored namespace (Always allow, each chat's mode, the rules' decisions and All
+  projects text, remembered scripts, context folders) is filled by Angelo's own
+  code, in its automatic scope, from a file at a path Python holds. The
+  confinement hides Angelo's modules from agent code, so no agent route to that
+  path is known: this is the G7 class. The fix for the class: mirror only from a
+  file C confirms is inside Angelo's guarded private root, or have the helper
+  process own the files.

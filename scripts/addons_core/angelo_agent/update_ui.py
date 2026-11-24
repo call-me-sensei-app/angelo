@@ -14,6 +14,7 @@ Text is translated where it is shown (``ui_text``).
 
 import threading
 import time
+import traceback
 from dataclasses import replace
 
 import bpy
@@ -132,7 +133,17 @@ def show_notice(selected):
     news = _line_news(selected)
     if news:
         checker().tell_line(news)
-    card_host.request(update_card.UpdateCard(selected, app_version.current(), decide, live=update_ready))
+    from . import addon_compat_live   # Which of the person's add-ons are not yet known to work on it.
+    visible = card_host.active_card()
+    if visible is not None and visible.kind == "update":
+        # The card on screen may be an earlier check's (a card a more important one displaced comes back from the
+        # queue): the latest offer replaces it rather than waiting behind it, and the same offer is not queued to
+        # show again after the person closes it (test_native_update_card_supersede).
+        if getattr(visible, "offer", None) == selected:
+            return
+        card_host.close("superseded")
+    card_host.request(update_card.UpdateCard(selected, app_version.current(), decide, live=update_ready,
+                                             addons=addon_compat_live.summary_for))
 
 
 def _line_news(selected):
@@ -323,7 +334,10 @@ def _ready_tick():
     """``update_ready``'s pace: every second while an update is being prepared, shown or ready, else every 5."""
     if not enabled():
         return 30.0
-    update_ready.tick()
+    try:
+        update_ready.tick()
+    except Exception:   # Blender unregisters a timer that raises: updates would stop for the session.
+        traceback.print_exc()
     busy = update_ready._job is not None or update_ready._ready or card_host.is_active("update")
     return 1.0 if busy else 5.0
 

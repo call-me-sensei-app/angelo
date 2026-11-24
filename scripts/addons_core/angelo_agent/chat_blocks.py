@@ -4,7 +4,7 @@
 (``chat_guard``): one that raises is a plain row (an approval a plain card that still answers), every other is built as
 designed. Moved out of ``chat_view._draw_chat`` (its size pin)."""
 
-from . import chat_guard, chat_history
+from . import chat_guard, chat_history, turn_tail
 
 
 def build(controller, ui, expanded, state, width, size, line_height, bubble_max_width):
@@ -47,7 +47,7 @@ def _block(controller, ui, message, identity, expanded, state, width, size, line
                                                                        line_height)):
         return block
     if role == "system" and chat_notices.is_own_card(message):   # A state with a way out: a card with its pill.
-        return chat_notices.block(message, identity, message is controller.state["messages"][-1], ui, controller,
+        return chat_notices.block(message, identity, message is turn_tail.last_row(controller.state["messages"]), ui, controller,
                                   width, size, line_height, expanded)
     if role in {"system", "tool"}:
         # Native notices and legacy tools share Codex's quiet activity rows.
@@ -56,7 +56,7 @@ def _block(controller, ui, message, identity, expanded, state, width, size, line
     if role == "assistant" and not message.get("text"):
         return None   # Nothing to draw (a streamed reply held back so far, reply_overlay).
     if role == "error":  # A notice card, never a reply (chat_notices).
-        return chat_notices.block(message, identity, message is controller.state["messages"][-1], ui, controller,
+        return chat_notices.block(message, identity, message is turn_tail.last_row(controller.state["messages"]), ui, controller,
                                   width, size, line_height, expanded)
     # Markdown laid out once per reply text and width (chat_replies).
     return chat_replies.block(message, identity, console.display_text(message), width, size, line_height)

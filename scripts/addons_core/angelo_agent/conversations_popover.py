@@ -233,8 +233,9 @@ def _keep_days():
 def _row(view, state, popup, controller, index, row, rect, clip, width, height):
     rx, ry, rw, rh = rect
     kind = row["kind"]
-    if kind == "note":
-        view.text(view.elide(iface_(row["label"]), rw - 20, 12), rx + 10, ry + rh / 2 - 4, 12, ui_tokens.MUTED)
+    if kind in ("note", "heading"):   # A heading groups the list by day (conversations_layout.GROUPS).
+        size = 11 if kind == "heading" else 12
+        view.text(view.elide(iface_(row["label"]), rw - 20, size), rx + 10, ry + rh / 2 - 4, size, ui_tokens.MUTED)
         return
     keyboard = popup.get("keyboard") and popup.get("cursor") == index
     action = layout.ACTIONS.get(kind, "").replace(PREFIX, "")

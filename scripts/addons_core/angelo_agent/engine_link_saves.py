@@ -60,7 +60,7 @@ def saved(state, broadcast, binary, found, blend, durable, number, saved_stat=No
         state["writeback"].request(key, blend, asset.path, *durable, baked=baked,
                                    stamp={"path": assets.stamp_path(asset), "asset": asset.ident, "save": number,
                                           "link": found.get("number", 0), "writer": assets.WRITER},
-                                   saved=saved_stat)
+                                   saved=saved_stat, engine=asset.engine)
         return
     broadcast(asset, {"type": "saved", "asset": asset.ident, "files": [asset.ident],
                       "scene_version": state["version"], "save": number})

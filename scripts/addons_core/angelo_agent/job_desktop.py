@@ -16,7 +16,8 @@ Preferences > AI Providers, Background jobs):
   more and ended on its own (done, failed, or stopped by its time budget; never a
   cancel by the person or the agent, a file load or a crash) posts the operating
   system's own notification: Notification Center on macOS
-  (``_bpy._angelo_jobs.desktop_notify``), under Angelo's name and icon. Where
+  (``_bpy._angelo_jobs.desktop_notify``), under Angelo's name and icon; on Linux
+  the desktop's notification service (``desktop_linux.notify``). Where
   notifications are unavailable or not allowed, Angelo asks for attention instead
   (the Dock icon bounces once; on Windows the taskbar button flashes until Angelo
   comes to the front). macOS asks the person once whether Angelo may post
@@ -35,6 +36,8 @@ job's reason or note, which can carry a local path.
 ``ending`` and ``notification`` are pure, so the host suite checks the policy and
 the text without Blender (``test_native_job_desktop.py``).
 """
+
+import sys
 
 from . import rtl_text
 from .ui_text import iface_, join, n_
@@ -170,6 +173,9 @@ def _sync(jobs):
         awake.release()
     if not started or not _preference("job_notifications") or not _desktop_allowed():
         return
+    if sys.platform.startswith("linux"):   # Open the bus on its worker now: the job's end finds its answer ready.
+        from .desktop_linux import service
+        service()
     native = _native()
     if native is None:
         return
@@ -195,6 +201,9 @@ def _ended(record):
     identifier, heading, body = notification(record)
     native = _native()
     status = native.desktop_notify(identifier, heading, body) if native is not None else "unsupported"
+    if status == "unsupported" and sys.platform.startswith("linux"):
+        from .desktop_linux import notify
+        status = notify(heading, body)   # The desktop's notification service over the session bus.
     if status == "posted":
         return status
     attention = native.desktop_attention() if native is not None else "unsupported"

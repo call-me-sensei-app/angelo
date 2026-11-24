@@ -48,6 +48,7 @@ import fake_provider_cli  # noqa: E402
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')  # The default chat startup with its connect row.
 fake_provider_cli.sign_in(os.environ["HOME"], "codex")  # An everyday ChatGPT sign-in that already exists.

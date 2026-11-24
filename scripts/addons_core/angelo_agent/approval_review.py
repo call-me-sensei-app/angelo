@@ -98,7 +98,7 @@ def _canonical_digest(call):
                             "recovery_review": getattr(call, "recovery_review", False),
                             "recovery_evidence": getattr(call, "recovery_evidence", None)},
                            sort_keys=True, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return hashlib.sha256(canonical.encode("utf-8", "surrogatepass")).hexdigest()   # Any text (worker_consent).
 
 
 def _current_review(call):

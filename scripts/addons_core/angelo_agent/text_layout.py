@@ -70,9 +70,11 @@ def two_lines(text, measure, width):
     if measure(text) <= width:
         return [text]
     if rtl_text.has_rtl(text):   # Broken in reading order; each line comes back in Blender's visual form (Arabic).
-        logical = rtl_text.to_logical(text) if rtl_text.is_visual(text) else text
-        lines = _balanced(logical, lambda part: measure(rtl_text.to_visual(part)), width)
-        return [rtl_text.to_visual(line) for line in lines] if lines else None
+        logical = rtl_text.to_logical(text, isolates=True) if rtl_text.is_visual(text) else text
+        with rtl_text.probing():   # Each candidate break is only measured.
+            lines = _balanced(logical, lambda part: measure(rtl_text.to_visual(part)), width)
+        # A filled-in unit (a path, a name) cut between the two lines stays one unit on each (``rtl_text.isolate``).
+        return [rtl_text.to_visual(line) for line in rtl_text.carry_isolates(lines)] if lines else None
     return _balanced(text, measure, width)
 
 

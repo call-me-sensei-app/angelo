@@ -160,10 +160,14 @@ class ListCostTests(unittest.TestCase):
                                                    cache_write_1h_input_tokens=7), "5m")[1], 100_000)
 
     def test_a_model_with_one_write_rate_and_unknown_usage(self):
-        # GPT-6 Astra has one write rate (Codex usage reports no split); a split cannot change its price.
-        self.assertEqual(metrics.list_cost(split(0, 100_000), "gpt-6-astra"), metrics.list_cost(USAGE, "gpt-6-astra"))
-        self.assertEqual(metrics.list_price_basis([USAGE], "gpt-6-astra", "5m", metrics.CODEX_UNSPLIT),
-                         "model_profiles list prices, the model's one cache-write rate")
+        # GPT-6 Astra has one write rate (Codex usage reports no split); a split cannot change its price. One
+        # request within its 272K-token step, so the step does not decide the price.
+        one = dict(USAGE, input_tokens=250_000, cached_input_tokens=100_000, cache_write_input_tokens=50_000)
+        written = dict(one, cache_write_5m_input_tokens=0, cache_write_1h_input_tokens=50_000)
+        self.assertIsNotNone(metrics.list_cost(one, "gpt-6-astra"))
+        self.assertEqual(metrics.list_cost(written, "gpt-6-astra"), metrics.list_cost(one, "gpt-6-astra"))
+        self.assertTrue(metrics.list_price_basis([one], "gpt-6-astra", "5m", metrics.CODEX_UNSPLIT).startswith(
+            "model_profiles list prices, the model's one cache-write rate"))
         for usage, model in ((None, OPUS), (split(0, 1), ""), (split(0, 1), "unknown-model")):
             self.assertIsNone(metrics.list_cost(usage, model))   # Unknown, never zero.
 
@@ -208,7 +212,8 @@ class StreamSplitTests(unittest.TestCase):
         self.assertEqual(path["cost_list_basis"],
                          "model_profiles list prices, cache writes at the TTLs the provider reported")
         codex = metrics.mcp_path(dict(record, runtime="codex"), [], {}, "gpt-6-astra")
-        self.assertEqual(codex["cost_list_basis"], "model_profiles list prices, the model's one cache-write rate")
+        self.assertEqual(codex["cost_list_basis"], "model_profiles list prices, the model's one cache-write rate; "
+                         "every request within the 272000-token price step (base rates)")
 
 
 # A recorded Opus 5.5 long-set trial: the first three tasks' responses (Claude Code stream) and

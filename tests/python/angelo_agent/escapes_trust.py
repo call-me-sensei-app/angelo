@@ -20,9 +20,10 @@ with auto-run on, as Blender opens a file a person trusts.
 
 import json
 import os
-import subprocess
 
 import bpy
+
+import child_blender   # A child Angelo runs the suite's code from its own file.
 
 MARK = "open(%r, 'w').write('ran')\n"
 
@@ -33,8 +34,7 @@ def _app(code, config=None):
     if config is not None:
         os.makedirs(config, exist_ok=True)
         env["BLENDER_USER_CONFIG"] = str(config)
-    done = subprocess.run([bpy.app.binary_path, "--background", "--factory-startup", "--python-expr", code],
-                          capture_output=True, text=True, timeout=600, env=env)
+    done = child_blender.run(code, capture_output=True, text=True, timeout=600, env=env)
     for line in done.stdout.splitlines():
         if line.startswith("CHILD "):
             return json.loads(line[6:])

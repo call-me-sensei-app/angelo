@@ -40,6 +40,7 @@ set(SRC
   object_random.cc
   object_relations.cc
   object_remesh.cc
+  object_retopology.cc
   object_shade_bake.cc
   object_select.cc
   object_shader_fx.cc

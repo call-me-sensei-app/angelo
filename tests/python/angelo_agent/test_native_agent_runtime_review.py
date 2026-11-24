@@ -373,6 +373,59 @@ class Selection(unittest.TestCase):
         agent_runtime._release_build.cache_clear()
         self.assertTrue(agent_runtime.release_build("darwin", binary))
 
+    def test_a_release_without_its_runtime_refuses_rather_than_running_the_persons_codex(self):
+        """Re-review of ffa4cb56717, MUST-2: a quarantined or missing runtime beside the release marker made the
+        release a development build, which then ran the person's own Codex on PATH with their config."""
+        from angelo_agent.display_text import Text
+        app = Path(self.temp.name, "Quarantined.app/Contents")
+        (app / "MacOS").mkdir(parents=True)
+        (app / "MacOS/Angelo").write_text("#!/bin/sh\n")
+        marker = Path(self.temp.name, "Quarantined.app", agent_runtime.PIN["platforms"]["macos"]["release_marker"])
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("{}")
+        binary = str(app / "MacOS/Angelo")
+        for cache in (agent_runtime._bundled, agent_runtime._release_build):
+            cache.cache_clear()
+            self.addCleanup(cache.cache_clear)
+        self.assertTrue(agent_runtime.release_build("darwin", binary), "the marker alone makes a release")
+        with patch.object(agent_runtime, "release_build", return_value=True), \
+                patch.object(agent_runtime, "bundled", return_value=None), self.assertRaises(RpcError) as caught:
+            agent_runtime.executable()
+        self.assertIsInstance(caught.exception.args[0], Text)
+        self.assertEqual(caught.exception.args[0].template, agent_runtime.MISSING)
+        with patch.object(agent_runtime, "release_build", return_value=False), \
+                patch.object(agent_runtime, "bundled", return_value=None):
+            self.assertIsNone(agent_runtime.executable(), "a development build without one: the person's own Codex")
+        # Through the real lookup (cli_runtime.find_executable): refused before PATH or any folder is searched.
+        from angelo_agent import cli_runtime
+        with patch.object(agent_runtime, "release_build", return_value=True), \
+                patch.object(agent_runtime, "bundled", return_value=None), \
+                patch.object(cli_runtime.shutil, "which", side_effect=AssertionError("searched PATH")), \
+                self.assertRaises(RpcError) as caught:
+            cli_runtime.find_executable("codex")
+        self.assertEqual(caught.exception.args[0].template, agent_runtime.MISSING)
+
+    def test_off_in_a_release_says_so_once_in_the_chat(self):
+        """Re-review SHOULD-3, ruled: ANGELO_AGENT_RUNTIME=off in a release is the person's explicit choice of their
+        own Codex and its settings; the chat says so, once."""
+        state = {}
+        os.environ["ANGELO_AGENT_RUNTIME"] = "off"
+        with patch.object(agent_runtime, "release_build", return_value=True):
+            row = agent_runtime.own_codex_row("own", state)
+            self.assertEqual((row["role"], row["text"]), ("system", agent_runtime.OWN_CODEX))
+            self.assertEqual(row["i18n"][0], agent_runtime.OWN_CODEX, "drawn from its template, translated")
+            self.assertIsNone(agent_runtime.own_codex_row("own", state), "once per chat")
+            self.assertIsNone(agent_runtime.own_codex_row("bundled", {}))
+        with patch.object(agent_runtime, "release_build", return_value=False):
+            self.assertIsNone(agent_runtime.own_codex_row("own", {}), "a development build says nothing")
+        # The chat draws exactly that row: the connect path emits own_codex_row's answer as a message.
+        import ast
+        source = (Path(agent_runtime.__file__).parent / "providers.py").read_text(encoding="utf-8")
+        emitted = [node for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Call)
+                   and getattr(node.func, "attr", None) == "emit" and len(node.args) == 2
+                   and isinstance(node.args[1], ast.Name) and node.args[1].id == "own_codex"]
+        self.assertEqual(len(emitted), 1)
+
     def test_receipts_say_which_runtime_ran_and_whether_it_was_keyed(self):
         route = telemetry.clean_route({"agent_runtime": "bundled", "cache_affinity": True, "fast": False, "auto": True,
                                        "single_model": False})

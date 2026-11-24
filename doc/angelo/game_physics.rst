@@ -207,6 +207,44 @@ A suffix is recognised as Godot's ``_teststr`` does: after a Blender duplicate
 number and trailing digits, spaces and underscores, the name ends in
 ``-<suffix>`` or holds ``$<suffix>``.
 
+Convex decomposition
+====================
+
+A concave mesh collides as its convex hull: a chair as a block, a doorway shut. **Fit Collision Hulls**
+(``angelo.fit_collision``, F3; ``angelo_agent/collision_fit.py``) makes several convex hulls instead, each a child
+mesh object that is a collider of its own: **Shape** Convex Hull, **Collision Only**, not rendered, drawn as wire.
+They export like any other shape (OMI, Godot name suffixes), and ``collision_fit.unreal_name`` gives the ``UCX_``
+names Unreal reads.
+
+* **Decompose** on a closed mesh voxelises the solid and splits it where one hull would cover the most empty space,
+  until **Most Hulls** or until every hull fits its part within 5% of the solid's volume. Each hull wraps the mesh's
+  own surface in its part and overlaps its neighbours at the cuts, so nothing slips between hulls; a shell thinner
+  than a voxel (a splat collision mesh) still counts as solid.
+* An open mesh has no inside, so each loose part gets one hull and the report says so.
+* **Most Vertices per Hull** (default 64; engines cap a hull, PhysX at 255) rebuilds a larger hull from its
+  extreme points, scaled just enough to hold all of the original: never smaller than what it collides for.
+* Every hull holds all the points it is made from (``angelo_agent/convex_hull.py``, a quickhull with a
+  tolerance of a billionth of the part's size); a part with no volume gets no hull.
+* A rerun replaces the hulls it made; the mesh itself never changes.
+
+Splats to meshes (Collision) fits its hulls with the same module.
+
+Each engine's form
+------------------
+
+``collision_conventions.apply(scene, engine)`` rearranges collision-only meshes for one engine, on the copy an
+export writes: the engine link's write-back child loads the saved file, applies it for the link's engine, then
+exports (``engine_link_writeback``). The person's scene is never changed; live frames carry no collision.
+
+* **Unreal**: each convex hull becomes ``UCX_<mesh>_NN`` beside the rendered mesh it belongs to, at the same world
+  placement. A concave collision-only mesh (Mesh shape) is left out, since Unreal reads no concave collision by name;
+  its hulls carry it, and the export says so.
+* **Unity**: ``<mesh>_ConvexCollider_NN`` and ``<mesh>_MeshCollider``, which the Angelo Link plugin turns into
+  MeshColliders. Owed: that plugin rule, and a run in Unity.
+* **Godot**: unchanged; the glTF export writes OMI or Godot suffixes by the scene's setting.
+
+Owed: proof in Unreal 5.4-5.8 that Interchange's glTF import reads the ``UCX_`` names (the link's end-to-end test).
+
 Limits and follow-ups
 =====================
 

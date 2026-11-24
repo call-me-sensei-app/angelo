@@ -266,5 +266,13 @@ The implemented toolset 53 source adds ``source="fab"`` to these same two tools 
 connects them to the person's shared account-scoped facade. Fab remains separate from
 the public catalog. Agent search requires an already connected Session; it cannot sign
 in, change paid-suggestion preferences or acquire rights. Import requires the exact
-observed variant, individual approval and checked native GLB support. Actual account,
+observed variant, individual approval and checked native GLB support. An agent
+script never drives or starts Fab's owner worker: the person's action boundary
+(``fab_host.human``, behind every ``library_host.fab_*`` call) refuses while agent
+code runs, and a thread start the script confinement refuses leaves the worker
+restartable rather than holding an unstarted thread (``test_native_fab_owner_confined``).
+Actual account,
 download and native/combined-application acceptance remain open; see :doc:`fab`.
+Fab's sign-in browser is built for macOS and Windows (``platform_features``
+``fab_browser``); on Linux (beta) Fab reads "Fab is not available on this platform."
+from the first draw, and nothing of the browser is imported or started.

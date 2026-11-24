@@ -43,6 +43,7 @@ import fake_provider_cli  # noqa: E402
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')  # The default Director startup and its chat.
 product_env.clear('DISABLE_HERO')  # ...and the showcase the runner turns off elsewhere.
@@ -115,9 +116,34 @@ def save():
     REPORT.write_text(json.dumps(state, indent=2, default=str))
 
 
+def hero_state():
+    """What the boot wait looks at and what the hero's own timer decides on (connect_hero._tick), so a timeout says
+    which was false (slot14 at 3cfdc5f, guard lane: "Timed out waiting in boot" with nothing else; the coordinator: a
+    failed check says what it waited for)."""
+    from angelo_agent import connect_hero, director, intro, live_windows, ui
+    hero = connect_hero._state
+    first = live_windows.first(bpy.context.window_manager)
+    target = connect_hero._target(first) if first is not None else None
+    return {"awaiting_connection": connect_hero.awaiting_connection(ui), "dismissed": connect_hero._dismissed,
+            "settling": {"director": director._timer is not None, "layout": ui._layout_timer is not None},
+            "window": first is not None, "view_3d": target is not None, "intro_open": intro.is_open(),
+            "hero_timer": connect_hero._timer is not None, "shown": connect_hero.is_shown(), "times_shown": connect_hero.shown,
+            "plan": bool(hero.get("plan")), "yields": connect_hero._yields(hero["area"]) if hero else None,
+            "fading": hero.get("fading_since") is not None if hero else None, "last_error": connect_hero.last_error,
+            "claude_in_actions": CLAUDE in actions(), "actions": sorted(map(str, actions()))[:20]}
+
+
 def finish(error=None):
     if error:
         state.update(success=False, error=str(error), traceback=traceback.format_exc())
+        try:   # What the boot wait and the hero's timer saw, and the window as drawn, to read a failure without a rerun.
+            state["at_failure"] = hero_state()
+        except Exception as problem:  # noqa: BLE001 - a detail only.
+            state["at_failure"] = repr(problem)
+        try:
+            capture("hero-timeout.png")
+        except Exception as problem:  # noqa: BLE001
+            state["at_failure_screenshot"] = repr(problem)
     else:
         state.update(phase="complete", success=all(state["checks"].values()))
     state["elapsed_seconds"] = round(time.monotonic() - started, 1)
@@ -175,8 +201,7 @@ def tick():
             if not wait(phase, lambda: not intro.is_open()):
                 return .1
             region = hero_region()
-            rect = connect_hero._state["plan"]["link_rect"]
-            move_to(int(region.x + rect[0] + rect[2] / 2), int(region.y + rect[1] + rect[3] / 2))
+            move_to(*qa_hit.ipoint(qa_hit.PIXELS, region, connect_hero._state["plan"]["link_rect"]))
             state["phase"] = "link_hover"
             return .3
         if phase == "link_hover":

@@ -21,14 +21,18 @@ CANVAS_INPUTS = frozenset({"angelo.chat_input", "angelo.studio_input", "angelo.c
 # launch, with the welcome or a What's New card open, the drawn chat passed every click and key on and did nothing.
 PASSIVE_OVERLAYS = frozenset({"angelo.intro", "angelo.card_host", "angelo.providers_page_input",
                               "angelo.bake_maps_note",   # A texture set's progress report: one timer tick, nothing kept.
-                              "angelo.web_export"})   # Waiting for the World's picture: its timer, and Esc to cancel.
+                              "angelo.web_export",   # Waiting for the World's picture: its timer, and Esc to cancel.
+                              "angelo.markup_viewer"})   # A picture marked up over the 3D view (markup_overlay).
 # Angelo's own modal operators that hold the window's input on purpose: an approval waits for its card's buttons,
 # Return or Esc, and the chat must not take those keys. Every Angelo modal operator is in exactly one of
 # CANVAS_INPUTS, PASSIVE_OVERLAYS and HOLDING_TOOLS (test_native_chat_start_states), so a new one is classified
 # when it is written, never found later by a dead chat.
 HOLDING_TOOLS = frozenset({"angelo.accept_native_preview",
                            "angelo.flow_menu",   # Director's Flows popup / Add step, while open: rows, arrows, Esc.
-                           "angelo.render_region_draw"})   # Dragging a region to render: holds the pointer until done.
+                           "angelo.render_region_draw",   # Dragging a region to render: holds the pointer until done.
+                           "angelo.shape_cut",   # Drawing a Shape Cut: holds the pointer until it commits or cancels.
+                           # UV Layout by hand: its mesh is mid-layout in Edit Mode; Esc stops, navigation passes.
+                           "angelo.uv_layout_run"})
 
 # Blender's auto-save waits while any modal operator runs, and the chat's input handler runs in every window that
 # shows the chat: before 1.0.6 Angelo never auto-saved with the chat open. The canvases and overlays above only
@@ -94,14 +98,20 @@ def refresh_move(event):
         getattr(event, "mouse_prev_x", None), getattr(event, "mouse_prev_y", None))
 
 
-def quit_shortcut(event, window_manager):
-    """The person's quit key: the Window key map's Quit (Ctrl+Q by default, or the person's own)."""
+def bound(event, window_manager, keymap_name, idnames):
+    """Whether the person's key map ``keymap_name`` runs one of ``idnames`` on this press (their own keys, never a
+    hard-coded one)."""
     keyconfig = getattr(getattr(window_manager, "keyconfigs", None), "user", None)
-    keymap = keyconfig.keymaps.get("Window") if keyconfig is not None and event.value == 'PRESS' else None
+    keymap = keyconfig.keymaps.get(keymap_name) if keyconfig is not None and event.value == 'PRESS' else None
     return keymap is not None and any(
-        item.idname == "wm.quit_blender" and item.active and item.type == event.type and item.value in {'PRESS', 'ANY'}
+        item.idname in idnames and item.active and item.type == event.type and item.value in {'PRESS', 'ANY'}
         and all(getattr(item, name) in (-1, int(getattr(event, name, False))) for name in MODIFIERS)
         for item in keymap.keymap_items)
+
+
+def quit_shortcut(event, window_manager):
+    """The person's quit key: the Window key map's Quit (Ctrl+Q by default, or the person's own)."""
+    return bound(event, window_manager, "Window", {"wm.quit_blender"})
 
 
 def overlay_passes(event, window_manager):

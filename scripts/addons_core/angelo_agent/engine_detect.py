@@ -8,8 +8,9 @@ dropped: nothing returned, stored, logged or sent ever holds one.
 
 * **Running** reads the operating system's process table once per call, without starting a process: on macOS
   ``proc_listallpids`` and ``proc_name`` from libproc, on Windows a Toolhelp32 snapshot (``CreateToolhelp32Snapshot``,
-  ``Process32FirstW`` / ``Process32NextW``). Both list the person's own processes without any permission prompt.
-  Anywhere else it answers that nothing runs. ``running`` takes a ``names`` list instead, which is how the tests fake
+  ``Process32FirstW`` / ``Process32NextW``), on Linux ``/proc/<pid>/comm`` of the processes this user owns (the
+  kernel keeps the first 15 bytes of a name, which still begins each editor's name). All three list the person's own
+  processes without any permission prompt. Anywhere else it answers that nothing runs. ``running`` takes a ``names`` list instead, which is how the tests fake
   each operating system's process table.
 * **Installed** looks for each engine's application where its installer or launcher puts it (``INSTALL_GLOBS``);
   the Unity Hub and the Epic Games Launcher put editors in fixed folders, Godot is a single application anyone may
@@ -54,6 +55,19 @@ INSTALL_GLOBS = {
         "unity": ("%ProgramFiles%/Unity/Hub/Editor/*/Editor/Unity.exe", "%ProgramFiles%/Unity Hub/Unity Hub.exe"),
         "unreal": ("%ProgramFiles%/Epic Games/UE_5.*", "%ProgramFiles%/Epic Games/UE_4.*"),
     },
+    # Linux: Steam and Flathub (system and per-user) for Godot, or a distribution's package; the Unity Hub's .deb in
+    # /opt and the editors it puts under ~/Unity/Hub/Editor, or its Flathub build; Unreal has no installer on Linux,
+    # so Epic's download extracted, or a source build, in the home folder or /opt.
+    "linux": {
+        "godot": ("~/.local/share/Steam/steamapps/common/Godot Engine", "~/.steam/steam/steamapps/common/Godot Engine",
+                  "/var/lib/flatpak/app/org.godotengine.Godot", "~/.local/share/flatpak/app/org.godotengine.Godot",
+                  "/usr/bin/godot*", "/usr/local/bin/godot*"),
+        "unity": ("~/Unity/Hub/Editor/*/Editor/Unity", "/opt/unityhub/unityhub",
+                  "/var/lib/flatpak/app/com.unity.UnityHub", "~/.local/share/flatpak/app/com.unity.UnityHub"),
+        "unreal": ("~/UnrealEngine*/Engine/Binaries/Linux/UnrealEditor",
+                   "~/Linux_Unreal_Engine_*/Engine/Binaries/Linux/UnrealEditor",
+                   "/opt/UnrealEngine*/Engine/Binaries/Linux/UnrealEditor"),
+    },
 }
 
 
@@ -92,9 +106,31 @@ def process_names(platform):
             return _mac_names()
         if platform == "win32":
             return _windows_names()
+        if platform.startswith("linux"):
+            return _linux_names()
     except (OSError, AttributeError, ValueError):
         pass
     return []
+
+
+def _linux_names(proc="/proc", owned=None):
+    """``comm`` of every process this user owns (``owned(path, stat)``, ``file_owner.owned_by_this_user`` unless a
+    test passes another); a process that ends mid-read is skipped."""
+    if owned is None:
+        from .file_owner import owned_by_this_user as owned
+    names = []
+    with os.scandir(proc) as entries:
+        for entry in entries:
+            if not entry.name.isdigit():
+                continue
+            try:
+                if not owned(entry.path, entry.stat(follow_symlinks=False)):
+                    continue
+                with open(os.path.join(entry.path, "comm"), "rb") as handle:
+                    names.append(handle.read(64).decode("utf-8", "replace").rstrip("\n"))
+            except OSError:
+                continue
+    return names
 
 
 def _mac_names():

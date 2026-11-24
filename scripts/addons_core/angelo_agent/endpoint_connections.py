@@ -164,6 +164,38 @@ def claude_model_overrides(mode):
     return overrides
 
 
+# Names Claude Code places itself (code.claude.com/docs/en/model-config): its model aliases, and Anthropic's model
+# IDs, which name one of Claude's families after "claude-" (claude-opus-4-8, claude-sonnet-5,
+# claude-3-5-sonnet-20241022). A name ending in "[1m]" states a 1M window. A name of a family Claude Code does not
+# know falls to the 200K rule below, the safe side.
+_CLAUDE_CODE_ALIASES = frozenset({"opus", "sonnet", "haiku", "fable", "opusplan"})
+_CLAUDE_MODEL_ID = re.compile(r"claude-(?:[0-9]+(?:-[0-9]+)*-)?(?:opus|sonnet|haiku|fable)(?:-[0-9a-z.]+)*")
+
+
+def claude_code_places(model):
+    """Whether Claude Code knows ``model``'s context window by its own name: an alias, an Anthropic model ID, or any
+    name with the ``[1m]`` suffix. Angelo's price table plays no part (it lists only the models Angelo prices)."""
+    name = model.strip().lower()
+    if name.endswith("[1m]"):
+        return True
+    return name in _CLAUDE_CODE_ALIASES or _CLAUDE_MODEL_ID.fullmatch(name) is not None
+
+
+def claude_window_unknown(mode, model):
+    """Whether Claude Code would have to guess the context window of ``model`` on connection ``mode``: an endpoint's
+    Messages model that Claude Code cannot place by its own name (``claude_code_places``) and that is not mapped to
+    a Claude model (``claude_model_overrides``), or the server's default (no model). Claude Code 2.1.323 and later
+    assume 1M for such a name (earlier ones 200K), so a smaller model would fill and fail every turn; the launch
+    then keeps 200K (``claude_transport``)."""
+    if not is_endpoint(mode) or runtime_of(mode) != "claude":
+        return False
+    if not model:
+        return True
+    if claude_code_places(model):
+        return False
+    return model not in claude_model_overrides(mode).values()
+
+
 def key_identity(console_url, org_id, user_id, endpoint_id):
     """The key slot (a UUID for ``saved_keys``) of one person's key for one endpoint, shared by its formats."""
     return str(uuid.uuid5(_NAMESPACE, "|".join(("key", console_url, org_id, user_id, endpoint_id))))
@@ -203,7 +235,7 @@ def _openai_service(endpoint, format_id):
 
 def build_spec(endpoint, format_id):
     """The registry-shaped spec of one endpoint format."""
-    from .provider_registry import CODING, SPECS
+    from .provider_registry import CODING
     wire, personal, label = FORMATS[format_id]
     form = endpoint.format(format_id)
     models = endpoint.models_in(format_id)
@@ -213,8 +245,6 @@ def build_spec(endpoint, format_id):
             "server": endpoint.server, "base_url": endpoint.url(format_id), "host": endpoint.host,
             "credential": endpoint.credential, "env_key": ENV_KEY, "auth_header": form.header,
             "auth_scheme": form.scheme, "extra_headers": dict(endpoint.extra_headers),
-            # The format's own provider settings (Gemini: its long thinking before the first byte).
-            "provider_settings": dict(SPECS[personal].get("provider_settings", {})),
             "web_search": False,   # Codex's web search is a hosted OpenAI tool; a server may not pass it through.
             "openai_service": _openai_service(endpoint, format_id),
             "models": [_model(m, index == 0) for index, m in enumerate(models)], "removed": False}
@@ -325,5 +355,7 @@ def provider_entry(spec_entry):
         entry["env_http_headers." + spec_entry["auth_header"]] = ENV_KEY
     for name, value in spec_entry["extra_headers"].items():
         entry["http_headers." + name] = value
+    from .provider_registry import stream_settings
+    entry.update(stream_settings(spec_entry["wire_api"], endpoint=True))   # An organization's own server's rules.
     entry.update(spec_entry.get("provider_settings", {}))
     return entry

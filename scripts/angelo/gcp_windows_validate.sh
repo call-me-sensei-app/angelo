@@ -423,8 +423,8 @@ bench() {
   EXTRA_META+=",angelo-bench-signin-minutes=${ANGELO_BENCH_SIGNIN_MINUTES:-60}"
   EXTRA_META+=",angelo-bench-candidate-msi=$candidate_meta,angelo-bench-candidate-sha256=$candidate_sha"
   EXTRA_META+=",angelo-bench-candidate-wait-minutes=$wait_minutes"
-  # An API-key gate's Secret Manager secret NAME (bench_api_key.py), in the bench prefix, never echoed; sent always.
-  local gemini_secret="${ANGELO_BENCH_GEMINI_SECRET_NAME:-}"; [[ -z "$gemini_secret" || "$gemini_secret" =~ ^angelo-bench-[A-Za-z0-9_-]{1,242}$ ]] || { echo "ANGELO_BENCH_GEMINI_SECRET_NAME is not an angelo-bench-... secret name (not shown: it may be a key)" >&2; exit 2; }; EXTRA_META+=",angelo-bench-gemini-secret=$gemini_secret"
+  # The request's named inputs, each validated and written on every send: the session folder, the API-key secret name.
+  source "$ROOT/scripts/angelo/gcp_windows_bench_inputs.sh"
   if [[ "${ANGELO_GCP_DRY_RUN:-0}" == "1" ]]; then
     echo "DRY RUN: nothing is uploaded or started."
     echo "  VM $NAME in $ZONE (project $PROJECT), bucket gs://$BUCKET; stage bench, mode $mode"

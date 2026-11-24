@@ -20,6 +20,7 @@ import statistics
 import time
 
 import bpy
+import qa_hit
 
 
 class _TimeValue(ctypes.Structure):
@@ -152,7 +153,7 @@ def same_picture(window, region, view_state, out, differing, debug):
                       "full": marble_frames.stats["full"] - before["full"],
                       "reused": marble_frames.stats["reused"] - before["reused"], "trace": marble_frames.trace})
     marble_frames.bypass, marble_frames.trace = False, None
-    holes = [(region.x + r["rect"][0], region.y + r["rect"][1], r["rect"][2], r["rect"][3])
+    holes = [qa_hit.rect(qa_hit.RAW, region, r["rect"])   # Region pixels: marble_draw applies scale and mirror.
              for r in view_state.get("marble_drawn", {}).values()]
     rect = (region.x, region.y, region.width, region.height)
     return {"kept": differing(shots[0], shots[1], rect, holes), "kept_again": differing(shots[2], shots[1], rect, holes)}
@@ -175,8 +176,9 @@ class Orbit:
         if not self.running:
             return None
         self.step += 1
-        x = self.region.x + self.region.width // 2 + (self.step % 120 - 60) * 3
-        self.window.event_simulate(type='MOUSEMOVE', value='NOTHING', x=x, y=self.region.y + self.region.height // 2)
+        x, y = qa_hit.xy(qa_hit.RAW, self.region, self.region.width // 2 + (self.step % 120 - 60) * 3,
+                         self.region.height // 2)
+        self.window.event_simulate(type='MOUSEMOVE', value='NOTHING', x=int(x), y=int(y))
         return 0.0
 
     def start(self):

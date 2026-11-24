@@ -201,6 +201,18 @@ def has_oidn_gpu_devices(context):
     return context.preferences.addons[__package__].preferences.has_oidn_gpu_devices()
 
 
+def draw_oidn_gpu_hint(layout, context):
+    """Angelo: under a greyed-out "Use GPU" for OpenImageDenoise, why it is greyed out and what to do."""
+    state = context.preferences.addons[__package__].preferences.oidn_gpu_state()
+    if state == 'AVAILABLE':
+        text = rpt_("A GPU here can denoise. Choose it in Preferences > System > Cycles Render Devices.")
+    elif state == 'NONE':
+        text = rpt_("No GPU here supports OpenImageDenoise, so it denoises on the CPU.")
+    else:
+        return
+    layout.label_multiline(text=text, icon='INFO', translate=False)
+
+
 def has_dlss_gpu_devices(context):
     return context.preferences.addons[__package__].preferences.has_dlss_gpu_devices()
 
@@ -298,6 +310,8 @@ class CYCLES_RENDER_PT_sampling_viewport_denoise(CyclesButtonsPanel, Panel):
             row = col.row()
             row.active = has_oidn_gpu_devices(context)
             row.prop(cscene, "preview_denoising_use_gpu", text="Use GPU")
+            if not row.active:
+                draw_oidn_gpu_hint(col, context)
 
 
 class CYCLES_RENDER_PT_sampling_render(CyclesButtonsPanel, Panel):
@@ -367,6 +381,8 @@ class CYCLES_RENDER_PT_sampling_render_denoise(CyclesButtonsPanel, Panel):
             row = col.row()
             row.active = has_oidn_gpu_devices(context)
             row.prop(cscene, "denoising_use_gpu", text="Use GPU")
+            if not row.active:
+                draw_oidn_gpu_hint(col, context)
 
 
 class CYCLES_RENDER_PT_sampling_path_guiding(CyclesButtonsPanel, Panel):

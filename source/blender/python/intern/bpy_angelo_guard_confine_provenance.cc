@@ -167,7 +167,7 @@ static bool generic(const char *text)
 
 static std::optional<std::string> file_bytes(const char *path)
 {
-  FILE *file = fopen(path, "rb");
+  FILE *file = lookup_fopen_read(path);
   if (file == nullptr) {
     return std::nullopt;
   }
@@ -215,8 +215,11 @@ int provenance_compile(PyObject *args)
   if (frozen_name(name)) {
     return refuse(GUARD, "compile under a <frozen> name");
   }
-  if (!generic(name) && folders().trusted(name) && !same_as_file(source, name)) {
-    return refuse(GUARD, name); /* Only an installed file's own source compiles under its name. */
+  if (!generic(name) && folders().trusted(name)) {
+    if (!same_as_file(source, name)) {
+      return refuse(GUARD, name); /* Only an installed file's own source compiles under its name. */
+    }
+    installed_bytes_verified = true; /* That file's own source: what it compiles to is that file's. */
   }
   return 0;
 }
@@ -281,6 +284,7 @@ static std::optional<std::string> frame_local(const char *key)
 int provenance_marshal(const char *event, PyObject *args)
 {
   if (loading_frozen > 0) {
+    installed_bytes_verified = true;
     return 0; /* A frozen module's own bytes, compiled into the binary (bpy_angelo_guard_confine_wrap.cc). */
   }
   if (strcmp(event, "marshal.loads") != 0 || !in_bytecode_loader()) {
@@ -300,7 +304,11 @@ int provenance_marshal(const char *event, PyObject *args)
   }
   if (data != nullptr && bytecode && folders().trusted(bytecode->c_str())) {
     /* An installed .pyc: only its own bytes (after the 16-byte header). */
-    return same_as_file(data, bytecode->c_str(), 16) ? 0 : refuse(GUARD, bytecode->c_str());
+    if (!same_as_file(data, bytecode->c_str(), 16)) {
+      return refuse(GUARD, bytecode->c_str());
+    }
+    installed_bytes_verified = true; /* That .pyc's own bytes: what they unmarshal to is that file's. */
+    return 0;
   }
   if (source && !folders().trusted(source->c_str())) {
     return 0; /* Beside a module that is not installed: its code gets that module's name and is the agent's. */

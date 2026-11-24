@@ -15,6 +15,7 @@ multiplied by ``scale``; coordinates are region pixels, y up.
 """
 
 from dataclasses import dataclass, field
+from .row_audience import model_hidden   # Never a person's card for the lead model (a refused share).
 
 WIDTH = 188            # Tile width.
 MARGIN = 12            # From the view's edges and from a toolbar drawn over it.
@@ -341,15 +342,14 @@ PROBLEM_LIMIT = 600   # Characters of a failure's own row, so the lead's status 
 
 
 def turn_end(messages, working=False, outcome=None, reply=True):
-    """``(end, reply)`` of a chat's newest turn: the rows after its newest brief (a ``user`` row that is not a
-    preview's Accept) up to where it finished. ``outcome`` is the controller's ``turn_outcome``, recorded once as the
-    turn ended (its provider's status, a person's Stop, a brief never sent, its row count), never live fields that later
-    actions rewrite (break-it P1-20 M2). ``end`` is "" while it works or before that brief's turn ended, else
-    "completed", "stopped" (the person's Stop, or its worker's end: ``worker_routing.end_turn``), "not_sent", or
-    "failed" for anything else, a provider's failure "interrupted" included (P1-20 M1). A completed turn's reply is its
-    newest assistant text with the host's verified account of what ran after it, the account alone, or ``NO_REPLY``; a
-    failed one's is its error row, else its last system row before it finished (P1-20 M3). ``reply`` False skips
-    building the text (the rail's draw) (pure)."""
+    """``(end, reply)`` of a chat's newest turn: the rows after its newest brief (a ``user`` row that is not a preview's
+    Accept) up to where it finished. ``outcome`` is the controller's ``turn_outcome``, recorded once as the turn ended
+    (its provider's status, a person's Stop, a brief never sent, its row count), never live fields later actions rewrite
+    (P1-20 M2). ``end`` is "" while it works or before that brief's turn ended, else "completed", "stopped" (the
+    person's Stop, or its worker's end: ``worker_routing.end_turn``), "not_sent", or "failed" (anything else, a
+    provider's "interrupted" too: P1-20 M1). A completed turn's reply is its newest assistant text with the host's
+    verified account of what ran after it, the account alone, or ``NO_REPLY``; a failed one's is its error row, else its
+    last system row (P1-20 M3), never a row ``row_audience.model_hidden``. ``reply`` False: no text (pure)."""
     rows = list(messages or ())
     brief = next((index for index in range(len(rows) - 1, -1, -1) if rows[index].get("role") == "user"
                   and not rows[index].get("steer") and rows[index].get("request_kind") != "native_preview_accept"), None)
@@ -364,8 +364,8 @@ def turn_end(messages, working=False, outcome=None, reply=True):
     if status not in COMPLETED:
         if not reply:
             return "failed", ""
-        texts = [(m.get("role"), (m.get("model_text") or m.get("text") or "").strip())   # The lead is a model.
-                 for m in turn if not m.get("host_summary") and not m.get("turn_end")]   # Never its turn_end account.
+        texts = [(m.get("role"), (m.get("model_text") or m.get("text") or "").strip()) for m in turn   # The lead
+                 if not m.get("host_summary") and not m.get("turn_end") and not model_hidden(m)]   # is a model.
         problem = next((text for role, text in reversed(texts) if role == "error" and text), "") or next(
             (text for role, text in reversed(texts) if role == "system" and text), "")
         return "failed", TURN_FAILED % ((problem or str(status))[:PROBLEM_LIMIT])

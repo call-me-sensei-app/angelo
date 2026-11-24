@@ -56,6 +56,14 @@ range is (highest - lowest) / lowest of those medians.
   for operations that write files (``--writes-files``), at most 25%.
 * ``snapshot/<doc>_repeat_capture_three_write_sum`` (maintainer, 2026-10-27):
   twice the range, with no 5% and no 10% floor; still at most 25%.
+* Every operation, either rule (maintainer ruling 7 for 2.0.0, 2026-11-18):
+  at least three times its within-run spread (``WITHIN_RUN_FACTOR``), still at
+  most 25%. Its within-run spread is the largest of the runs' own spreads for
+  it, each the spread ``noisy`` reads: the relative range of that run's valid
+  samples, (max - min) / median (``perf_counters``, the run's
+  ``ratchet.spread``). A run that kept only a median adds none. So a run as
+  spread as the restamp's own never counts as noisy against its tolerance,
+  unless the cap binds.
 
 A ceiling only rises with ``--update --allow-raise``, an explicit decision that
 belongs in review with the reason for the extra work. Counts are compared only
@@ -119,6 +127,7 @@ QUIET_LOAD_DEFAULT = 2.0   # perf_counters.QUIET_LOAD (not imported: this module
 NOISY_FRACTION = 1 / 3
 FILE_WRITE_TOLERANCE = 0.10     # Standing floor for operations that write files (kernel work varies more).
 RESTAMP_MAX_TOLERANCE = 0.25
+WITHIN_RUN_FACTOR = 3   # A restamped tolerance is at least this times the largest within-run spread (ruling 7, 2.0.0).
 MIN_REBASELINE_RUNS = 2         # A range needs two runs; the restamps of record used three or four.
 RANGE_ONLY_SUFFIXES = ("_repeat_capture_three_write_sum",)
 
@@ -274,10 +283,12 @@ def range_only(name):
     return name.startswith("snapshot/") and name.endswith(RANGE_ONLY_SUFFIXES)
 
 
-def restamp_tolerance(name, values, *, default=DEFAULT_TOLERANCE, writes_files=False):
+def restamp_tolerance(name, values, *, default=DEFAULT_TOLERANCE, writes_files=False, spreads=()):
     """The tolerance recorded from several runs' medians of one build (rule in the module docstring).
 
-    Rounded up at the fifth decimal, so the band is never narrower than the rule.
+    ``spreads`` are the runs' own within-run spreads for the operation (``None`` where a run kept only a median); the
+    tolerance is at least ``WITHIN_RUN_FACTOR`` times the largest. Rounded up at the fifth decimal, so the band is
+    never narrower than the rule.
     """
     if len(values) < MIN_REBASELINE_RUNS:
         raise RatchetError("%s needs at least %d runs for a run-to-run range" % (name, MIN_REBASELINE_RUNS))
@@ -288,7 +299,20 @@ def restamp_tolerance(name, values, *, default=DEFAULT_TOLERANCE, writes_files=F
         tolerance = twice
     else:
         tolerance = max(default, twice, FILE_WRITE_TOLERANCE if writes_files else 0.0)
+    tolerance = max(tolerance, WITHIN_RUN_FACTOR * within_run_spread(name, spreads))
     return math.ceil(round(min(tolerance, RESTAMP_MAX_TOLERANCE) * 1e5, 6)) / 1e5
+
+
+def within_run_spread(name, spreads):
+    """The largest of the runs' own spreads for ``name`` (0 when no run recorded one)."""
+    found = []
+    for spread in spreads:
+        if spread is None:
+            continue
+        if type(spread) not in {int, float} or not math.isfinite(spread) or spread < 0:
+            raise RatchetError("Run spread of %s must be a number from 0 up, not %r" % (name, spread))
+        found.append(spread)
+    return max(found, default=0.0)
 
 
 def measured_sources(root=ROOT):

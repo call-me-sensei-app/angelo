@@ -195,6 +195,45 @@ mirror holds no work, so one writer and one runner exist per chat:
   new card that needs a new review. Each call carries the chat's bound document
   (the worker's part), as a window's call carries the one it was admitted in, so
   every check comparing them (``approve_current_review``) holds for a mirror.
+  Every call is put in a ``pending`` event before it starts: the worker's pump
+  sends the pending calls when they changed, before and after its tool step,
+  and a call's start check (``HostedController._tool_available``) sends them
+  once more unless the lead heard that call as not waiting for the person (one
+  the provider thread admitted during the pump, or one whose Approve the lead
+  still draws), so a batch costs at most one extra send per call. What the lead
+  heard is recorded only once the event was put, so a failed send leaves no
+  call taken as heard. If that send fails, or the lead's connection has ended,
+  the call is refused (``INTERNAL_ERROR``) with nothing run.
+  Every change of that record holds the chat's lock (a refusal's resend, a
+  close), and a closed chat keeps none. Text a frame can't carry (a lone
+  surrogate, from a file name or a model's output) becomes U+FFFD in every
+  event (``worker_chat_events.text``), and approval and review digests hash
+  any text (``surrogatepass``). Each chat's steps run on their own, in the
+  worker's pump and in the tool step every pump shares (``tool_pump``): a chat
+  whose step raises is reported once per kind with its own redaction
+  (``pump_guard.failed``), the next chat goes first, and its turn ends once with
+  an error row the person sees. The tool step takes the chats in turn over one
+  tick's budget (``ToolDispatchBudget``, 8 ms): a chat that failed, admitted
+  work, or ran while the tick had time and spent it goes to the back; a chat
+  reached with the tick already spent still runs its step (a held chat yields
+  its writer every tick) and goes first next tick. A chat bound to a worker
+  lane runs only while the tick has time, on its lane with what is left (at
+  least 1 ms); if it admitted work it goes to the back, and if it spent the
+  tick the chat after it is reached spent and goes first next tick. Each tick
+  owes one admission past the deadline (``ToolDispatchBudget.owed``): it
+  passes on past chats that neither admit nor reach the deadline, to the first
+  whose own setup (its scene and tool holds, which admit nothing) outlasts the
+  tick, so a slow machine never stops a chat's own work. The overrun is bounded
+  to that chat's scan of its pending calls (expiries, the held tools it
+  resumes) and one admission, which runs at most one native operation
+  (``max_executions`` is 1). A
+  ``pending`` event larger than one
+  frame is not delivered: the lead gets a ``dropped`` notice in its place (the
+  worker's outbox, ``RESPONSE_LIMIT``), and the worker still takes it as heard
+  until its calls change (known limit; next release: the outbox reports it, and
+  a reduced event follows). Reasons:
+  such a call started and finished inside one pump and never reached the lead;
+  sending at every start check cost several full sends per call.
   Every Approve the chat draws (its card, the plain fallback card, a row drawn
   plainly after it raised, a flow run's card) records the card it shows: the
   transcript's hits pass ``chat_guard.shown_approvals`` once every row drew.
@@ -1816,6 +1855,15 @@ sentence); every tool declared in full (voice) unchanged at 108,654 B (voice thr
 gains the ``held_goal`` state field only while a goal runs. No existing tool, kind or field changed; every call valid
 under 50 is still valid.
 
+Toolset 56 (Angelo 2.1.0, over 55) lets the job tool's ``BAKE_MAPS`` bake a texture set packed for an engine:
+``for_engine`` (``GODOT``, ``UNITY``, ``UNREAL``, ``WEB``) or ``for_link`` (an Angelo engine link) choose the
+packing that engine's own material editor reads (``long_jobs.rst``, "Texture sets"). Measured on the branch
+(``coverage_prefix.py``, compact JSON): ``angelo_job_start``'s argument signature +61 B (Claude's instructions
+14,328 -> 14,389 B; Codex instructions with the plan and the team 26,119 -> 26,180 B, forwarded 26,148 -> 26,209 B;
+the program reference 15,298 -> 15,359 B); every tool declared in full 108,726 -> 108,927 B (+201;
+``DECLARED_TOOLS_BUDGET_BYTES`` 108,740 -> 108,940). Both fields are optional; every call valid under 55 is still
+valid.
+
 Toolset 55 (2.0.0) states a script's length limit where the agent decides. ``angelo_execute_python``'s description,
 and an app's script-file tool's, gain one sentence built from ``script_store.MAX_CODE`` ("A script holds at most
 32,768 characters; split longer work into steps."), the one place the number is written: the schema's
@@ -1848,7 +1896,65 @@ folder, which a spoken turn would not show). ``angelo_agent_capabilities`` ``FEA
 (``feature_guide``). No existing tool, kind or field changed; every call valid under 54 is still valid.
 
 Both changes are toolset 55, as 44 and 45 were both of two branches: nothing shipped with either alone.
+
 Each paragraph above measures its own change over 54.
+
+Toolset 57 (Angelo 2.1.0, over 56) adds ``angelo_job_start``'s ``RETOPOLOGY`` kind (``retopology.rst``): Object > Retopology on the
+target as a background job, into a new all-quad object, with ``faces`` (16 to 2,000,000, default 5,000) and
+``symmetry`` (``NONE`` or the mirror axes, an enum as ``angelo_sculpt_batch``'s). Its receipt carries the facts the
+operator measured (faces, quad ratio, poles, deviation), so the declaration states only what the agent chooses by:
+one 83 B sentence (a first draft's was 300 B). Measured over 56, ``coverage_prefix.py``, Blender's Python 3.13,
+2026-11-18, compact JSON: every tool declared in full (voice) 108,927 -> 109,194 B (+267; 56,439 -> 56,577
+tokens), Codex code-mode tools 105,601 -> 105,868 B OFF (111,055 -> 111,322 ON); the job arguments line
+(``codex_reference.job_arguments``) +77 B where it is stated: Claude's instructions 14,389 -> 14,466 B, the Codex
+team plan text 26,180 -> 26,257 B, the program reference 15,359 -> 15,436 B; Claude's plan schema unchanged
+(57,264 B). ``DECLARED_TOOLS_BUDGET_BYTES`` moves 108,940 to 109,210 (``plan_budgets.py``). Without the kind, clean
+quads were a script of Blender's QuadriFlow, which refused or failed on 20 of the 42 held-out benchmark runs
+(``retopology.rst``, "Measurement"). No existing tool, kind or field changed; every call valid under 56 is still
+valid.
+
+Toolset 58 (Angelo 2.1.0, over 57) adds the ``UV_LAYOUT`` kind to ``angelo_job_start`` (``uv_layout.rst``,
+``long_jobs.rst``): the ``uv_layout`` operation's Quality layouts run as this job (its ``job_if``), with ``layout``,
+that operation's parameters, typed by name and type or enum (a coordinator ruling: a key Claude Code's schema check
+refuses up front costs no correction round; the bytes are cached reads). Measured over 57 on the merged tree
+(release/v2.1.0 c91073340b5 against the merge), compact JSON, ``coverage_prefix.py`` with parallel edit off and on:
+every tool declared in full (voice) 109,194 -> 109,740 B (+546; 56,577 -> 56,860 tokens); Codex code-mode tools
+105,868 -> 106,414 B OFF (111,322 -> 111,868 ON; +546); the job arguments line +268 B where it is stated: Claude's
+instructions 14,466 -> 14,734 B, the Codex team plan text 26,257 -> 26,525 B (forwarded 26,286 -> 26,554), the
+program reference 15,436 -> 15,704 B; Claude's plan schema (57,264 B OFF, 57,334 ON) and Codex's base instructions
+(15,774 B) unchanged. ``DECLARED_TOOLS_BUDGET_BYTES`` moves 109,210 to 109,750 (``plan_budgets.py``). The same
++546/+268 as uv-pack measured over 2.0.0 and over b53a4ee9a8f, so it adds to BAKE_MAPS' and RETOPOLOGY's fields
+without overlap. No existing tool, kind or field changed; every call valid under 57 is still valid.
+
+Toolset 59 (Angelo 2.1.0, over 58) adds the deferred ``angelo_plan`` (``plan_mode.rst``): ``START`` makes the chat read
+only and plans (it only narrows), ``PROPOSE`` ends a planning turn with up to three approaches for the person's Go.
+Measured on the merged tree over toolset 58 (``coverage_prefix.py``, compact JSON): Claude's plan schema 57,334 -> 57,348 B
+with parallel edit ON (57,264 -> 57,278 OFF; +14: the deferred name; ``PLAN_BUDGET_BYTES`` 57,350); Claude's instructions
+14,734 -> 14,805 B (+71: ``agent_guidance.PLAN_SENTENCE``); Codex instructions with the plan and the team 26,525 ->
+26,609 B (+13 the deferred families' list, +71 the same sentence; forwarded 26,554 -> 26,638); Codex code-mode tools
+106,414 -> 107,731 B OFF (111,868 -> 113,185 ON; +1,317: the declaration in the ``more`` namespace); every tool
+declared in full (voice) unchanged at 109,740 B (voice threads never plan). The observation gains the ``plan_mode``
+state field only while a chat plans; the feature guide gains its ``plan`` entry (``FEATURES`` lookup). No existing
+tool, kind or field changed; every call valid under 58 is still valid. The coordinator approved these deltas on the
+branch (2026-11-18: +14, +71, +84, code mode +1,187); merged over toolset 58 the code-mode declaration measures +1,317.
+
+Toolset 61 (Angelo 2.1.0, over 60) adds several folders per chat and the deferred ``angelo_context_folder_write``
+(``agent_chat.rst``, "Folder as context"): text files in the chat's working folder, never declared to voice threads,
+collaborators, an outside app's conversation or a typed plan's batch; ``angelo_context_folder`` takes a ``folder``
+name. Measured over toolset 60: Claude's plan schema 57,372 -> 57,402 B with parallel edit ON (57,302 -> 57,332 OFF;
++30: the deferred name; ``PLAN_BUDGET_BYTES`` 57,380 -> 57,410). The observation's ``context_folder`` becomes
+``context_folders``, one path-free manifest per folder with its role.
+
+Toolset 60 (Angelo 2.1.0, over 59) adds the deferred ``angelo_context_folder`` (``agent_chat.rst``, "Folder as
+context"): one read-only tool over a folder the person attached to the chat (``LIST``, ``READ``, ``SEARCH``, ``VIEW``),
+never declared to voice threads or collaborators. Measured on the merged tree over toolset 59 (``coverage_prefix.py``,
+compact JSON): Claude's plan schema 57,348 -> 57,372 B with parallel edit ON (57,278 -> 57,302 OFF; +24: the deferred
+name; ``PLAN_BUDGET_BYTES`` 57,350 -> 57,380); Codex code-mode tools 113,185 -> 113,903 B ON (107,731 -> 108,449
+OFF; +718); Claude's and Codex's instructions and every tool declared in full (voice) unchanged. A request's
+observation may also carry ``context_folder`` (a state field: the folder's path-free manifest, while one is attached)
+and ``mentioned_items`` (an event field: what the person picked with @), and the message the person's standing rules
+(``rules``, a block sent again only when it changes). No existing tool, kind or field changed; every call valid under
+59 is still valid.
 
 Toolset 46 (Angelo 1.0.8, over 1.0.8's 45) lets the agent say where Angelo's features are and turn
 the engine live link on (``features.rst``, ``engine_link.rst``). ``angelo_agent_capabilities`` gains the

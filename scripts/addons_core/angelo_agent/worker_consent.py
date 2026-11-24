@@ -70,7 +70,7 @@ def approval_digest(call):
         }, sort_keys=True, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
     except (TypeError, ValueError, RecursionError, OverflowError, UnicodeError):
         return None
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return hashlib.sha256(canonical.encode("utf-8", "surrogatepass")).hexdigest()   # Any text: a lone surrogate too.
 
 
 def awaiting_person(call):
@@ -327,6 +327,12 @@ class LeasedConsent:
 
     def offers_always_allow(self, call):
         return False   # The person's choices are made in Angelo's window.
+
+    def offers_remember_script(self, call):
+        return False   # Remembered scripts are a project's, chosen in Angelo's window (reviewed_scripts).
+
+    def reviewed_script_allowed(self, call):
+        return False
 
 
 class _NotAScript:

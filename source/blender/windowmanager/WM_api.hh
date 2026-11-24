@@ -201,6 +201,21 @@ void WM_init_gpu_backend();
  * Create the draw manager offscreen GPU context and initialize the GPU module.
  */
 void WM_init_gpu_offscreen();
+/**
+ * Can this process draw with the GPU? The one capability check every GPU-drawn entry point
+ * refuses on (#WM_gpu_unavailable_message), so a machine without a usable GPU gets a refusal,
+ * never a crash.
+ *
+ * True once the GPU module is initialized. In background mode the GPU starts on demand: this
+ * makes that attempt, from whichever thread asks first (serialized), so the answer is always
+ * the system's.
+ */
+bool WM_gpu_is_available();
+/**
+ * The refusal of a GPU-drawn feature on a machine without a usable GPU, in English: report it
+ * with #BKE_report (which translates it) or translate it with `RPT_`.
+ */
+const char *WM_gpu_unavailable_message();
 
 /**
  * Return an identifier for the underlying GHOST implementation.
@@ -363,6 +378,16 @@ void WM_window_native_pixel_coords(const wmWindow *win, int *x, int *y);
  * window currently shows them (see #WM_window_is_csd).
  */
 bool WM_window_csd_is_active();
+/**
+ * Tests only (`_bpy._angelo_jobs.window_activate_simulate`, --enable-event-simulate): the window
+ * manager's handling of the operating system bringing `win` forward, by the very same function (the
+ * event state re-read from the system pointer, the guard's activation, the synthetic pointer move);
+ * not a deactivation before it. False (nothing done) with no system or no system window for `win`.
+ */
+bool WM_window_activate_simulate(wmWindowManager *wm, wmWindow *win);
+/** Angelo: the region a pointer event at `xy` (window pixels) in `win` reaches, by the steps Blender's own handlers
+ * take (`wm_angelo_pointer_region.hh`), or null. The grant guard's input feed asks it for every move and press. */
+const ARegion *WM_angelo_pointer_region(const wmWindow *win, const int xy[2]);
 /**
  * Return non-nil if the CSD is used.
  */
@@ -2119,6 +2144,7 @@ enum eWM_JobType {
   WM_JOB_TYPE_LIGHT_BAKE,
   WM_JOB_TYPE_FSMENU_BOOKMARK_VALIDATE,
   WM_JOB_TYPE_QUADRIFLOW_REMESH,
+  WM_JOB_TYPE_RETOPOLOGY,
   WM_JOB_TYPE_TRACE_IMAGE,
   WM_JOB_TYPE_LINEART,
   WM_JOB_TYPE_SEQ_DRAW_THUMBNAIL,
@@ -2563,6 +2589,10 @@ bool WM_xr_session_exists(const wmXrData *xr);
  * Check if the session is running, according to the OpenXR definition.
  */
 bool WM_xr_session_is_ready(const wmXrData *xr);
+/**
+ * Get the OpenXR runtime name of a running session.
+ */
+void WM_xr_session_runtime_name_get(const wmXrData *xr, char *r_runtime_name);
 
 wmXrSessionState *WM_xr_session_state_handle_get(const wmXrData *xr);
 wmXrViewfinderState *WM_xr_session_state_viewfinder_handle_get(const wmXrData *xr);

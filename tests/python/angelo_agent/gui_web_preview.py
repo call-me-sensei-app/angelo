@@ -20,11 +20,15 @@ Steps: build a small scene with what merges and what doesn't carry over; the per
 preview; the page, its policy, report and .glb are fetched over loopback; a scene edit must produce a new version
 after the debounce, and a selection change alone must not; the agent's route (``web_host``) runs angelo_web_check
 and angelo_web_export into a temporary workspace; with a hold, the page reports each web shader's compile result, a
-uniform edit reaches it without an export, and angelo_view's WEB source returns a capture that is not blank; Live
+uniform edit reaches it without an export, and angelo_view's WEB source returns a capture that is not blank; then
+the page's own Camera, Selection, All and Follow controls are pressed (DevTools, ``headless_page.click``) and each is
+proven three ways: the page's frame report reaches Angelo (``web_preview_frame``), the view sits where that mode puts
+it (Blender's bounds in the page's Y-up axes), and the picture shows it (doc/angelo/web_export.rst, "Framing"); Live
 Web Preview's Stop ends it.
 """
 
 import json
+import math
 import os
 import sys
 import tempfile
@@ -84,6 +88,131 @@ def drawn_share(path):
         bpy.data.images.remove(image)
     rgb = pixels.reshape(-1, 4)[:, :3]
     return float((numpy.abs(rgb - rgb[0]).max(axis=1) > 0.04).mean()) if len(rgb) else 0.0
+
+
+def three(point):
+    """A Blender world point in the page's axes: the glTF exporter's Y up (x, z, -y)."""
+    return (point[0], point[2], -point[1])
+
+
+def bounds(objects):
+    """(centre in the page's axes, longest side, diagonal) of ``objects``' world bounding boxes."""
+    from mathutils import Vector
+    corners = [obj.matrix_world @ Vector(corner) for obj in objects for corner in obj.bound_box]
+    low = [min(c[i] for c in corners) for i in range(3)]
+    high = [max(c[i] for c in corners) for i in range(3)]
+    sides = [high[i] - low[i] for i in range(3)]
+    return three([(low[i] + high[i]) / 2 for i in range(3)]), max(sides), math.sqrt(sum(s * s for s in sides))
+
+
+def centre_share(path, part=0.3):
+    """The share of the picture's middle ``part`` (each side) that differs from its corner: what fills the centre."""
+    import numpy
+    image = bpy.data.images.load(str(path), check_existing=False)
+    try:
+        width, height = image.size
+        pixels = numpy.empty(len(image.pixels), dtype=numpy.float32)
+        image.pixels.foreach_get(pixels)
+    finally:
+        bpy.data.images.remove(image)
+    rgb = pixels.reshape(height, width, 4)[:, :, :3]
+    corner = rgb[0, 0]
+    y0, x0 = int(height * (0.5 - part / 2)), int(width * (0.5 - part / 2))
+    middle = rgb[y0:height - y0, x0:width - x0]
+    return float((numpy.abs(middle - corner).max(axis=2) > 0.04).mean()) if middle.size else 0.0
+
+
+FRAMING_MODES = ("all", "selection", "camera", "follow")   # Pressed in this order (framing below).
+
+
+def framing(server, window, deadline):
+    """Each of the page's frame controls, pressed in the page: its report, where the view sits, and the picture.
+
+    ``framing_driven`` is recorded on every path: a scenario's check names are its contract (the release kit requires
+    each one, tests/python/angelo_agent/test_native_scenario_check_names.py), so none may be recorded only to fail.
+    """
+    import math
+    from angelo_agent import view_web
+    if BROWSER.process is None:
+        check("framing_driven", False, "no headless browser: Framing needs the page's controls pressed")
+        return
+
+    def settled(predicate):
+        frame = None
+        while time.monotonic() < deadline:
+            frame = server.page_frame()
+            if frame is not None and predicate(frame):
+                return frame
+            yield 0.25
+        return frame
+
+    def picture(name):
+        target = OUT / ("frame-%s.png" % name)
+        references = SimpleNamespace(new_observation=lambda label: {"path": str(target), "name": label, "id": name},
+                                     discard_observation=lambda reference: None)
+        shown = view_web.source(window, {"image": "WEB"}, references, None)
+        ok = target.is_file() and target.read_bytes()[:4] == b"\x89PNG"
+        return shown.facts.get("framing"), (drawn_share(target) if ok else 0.0), (centre_share(target) if ok else 0.0)
+
+    meshes = [obj for obj in bpy.data.objects if obj.type == "MESH"]
+    everything, size, diagonal = bounds(meshes)
+    orb, _, orb_diagonal = bounds([bpy.data.objects["Orb"]])
+    holo, _, _ = bounds([bpy.data.objects["Holo"]])
+    shot = three(bpy.context.scene.camera.matrix_world.translation)
+    near = lambda a, b, tolerance: math.dist(a, b) <= tolerance  # noqa: E731
+    results = {}
+
+    pressed = BROWSER.click("frame-all")
+    frame = yield from settled(lambda f: f["mode"] == "all")
+    facts, drawn, _ = picture("all")
+    results["all"] = {"pressed": pressed, "frame": frame, "facts": facts, "drawn": round(drawn, 4)}
+    check("frame_all", pressed and frame and frame["mode"] == "all" and near(frame["target"], everything, 0.02 * size)
+          and facts and facts["mode"] == "all" and drawn > 0.05, results["all"])
+
+    pressed = BROWSER.click("frame-selection")   # Orb is Angelo's selection (above).
+    frame = yield from settled(lambda f: f["mode"] == "selection")
+    facts, drawn, centre = picture("selection")
+    results["selection"] = {"pressed": pressed, "frame": frame, "facts": facts, "centre": round(centre, 4)}
+    # The same field of view frames both: each view's distance scales with its box's bounding sphere, so Orb's view
+    # stands as much closer than All's as its box's diagonal is shorter (framing.js fitBox).
+    ratio = math.dist(frame["position"], frame["target"]) / math.dist(results["all"]["frame"]["position"],
+                                                                      results["all"]["frame"]["target"]) if (
+        frame and results["all"]["frame"]) else 0.0
+    results["selection"]["distance_ratio"] = [round(ratio, 4), round(orb_diagonal / diagonal, 4)]
+    check("frame_selection", pressed and frame and frame["mode"] == "selection" and frame["framed"] == ["Orb"]
+          and near(frame["target"], orb, 0.05) and abs(ratio / (orb_diagonal / diagonal) - 1) < 0.05
+          and facts and facts["framed"] == ["Orb"] and centre > 0.9, results["selection"])
+
+    pressed = BROWSER.click("frame-camera")
+    frame = yield from settled(lambda f: f["mode"] == "camera")
+    facts, drawn, _ = picture("camera")
+    results["camera"] = {"pressed": pressed, "frame": frame, "facts": facts, "drawn": round(drawn, 4)}
+    check("frame_camera", pressed and frame and frame["mode"] == "camera"
+          and frame["camera"] == bpy.context.scene.camera.name and near(frame["position"], shot, 0.01)
+          and facts and facts["mode"] == "camera" and drawn > 0.05, results["camera"])
+
+    pressed = BROWSER.click("frame-follow")   # Follow on: it frames the selection now and on every change.
+    frame = yield from settled(lambda f: f["follow"] and f["mode"] == "selection")
+    for obj in bpy.data.objects:   # The person selects another object in Angelo; nothing is exported.
+        obj.select_set(obj.name == "Holo")
+    bpy.context.view_layer.objects.active = bpy.data.objects["Holo"]
+    frame = yield from settled(lambda f: f["follow"] and f["framed"] == ["Holo"])
+    facts, drawn, centre = picture("follow")
+    results["follow"] = {"pressed": pressed, "frame": frame, "facts": facts, "centre": round(centre, 4),
+                         "focuses": server.focuses}
+    check("frame_follow", pressed and frame and frame["follow"] and frame["framed"] == ["Holo"]
+          and frame["focus_version"] == server.focuses and near(frame["target"], holo, 0.05)
+          and facts and facts["follow"] and centre > 0.3, results["follow"])
+    BROWSER.click("frame-follow")   # Off again: the page's storage is the throw-away profile's.
+    # The page's own controls drove the view: every control was pressed in the page, each press moved the page's view
+    # from where the previous one left it, and each mode's own check (its report, its view, its picture) held.
+    positions = [(results[mode]["frame"] or {}).get("position") for mode in FRAMING_MODES]
+    moved = [bool(before and after and math.dist(before, after) > 1e-3) for before, after in zip(positions, positions[1:])]
+    held = {mode: state["checks"].get("frame_" + mode, {}).get("ok") is True for mode in FRAMING_MODES}
+    check("framing_driven", all(results[mode]["pressed"] for mode in FRAMING_MODES) and all(moved)
+          and all(held.values()), {"held": held, "moved": dict(zip(FRAMING_MODES[1:], moved))})
+    state["framing"] = results
+    record()
 
 
 def material(name):
@@ -243,6 +372,7 @@ def scenario():
         share = drawn_share(target) if picture[:4] == b"\x89PNG" else 0.0
         check("capture_not_blank", share > 0.05, round(share, 4))   # The scene drew, not only the background.
         state["feedback"] = server.feedback
+        yield from framing(server, window, time.monotonic() + max(30.0, deadline - time.monotonic()))
         state["phase"] = "inspect"
         record()
         if BROWSER.process is None:   # A person's browser: time for their screenshot of it.

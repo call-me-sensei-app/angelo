@@ -14,7 +14,7 @@ import time
 
 import bpy
 
-from . import card_kit as kit, session_rail as rail, ui_tokens as tk
+from . import card_kit as kit, session_rail as rail, turn_tail, ui_tokens as tk
 
 DOT = {rail.WORKING: kit.TEAL, rail.MERGING: kit.TEAL, rail.MERGED: kit.TEAL, rail.DONE: kit.TEAL,
        rail.APPROVAL: kit.AMBER, rail.FAILED: tk.CORAL, rail.ENDED: kit.MUTED, rail.REPLIED: kit.MUTED,
@@ -126,8 +126,8 @@ def turn_end(controller, reply=True):
 
 
 def _last_failed(controller):
-    messages = controller.state.get("messages") or ()
-    return bool(messages) and messages[-1].get("role") == "error"
+    row = turn_tail.last_row(controller.state.get("messages") or ())   # Past what the turn's end added (S5).
+    return row is not None and row.get("role") == "error"
 
 
 def draw():

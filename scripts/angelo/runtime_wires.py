@@ -7,8 +7,12 @@
 """
 
 import json
+import re
 
 WIRE_CHECK_PROVIDER = "angelo_wire_check"
+# A wire's name as the app spells one (angelo_agent.runtime_listing.WIRE_NAME, pinned equal by a host test): it goes
+# into a TOML string of a command line, so nothing that could close the string or add a setting.
+WIRE_NAME = re.compile(r"[a-z][a-z0-9_]*")
 
 
 def wire_check_argv(codex, wire):
@@ -25,6 +29,10 @@ def wire_problems(codex, pin, runner, env):
     it, so a build that lacked it would list a connection that fails at its first turn."""
     problems = []
     for wire in pin.get("wire_apis", ()):
+        if not isinstance(wire, str) or WIRE_NAME.fullmatch(wire) is None:
+            problems.append("the pin lists %r as a model-provider wire, which is not spelled as one (lowercase letters, "
+                            "digits and underscores, a letter first): the app offers no connection on it" % (wire,))
+            continue
         run = runner(wire_check_argv(codex, wire), check=False, timeout=120, env=env)
         try:
             models = json.loads(run.stdout or "")["models"]

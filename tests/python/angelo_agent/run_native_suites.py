@@ -97,7 +97,7 @@ NO_OPENGL = "ANGELO_QA_NO_OPENGL"   # set (non-empty) where the machine has no w
 # that cannot run there fail instead of passing as "not run" (test_native_gpu_expected).
 EXPECT_CYCLES_GPU = "ANGELO_QA_EXPECT_CYCLES_GPU"
 INHERITED_ENV = ("PATH", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "TERM", "USER", "LOGNAME", "SHELL",
-                 "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR",
+                 "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS",
                  "SYSTEMROOT", "WINDIR", "SYSTEMDRIVE", "COMSPEC", "PATHEXT", "OS", "USERNAME",
                  "PROGRAMDATA", "ALLUSERSPROFILE", "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMW6432",
                  "COMMONPROGRAMFILES", "COMMONPROGRAMFILES(X86)", "COMMONPROGRAMW6432",

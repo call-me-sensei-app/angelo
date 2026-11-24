@@ -288,9 +288,12 @@ class ChildProcess(subprocess.Popen):
     ChildCleanupUnavailable retains the partial process owner for retry.
     """
 
-    def __init__(self, args, keep_gui_programs=False, *, retain_job=False, **kwargs):
+    def __init__(self, args, keep_gui_programs=False, *, retain_job=False, _rules_applied=False, **kwargs):
         if type(retain_job) is not bool or (retain_job and keep_gui_programs):
             raise ValueError("A retained job cannot preserve unrelated GUI programs")
+        if not _rules_applied:   # Constructed directly (Fab's Windows browser); popen/run applied them already.
+            from .runtime_environment import own_runtime_rules
+            own_runtime_rules(args, kwargs, keep_path=keep_gui_programs)
         self._retain_job = retain_job
         self._job_lifecycle_lock = threading.RLock()
         self._job_force_attempted = False
@@ -453,16 +456,22 @@ class ChildProcess(subprocess.Popen):
 def popen(args, *, keep_gui_programs=False, **kwargs):
     """A ``ChildProcess`` on Windows; elsewhere ``subprocess.Popen`` (looked up per call) with UTF-8 text.
 
-    ``keep_gui_programs``: ending the child never ends a windowed program it started (a sign-in's browser).
+    ``keep_gui_programs``: ending the child never ends a windowed program it started (a sign-in's browser); for
+    Angelo's own runtime it also keeps the person's PATH, which the browser opener needs
+    (``runtime_environment.own_runtime_rules``).
     POSIX ``terminate()`` ends only the child itself already.
     """
+    from .runtime_environment import own_runtime_rules
+    own_runtime_rules(args, kwargs, keep_path=keep_gui_programs)
     if os.name != "nt":
         return subprocess.Popen(args, **_utf8(kwargs))
-    return ChildProcess(args, keep_gui_programs=keep_gui_programs, **_utf8(kwargs))
+    return ChildProcess(args, keep_gui_programs=keep_gui_programs, _rules_applied=True, **_utf8(kwargs))
 
 
 def run(args, **kwargs):
     """``subprocess.run`` with UTF-8 text; on Windows on a ``ChildProcess`` whose timeout ends the whole tree."""
+    from .runtime_environment import own_runtime_rules
+    own_runtime_rules(args, kwargs, keep_path=False)
     if os.name != "nt":
         return subprocess.run(args, **_utf8(kwargs))
     return _run_windows(args, **kwargs)
@@ -473,7 +482,7 @@ def _run_windows(args, *, input=None, capture_output=False, timeout=None, check=
         kwargs["stdin"] = subprocess.PIPE
     if capture_output:
         kwargs.update(stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    with ChildProcess(args, **_utf8(kwargs)) as process:
+    with ChildProcess(args, _rules_applied=True, **_utf8(kwargs)) as process:
         try:
             stdout, stderr = process.communicate(input, timeout=timeout)
         except subprocess.TimeoutExpired:

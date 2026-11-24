@@ -43,6 +43,7 @@ from angelo_agent import (app_feature_host, capabilities_host, card_host, chat_d
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import qa_boot  # noqa: E402
 import qa_input  # noqa: E402  (the person's press on the card, which C mints its ticket for)
+import qa_hit  # noqa: E402  (surface points to window pixels)
 import test_blender_godot_link_e2e as e2e  # noqa: E402
 
 ui._authentication.start = lambda *a, **k: None
@@ -83,13 +84,21 @@ def press_for_real(action):
         active = card_host._active
         area = next(a for a in window().screen.areas if a.as_pointer() == active.area)
         region = next(r for r in area.regions if r.type == 'WINDOW')
-        x, y, wide, high = next(r for r, name, _ in reversed(active.plan.hits) if name == action)
-        return region.x + x, region.y + y, wide, high
+        return qa_hit.rect(qa_hit.PIXELS, region, next(r for r, name, _ in reversed(active.plan.hits) if name == action))
     qa_input.aim(window(), rect)
 
 
 def check(name, condition):
     state["checks"][name] = bool(condition)
+
+
+def reachable(feature, top):
+    """Whether the + menu offers ``feature`` where its registry puts it: a top-level row, or a row on the page of the
+    group it belongs to (``chat_destinations.PARENTS``; Select Through joined Inspect in 2.1.0), that group shown."""
+    group = chat_destinations.PARENTS.get(feature)
+    if group is None or group not in top:
+        return feature in top
+    return feature in [row.get("value") for row in chat_destinations.group_rows(group)]
 
 
 def menu_checks():
@@ -100,7 +109,7 @@ def menu_checks():
     check("menu_names_engine_group", any(entry["value"] == "godot_link" and entry["kind"] == "group"
                                          and entry.get("label") == "Game engine live link" for entry in entries))
     check("menu_offers_every_engine", all(engine + "_link_install" in values for engine in ("godot", "unity", "unreal")))
-    check("menu_offers_select_through", "select_through" in top)
+    check("menu_offers_select_through", reachable("select_through", top))
     check("menu_offers_render_engines", "render_engine" in top and any(str(value).startswith("render_engine:engine:")
                                                                          for value in values))
     state["menu_top"] = top

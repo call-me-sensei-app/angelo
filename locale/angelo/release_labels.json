@@ -924,5 +924,274 @@
    false
   ]
  ],
- "Enhanced Security: agent scripts are confined. They write only to Angelo's folders and places you chose, can't write elsewhere via links or programs, and can't pick your files unless you click. Full protection, covering what your later render or save writes from a script's settings, comes in 2.1.0.": []
+ "Enhanced Security: agent scripts are confined. They write only to Angelo's folders and places you chose, can't write elsewhere via links or programs, and can't pick your files unless you click. Full protection, covering what your later render or save writes from a script's settings, comes in 2.1.0.": [],
+ "Retopology turns a scan, sculpt or generated mesh into clean quads: it finished all 42 held-out test runs, where QuadriFlow finished 22.": [
+  [
+   "Retopology",
+   false
+  ]
+ ],
+ "UV Layout unwraps and packs a texture set at the texel density you choose, with padding that holds up at the mip levels you ask for.": [
+  [
+   "UV Layout",
+   false
+  ]
+ ],
+ "Shape Cut draws cuts, insets and panel lines on a surface; they stay live and editable until you apply them.": [
+  [
+   "Shape Cut",
+   false
+  ]
+ ],
+ "From Blender 5.4: reorder workspace tabs, snap Color Ramp stops, Grease Pencil's Armature modifier on curves, and more.": [
+  [
+   "Color Ramp",
+   false
+  ],
+  [
+   "Grease Pencil",
+   false
+  ],
+  [
+   "Armature",
+   false
+  ]
+ ],
+ "A Loops menu in edit mode's right-click menu holds the built-in loop tools under the names LoopTools users know.": [
+  [
+   "Loops",
+   false
+  ]
+ ],
+ "Fit Collision Hulls gives a concave mesh several convex colliders for Unreal, Unity and Godot, so hollows, holes and doorways stay open.": [
+  [
+   "Fit Collision Hulls",
+   false
+  ]
+ ],
+ "Scatter places assets on a surface by slope, height, a painted mask and distance, in layers that keep apart, with six biome presets.": [
+  [
+   "Scatter",
+   false
+  ]
+ ],
+ "Camera Look adds a lens and film look to the camera: distortion, vignette, bloom, halation, a film grade and grain, in every engine.": [
+  [
+   "Camera Look",
+   false
+  ]
+ ],
+ "Ripple Delete no longer cuts clips you didn't select on other channels in new scenes; when it does cut one, it says which, and Undo brings it back.": [
+  [
+   "Ripple Delete",
+   false
+  ],
+  [
+   "Undo",
+   false
+  ]
+ ],
+ "Pose mode's Select Mirror no longer swaps a bone's other settings along with its selection (from Blender 5.4).": [
+  [
+   "Select Mirror",
+   false
+  ]
+ ],
+ "Building Angelo from source with fluid simulation turned off links again.": [],
+ "Angelo 2.1 plans with you before it builds, adds Retopology, UV Layout, Shape Cut and rigging tools that you and the agent can use, turns Gaussian splats into meshes and brings features from Blender 5.4.": [
+  [
+   "Retopology",
+   false
+  ],
+  [
+   "UV Layout",
+   false
+  ],
+  [
+   "Shape Cut",
+   false
+  ],
+  [
+   "Gaussian",
+   false
+  ]
+ ],
+ "Plan first talks a task through before anything changes, then offers up to three approaches with their steps, risks and an estimate.": [
+  [
+   "Plan first",
+   null
+  ]
+ ],
+ "Rig tools retarget animation, make game rigs for Unreal Engine, Unity and Godot, and add IK controls to any humanoid armature.": [
+  [
+   "Unreal Engine",
+   false
+  ]
+ ],
+ "Mark up a picture… lets you draw, add arrows, shapes and text, and pin numbered comments on a picture or the 3D view for the agent.": [
+  [
+   "Mark up a picture…",
+   null
+  ]
+ ],
+ "Splats to Mesh turns Gaussian splats into a collision mesh that fits its triangle budget and keeps the walls, or into a coloured mesh, and Export Splats writes them back as PLY.": [
+  [
+   "Splats to Mesh",
+   false
+  ],
+  [
+   "Export Splats",
+   false
+  ],
+  [
+   "Gaussian",
+   false
+  ]
+ ],
+ "Folder as context… lets a chat use up to five of your folders: Angelo reads them, and writes notes, checklists and plans as text files only in the working folder.": [
+  [
+   "Folder as context…",
+   null
+  ]
+ ],
+ "Rules… holds instructions Angelo follows in every request, for this project (saved in the file) or for all projects. Rules that come with someone else's file wait for your review.": [
+  [
+   "Rules…",
+   null
+  ]
+ ],
+ "Type @ in the message box to pick an object, collection or material by name; it is still the one you meant if you rename it before sending.": [],
+ "A request cut off when Angelo closed, by a crash, a forced quit or a restart to update, can be continued: Angelo says what was done and what may have applied, and runs nothing twice.": [],
+ "Always run this exact script in this project lets a script you have read run again without asking. One changed character asks again, and a downloaded project brings no approval.": [
+  [
+   "Always run this exact script in this project",
+   null
+  ]
+ ],
+ "Root motion moves the hips' travel onto the root bone or keeps a clip in place, and Export clips writes one clip per action, the way each engine imports them.": [
+  [
+   "Root motion",
+   null
+  ],
+  [
+   "Export clips",
+   null
+  ]
+ ],
+ "Pose Body poses the whole body from where the hands, feet, head or hips should be, within a human range of motion and balanced over the planted feet.": [
+  [
+   "Pose Body",
+   "Operator"
+  ]
+ ],
+ "The web preview frames the camera, the selection or everything and can follow your selection, and web shaders can share files through #include.": [],
+ "GPT-6.2 Astra and GPT-6.2 Sol are the GPT models Angelo ships; GPT-6 Astra and GPT-6.1 Sol stay selectable while OpenAI serves them.": [],
+ "Searching your chats also finds what Angelo replied, and the chat list is grouped by day.": [],
+ "Importing a glTF file with shape keys welds its seams, so it shades smoothly as in other viewers, keeping UVs and hard edges. Scripts keep the importer's default.": [],
+ "Cycles' Denoise panels say that OpenImageDenoise runs on AMD, Apple, Intel and NVIDIA graphics, and why Use GPU is greyed out when it is.": [
+  [
+   "Denoise",
+   "*"
+  ],
+  [
+   "Use GPU",
+   "*"
+  ]
+ ],
+ "The update card names your add-ons not yet known to work on the new version, and what safe start does if one stops Angelo as it starts.": [],
+ "When Angelo won't start gltfpack for a web export, it says why and how to fix it, instead of reporting that gltfpack failed.": [],
+ "The update card shows the newest update found, not an older offer that waited behind another card.": [],
+ "On macOS, a hidden Angelo that a connected app started becomes your own window when you bring it up yourself.": [],
+ "A policy file named in Angelo's environment can now only narrow access: keys that grant or redirect, such as UpdateFeedURL, GatewayURL and CustomEndpoints, come only from managed policy.": [],
+ "In Windows registry policy, environment variables in a path expand only from the computer's own settings, never from the environment Angelo was started with.": [
+  [
+   "Windows",
+   false
+  ]
+ ],
+ "The bundled Codex no longer reads your own ~/.codex/config.toml: proxy and gateway settings there don't apply in Angelo; use the HTTPS proxy environment variables and Angelo's custom endpoints.": [],
+ "Click a picture attached in the chat to open it full size and mark it up; with nothing attached, Mark up a picture… captures the 3D view as it is now. Nothing reaches the agent until you send it.": [
+  [
+   "Mark up a picture…",
+   null
+  ]
+ ],
+ "In the background on a computer without a usable GPU, Angelo now says an EEVEE or Workbench render, a preview or other GPU drawing needs a graphics card, instead of crashing; Cycles still renders.": [],
+ "Agent scripts can no longer open, load or save through a network name: a network share or WebDAV path, a network folder an automounter mounted after Angelo started, or a URL given to a sound, movie or sequencer strip is refused before anything connects.": [],
+ "Path settings an agent script fills in that name a place, such as an asset library's folder, are checked when they are set, and the bundled FFmpeg now opens only local files, so a URL left in a file doesn't connect later either.": [],
+ "Strict script protection, under Agent permissions in AI Providers, checks every path and link an agent script uses in full and keeps scripts away from Angelo's own pipes and handles. It is off by default, because agent scripts can run slower with it on.": [
+  [
+   "Strict script protection",
+   "*"
+  ],
+  [
+   "Agent permissions",
+   null
+  ],
+  [
+   "AI Providers",
+   null
+  ]
+ ],
+ "Agent scripts still run inside Angelo's own process until the sandboxed script helper ships: through known routes, code a script leaves behind can still run later with Angelo's access, and a program it starts or a file it deletes is not checked. A confined script itself still starts no programs.": [],
+ "There is no protection yet against a mass delete made outside a script's confinement.": [],
+ "With Strict script protection off, an agent script's lookup of a network share or an automounted network folder, or a link already on disk that points to one, can still connect to it. The script confinement guide lists every known limit.": [
+  [
+   "Strict script protection",
+   "*"
+  ]
+ ],
+ "On Windows, if your own Python code creates a Python sub-interpreter, Angelo can then stop with \"Fatal Python error\" as it sets up USD, such as when the agent add-on is turned on. Avoid Python sub-interpreters in Angelo on Windows.": [
+  [
+   "Python",
+   false
+  ],
+  [
+   "Windows",
+   false
+  ]
+ ],
+ "On Windows, if your own Python code leaves a Python sub-interpreter running and an agent script then runs code in it, Angelo closes with a fatal error. Before it closes, that code reaches no network, starts no program and writes nothing to Angelo's private folders.": [
+  [
+   "Python",
+   false
+  ],
+  [
+   "Windows",
+   false
+  ]
+ ],
+ "On Windows, when an agent script is refused a network share you haven't connected, the chat names the share to you, never to the agent, and says how to use it: map it to a drive letter or open your project from it.": [
+  [
+   "Windows",
+   false
+  ]
+ ],
+ "Gemini 4 Neon is available beside Gemini 4 Carbon on a Gemini API connection, with thinking low, medium or high (high by default); it needs a paid-tier Gemini API key.": [
+  [
+   "Gemini 4 Neon",
+   false
+  ],
+  [
+   "Gemini 4 Carbon",
+   false
+  ],
+  [
+   "Gemini API",
+   false
+  ]
+ ],
+ "On a Gemini API connection, a reply that hasn't started or has stopped arriving for 6 minutes is asked for once more, instead of the request ending with an error after 10 minutes. A reply that breaks off or meets a server error is also retried once.": [
+  [
+   "Gemini API",
+   false
+  ]
+ ],
+ "On a custom endpoint, a reply that hasn't started after 9½ minutes is asked for once more, instead of the request ending with an error after 10 minutes, so a server that reads a long prompt first has time to answer.": [],
+ "When a provider asks Angelo to wait before trying again, the chat counts the wait down instead of going quiet, and Stop ends it at once; a wait while your connection is down says so, and one of more than an hour in all ends the request and says how long the provider asked for.": [
+  [
+   "Stop",
+   null
+  ]
+ ]
 }

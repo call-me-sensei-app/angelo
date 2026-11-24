@@ -96,9 +96,13 @@ def docstring_tooltips(source):
 
 
 def docstrings(source):
-    """Every class docstring in ``source``, as written: what the app's RNA dump may have taken for interface text."""
-    return {ast.get_docstring(node, clean=False) for node in ast.walk(ast.parse(source))
-            if isinstance(node, ast.ClassDef) and ast.get_docstring(node, clean=False)}
+    """Every class docstring in ``source``, as written and with its indentation removed (the form the app's RNA dump
+    writes for a docstring over several lines): what the dump may have taken for interface text."""
+    found = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.ClassDef) and ast.get_docstring(node, clean=False):
+            found |= {ast.get_docstring(node, clean=False), ast.get_docstring(node, clean=True)}
+    return found
 
 
 def tooltips(sources):

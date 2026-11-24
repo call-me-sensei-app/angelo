@@ -339,7 +339,8 @@ class Harnesses(Folder):
                A + "test_blender_cross_provider_live.py": "provider_isolation.check_billed("}
     # Billed only through a checked harness or entry: what it launches, or the driver that loads it.
     LAUNCHES = {A + "bench_parallel_vs_single.py": "bench_mcp_vs_angelo.py",
-                A + "engine_link_compare_session.py": "eval_live_agent_session"}
+                A + "engine_link_compare_session.py": "eval_live_agent_session",
+                A + "firsthour_run.py": "eval_live_agent.py"}   # One run of it per first-hour case.
     # In-app drivers and LIVE suites that bill only through the opt-in their entry checks (profile and store).
     ENTRY = {A + "eval_live_agent_session.py", A + "parallel_live_session.py", A + "test_blender_chat_usage_live.py",
              A + "test_blender_shared_sessions.py"}
@@ -357,6 +358,7 @@ class Harnesses(Folder):
         A + "codex_prompt_probe.py": "fresh profile, local endpoint", A + "prompt_route_probe.py": "dummy key",
         A + "gemini_prompt_probe.py": "fresh CODEX_HOME and HOME, local endpoint, dummy key",
         A + "eval_trace_export.py": "reads a finished trial's trace store; sends nothing",
+        A + "eval_codex_logs.py": "copies and reads a finished trial's Codex logs; launches and sends nothing",
         A + "fake_provider_cli.py": "the stand-in CLI", A + "scenario_dry_run.py": "fake models",
         A + "long_session_replay.py": "a scripted runtime", A + "parallel_dry_run.py": "a scripted model",
         A + "scenario_plan_replay.py": "scripted model output",
@@ -371,6 +373,7 @@ class Harnesses(Folder):
         A + "test_blender_change_chip_details.py": "every process denied; startup status probes only attributed, never run",
         A + "windows_cli_checks.py": "auth status only",
         A + "grant_inventory.py": "reads the add-on's source only; CODEX_HOME appears in an operator's reason text",
+        A + "codex_config_keys.py": "data only: CODEX_HOME appears in the config keys' reasons",
         A + "update_carry_over_phases.py": "records each sign-in's status command and profile; sends no model request",
         A + "live_genai_smoke.py": "media providers' own API keys (pay per use), no coding subscription",
         A + "live_flow_smoke.py": "media providers' own API keys (pay per use), no coding subscription",

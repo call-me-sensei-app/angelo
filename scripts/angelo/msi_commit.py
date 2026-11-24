@@ -12,8 +12,9 @@ program reports), which must be that commit's too. Every other MSI is refused, w
 
     msi_commit.py --commit SHA [--pattern GLOB] (--msi PATH | --search FOLDER)...
 
-The chosen MSI (the newest proven one) is printed as the last line; each refusal is printed before it. Exit 1 when
-none is proven. ``--search`` looks two folders deep at most (a build folder's root, ``results`` and
+The chosen MSI (the newest proven one) is printed as the last line; before it, every other MSI named or found, with why
+it was not used (a name the pattern excludes, a missing file, no proof, or an older proven build). Exit 1 when none is
+proven. ``--search`` looks two folders deep at most (a build folder's root, ``results`` and
 ``results\\release`` below ``C:\\angelo``), never into a source tree. Standard library only.
 """
 
@@ -85,8 +86,8 @@ def refusal(msi, commit):
     return "; ".join(reasons)
 
 
-def candidates(msis, folders, pattern, depth=2):
-    """Every MSI named or found (at most ``depth`` folders below each of ``folders``) whose name matches ``pattern``."""
+def considered(msis, folders, depth=2):
+    """Every MSI named (``msis``) or found (at most ``depth`` folders below each of ``folders``), each once."""
     found = [Path(path) for path in msis]
     for folder in folders:
         base = len(Path(folder).parts)
@@ -94,27 +95,43 @@ def candidates(msis, folders, pattern, depth=2):
             if len(Path(top).parts) - base >= depth:
                 dirs[:] = []
             found += [Path(top, name) for name in files if name.lower().endswith(".msi")]
-    return [path for path in found if fnmatch.fnmatch(path.name.lower(), pattern.lower())]
+    return list(dict.fromkeys(found))
+
+
+def matches(path, pattern):
+    return fnmatch.fnmatch(Path(path).name.lower(), pattern.lower())
+
+
+def candidates(msis, folders, pattern, depth=2):
+    """The MSIs ``considered`` whose name matches ``pattern``."""
+    return [path for path in considered(msis, folders, depth) if matches(path, pattern)]
 
 
 def choose(commit, msis=(), folders=(), pattern="*.msi"):
-    """``(chosen path or None, [refusal lines])`` for the MSIs named in ``msis`` or found in ``folders``."""
+    """``(chosen path or None, [lines])`` for the MSIs named in ``msis`` or found in ``folders``: one line for every
+    MSI considered and not used, with its reason, and a summary when none is proven. A file named with ``--msi`` is
+    judged like every other, so one the pattern excludes is refused aloud, never dropped (the 2.1.0 dry cut's Teams
+    step: a named MSI the pattern excluded vanished and the summary said "(0 refused)")."""
     if not HEX.fullmatch(str(commit or "").strip().lower()):
         return None, ["the commit under test is unknown or not a hash (%r): pass the commit that was sent" % commit]
     proven, lines = [], []
-    for path in candidates(msis, folders, pattern):
-        if not path.is_file():
+    for path in considered(msis, folders):
+        if not matches(path, pattern):
+            lines.append("refused %s: its name does not match %s" % (path, pattern))
+        elif not path.is_file():
             lines.append("refused %s: no such file" % path)
-            continue
-        why = refusal(path, commit)
-        if why:
-            lines.append("refused %s: %s" % (path, why))
         else:
-            proven.append(path)
+            why = refusal(path, commit)
+            if why:
+                lines.append("refused %s: %s" % (path, why))
+            else:
+                proven.append(path)
     if not proven:
         lines.append("no MSI is proven to be the build of %s (%d refused)" % (commit, len(lines)))
         return None, lines
-    return max(proven, key=lambda path: path.stat().st_mtime), lines
+    chosen = max(proven, key=lambda path: path.stat().st_mtime)
+    lines += ["passed over %s: a proven build older than %s" % (path, chosen) for path in proven if path != chosen]
+    return chosen, lines
 
 
 def main(argv=None):

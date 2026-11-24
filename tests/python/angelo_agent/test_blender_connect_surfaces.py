@@ -42,6 +42,7 @@ from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 import qa_input  # noqa: E402  (the person's press on Connect Claude, which C mints its ticket for)
+import qa_hit  # noqa: E402  (surface points to window pixels)
 
 assert Path(os.environ["HOME"]).resolve() != Path(pwd.getpwuid(os.getuid()).pw_dir).resolve(), \
     "Run through run_native_suites.py: this suite marks a stand-in sign-in in HOME"
@@ -293,7 +294,7 @@ def tick():
 
             def point():   # Read at the press: where the row is drawn then.
                 rect = next(r for r, action, value in page_plan().hits if action == "quick_connect" and value == CLAUDE)
-                return region.x + rect[0] + rect[2] / 2, region.y + rect[1] + rect[3] / 2
+                return qa_hit.point(qa_hit.PIXELS, region, rect)   # The page lays out in region pixels.
             qa_input.press(target, point)   # The person's.
             state["phase"], state["connect_started"] = "connecting", time.monotonic()
             return .2

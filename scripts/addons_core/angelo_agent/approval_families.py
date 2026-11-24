@@ -11,7 +11,8 @@ FAMILY_APPROVALS = (("angelo_studio_", "studio_approvals"), ("angelo_flow_", "fl
                     ("angelo_team_", "team_library_approvals"), ("angelo_library_", "library_approvals"),
                     ("angelo_job_", "job_approvals"), ("angelo_app_feature", "app_feature_approvals"),
                     ("angelo_engine_link", "engine_link_tool_approvals"), ("angelo_download", "download_approvals"),
-                    ("angelo_engine_fix", "engine_fix_approvals"))
+                    ("angelo_engine_fix", "engine_fix_approvals"),
+                    ("angelo_context_folder_write", "context_folder_write"))   # A text file in the working folder.
 
 
 def family_module(name):

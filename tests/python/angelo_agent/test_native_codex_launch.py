@@ -233,13 +233,23 @@ class ProgramReferenceTests(unittest.TestCase):
         goal_mode.rst). MODEL-FACING: a coordinator's gate decides it.
         26,111 -> 26,119 (measured 26,108 -> 26,119): and downloads (+11 B; toolset 55, downloads.rst): scripts have
         no network, so the deferred angelo_download is how a file from the web reaches the project. MODEL-FACING: a coordinator's gate decides it.
+        15,298 -> 15,359, 26,119 -> 26,180 and forwarded 26,148 -> 26,209 (measured): BAKE_MAPS's for_engine and
+        for_link in angelo_job_start's arguments (+61 B; long_jobs.rst, "Texture sets"): the packing an engine's own
+        material editor, or an Angelo engine link, reads. MODEL-FACING: a coordinator's gate decides it.
+        15,359 -> 15,436, 26,180 -> 26,257 and forwarded 26,209 -> 26,286 (measured): angelo_job_start's RETOPOLOGY
+        kind with its faces and symmetry in the job arguments (+77 B; toolset 57, retopology.rst): clean quads for a
+        scan or sculpt were otherwise a script of Blender's QuadriFlow, which refused or failed on 20 of the 42
+        held-out benchmark runs. MODEL-FACING: a coordinator's gate decides it.
+        15,436 -> 15,704, 26,257 -> 26,525 and forwarded 26,286 -> 26,554 (measured on the merged tree): its UV_LAYOUT
+        kind and layout, the uv_layout operation's parameters by name and type or enum (+268 B; toolset 58,
+        uv_layout.rst). A coordinator ruling: a new capability.
         """
-        self.assertLessEqual(len(program_reference().encode()), 15298)
+        self.assertLessEqual(len(program_reference().encode()), 15704)
         self.assertLessEqual(len(codex_instructions(short_identifiers=True, deferred=True, plan=True, team=True).encode()),
-                             26119)
+                             26609)   # Plan mode (toolset 59, plan_mode.rst): +84 B.
         # A runtime that shows tools' pictures without image() reads that sentence instead (+29 B, image_proof).
         self.assertLessEqual(len(codex_instructions(short_identifiers=True, deferred=True, plan=True, team=True,
-                                                    forwarded=True).encode()), 26148)
+                                                    forwarded=True).encode()), 26638)
 
     def test_a_correction_repeats_no_schema_the_reference_states(self):
         operations = [{"tool": "angelo_scene_program", "arguments": {"mode": "APPLY", "operations": [

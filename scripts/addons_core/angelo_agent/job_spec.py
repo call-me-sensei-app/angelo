@@ -15,7 +15,7 @@ with the bound and its limit, so the agent can ask the person instead of guessin
 import math
 import re
 
-from . import bake_maps_spec
+from . import bake_maps_spec, job_retopology_spec, job_uv_layout_spec
 from .action_world_spec import IMAGE_ID_PATTERN
 from .refusal_codes import RefusalError
 from .scene_spec import HANDLE
@@ -23,7 +23,7 @@ from . import read_only
 
 KINDS = ("RENDER_STILL", "RENDER_ANIMATION", "RENDER_REGION", "BAKE_TEXTURE", "BAKE_MAPS", "BAKE_PHYSICS",
          "BAKE_SIMULATION",
-         "EXPORT_USD", "EXPORT_ALEMBIC")
+         "EXPORT_USD", "EXPORT_ALEMBIC", "RETOPOLOGY", "UV_LAYOUT")
 RENDERS = frozenset({"RENDER_STILL", "RENDER_ANIMATION", "RENDER_REGION"})
 # A region of the last render rendered again in Blender's Render Result (doc/angelo/render_region.rst): no file, every
 # other pixel of the last render kept.
@@ -68,14 +68,22 @@ FIELDS = {
     "BAKE_SIMULATION": {"target", "output"},
     "EXPORT_USD": {"output", "frame_start", "frame_end"},
     "EXPORT_ALEMBIC": {"output", "frame_start", "frame_end"},
+    # Object > Retopology on the target, into a new object beside it (job_retopology_spec).
+    "RETOPOLOGY": set(job_retopology_spec.SCHEMA) | {"target"},
+    # The uv_layout operation's layout on the target, one pack at a time (job_uv_layout_spec).
+    "UV_LAYOUT": {"target", *job_uv_layout_spec.SCHEMA},
 }
 # A simulation bake names its object: Blender bakes the selected objects, never the agent's guess.
 REQUIRED = {"RENDER_STILL": {"output"}, "RENDER_ANIMATION": {"output"}, "RENDER_REGION": {"region"},
             "BAKE_TEXTURE": {"target"}, "BAKE_MAPS": {"output", "target"},
-            "BAKE_SIMULATION": {"target"}, "EXPORT_USD": {"output"}, "EXPORT_ALEMBIC": {"output"}}
+            "BAKE_SIMULATION": {"target"}, "EXPORT_USD": {"output"}, "EXPORT_ALEMBIC": {"output"},
+            "RETOPOLOGY": {"target"},
+            "UV_LAYOUT": {"target"}}
 DEFAULT_MINUTES = {"RENDER_STILL": 30, "RENDER_ANIMATION": 240, "RENDER_REGION": 30, "BAKE_TEXTURE": 60,
                    "BAKE_MAPS": bake_maps_spec.DEFAULT_MINUTES, "BAKE_PHYSICS": 120,
-                   "BAKE_SIMULATION": 120, "EXPORT_USD": 60, "EXPORT_ALEMBIC": 60}
+                   "BAKE_SIMULATION": 120, "EXPORT_USD": 60, "EXPORT_ALEMBIC": 60,
+                   "RETOPOLOGY": job_retopology_spec.DEFAULT_MINUTES,
+                   "UV_LAYOUT": job_uv_layout_spec.DEFAULT_MINUTES}
 MAX_MINUTES = 720
 MAX_FRAMES = 10000
 MAX_SIDE = 16384
@@ -94,7 +102,8 @@ _FRAME = {"type": "integer", "minimum": -1048574, "maximum": 1048574}
 SHARED_FIELDS = ("minutes", "queue")
 # The schema's property order, which the kinds' field lists follow.
 _ORDER = ("output", "frame_start", "frame_end", "name", "resolution", "samples", "format", "target", "bake_type",
-          "sources", "cage", "extrusion", "ray_distance", "image", "region", "packing", "material")
+          "sources", "cage", "extrusion", "ray_distance", "image", "region", "packing", "for_engine", "for_link",
+          "material", "faces", "symmetry", "layout")
 
 
 def fields_by_kind():
@@ -124,8 +133,8 @@ JOB_TOOLS = [
     {
         "name": "angelo_job_start",
         "description": (
-            "Start a render, bake or USD/Alembic export as a background Blender job after the person approves "
-            "it. Returns a job ID immediately. Later messages report progress/results in a jobs block. Never "
+            "Start a render, bake, USD/Alembic export or UV layout as a background Blender job after the person "
+            "approves it. Returns a job ID immediately. Later messages report progress/results in a jobs block. Never "
             "sleep or poll; angelo_view (image LAST_JOB) waits for a render picture. One job runs at a time; "
             "queue=true queues behind it. Scene changes are refused while a job runs. output is a workspace-relative path "
             "(a file, or a folder for an animation, several views or baked images). A job never overwrites: a taken "
@@ -134,7 +143,7 @@ JOB_TOOLS = [
             "settings; name is the frame pattern (sh010.####). RENDER_REGION re-renders region (as angelo_view's) over the last "
             "render in the Render Result, keeping every pass outside it. BAKE_TEXTURE with sources bakes those objects "
             "onto target; image is the image to bake into, or resolution makes a new one. " + bake_maps_spec.DESCRIPTION
-            + fields_by_kind()),
+            + job_retopology_spec.DESCRIPTION + job_uv_layout_spec.DESCRIPTION + fields_by_kind()),
         "inputSchema": {"type": "object", "properties": {
             "kind": {"type": "string", "enum": list(KINDS)},
             "output": {"type": "string", "minLength": 1, "maxLength": MAX_OUTPUT},
@@ -155,6 +164,8 @@ JOB_TOOLS = [
             "region": {"type": "array", "items": {"type": "number", "minimum": 0, "maximum": 1},
                        "minItems": 4, "maxItems": 4},
             **bake_maps_spec.SCHEMA,
+            **job_retopology_spec.SCHEMA,
+            **job_uv_layout_spec.SCHEMA,
             "minutes": {"type": "number", "minimum": 0.1, "maximum": MAX_MINUTES},
             "queue": {"type": "boolean"},
         }, "required": ["kind"], "additionalProperties": False},
@@ -377,6 +388,14 @@ def validate_job(name, args, person=False):
         except bake_maps_spec.BakeMapsError as error:
             raise JobRequestError(str(error), code="VALIDATION") from None
         _bake_sources(args, request)
+    if kind == "RETOPOLOGY":
+        def refuse(message):
+            raise JobRequestError(message, code="VALIDATION")
+        job_retopology_spec.validate(args, request, refuse)
+    if kind == job_uv_layout_spec.KIND:
+        def refuse(message):
+            raise JobRequestError(message, code="VALIDATION")
+        job_uv_layout_spec.validate(args, request, refuse)
     if "region" in args:
         from .view_spec import check_region   # angelo_view's own region convention, one check for both.
         try:

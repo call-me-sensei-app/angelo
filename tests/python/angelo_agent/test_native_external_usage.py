@@ -61,11 +61,15 @@ class TurnTests(unittest.TestCase):
                                                 {"input": 10000, "cache_read": 20000, "output": 800}))
         self.assertEqual((row["status"], row["seconds"], row["unpriced"]), ("completed", 4.2, 0))
 
-    def test_a_turn_whose_requests_averaged_past_the_step_is_priced_above_it(self):
-        below = usage.turn_usage(receipt(CHAT, 180000, 0, 0, requests=2))   # 90K each: below Haiku's 100K step.
-        above = usage.turn_usage(receipt(CHAT, 240000, 0, 0, requests=2))   # 120K each: above it.
-        self.assertAlmostEqual(below["usd"], 180000 * 0.10 / 1e6)
-        self.assertAlmostEqual(above["usd"], 240000 * 0.50 / 1e6)
+    def test_one_request_takes_its_own_tier_and_a_sum_without_its_split_is_a_flagged_lower_bound(self):
+        # Haiku's step is 100K. One request of 120K is above it; two requests totalling 240K may be 120K + 120K or
+        # 200K + 40K, so with no per-request split the sum is priced at the base rates and marked partial.
+        one = usage.turn_usage(receipt(CHAT, 120000, 0, 0, requests=1))
+        two = usage.turn_usage(receipt(CHAT, 240000, 0, 0, requests=2))
+        self.assertAlmostEqual(one["usd"], 120000 * 0.50 / 1e6)
+        self.assertEqual(one["partial"], 0)
+        self.assertAlmostEqual(two["usd"], 240000 * 0.10 / 1e6)
+        self.assertEqual(two["partial"], 1)
 
     def test_an_unknown_model_is_counted_as_unpriced_never_as_zero_dollars(self):
         row = usage.turn_usage(receipt(CHAT, 1000, 0, 10, model="house-model-9", mode="codex_api"))

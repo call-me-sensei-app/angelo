@@ -1825,6 +1825,7 @@ static wmOperatorStatus pack_islands_exec(bContext *C, wmOperator *op)
   pack_island_params.margin = RNA_float_get(op->ptr, "margin");
   pack_island_params.shape_method = eUVPackIsland_ShapeMethod(
       RNA_enum_get(op->ptr, "shape_method"));
+  pack_island_params.search_trials = RNA_int_get(op->ptr, "search");
 
   if (udim_source == PACK_UDIM_SRC_ACTIVE) {
     pack_island_params.setUDIMOffsetFromSpaceImage(sima);
@@ -1936,6 +1937,7 @@ static void uv_pack_islands_ui(bContext * /*C*/, wmOperator *op)
   layout.use_property_split_set(true);
   layout.use_property_decorate_set(false);
   layout.prop(op->ptr, "shape_method", UI_ITEM_NONE, std::nullopt, ICON_NONE);
+  layout.prop(op->ptr, "search", UI_ITEM_NONE, std::nullopt, ICON_NONE);
   layout.prop(op->ptr, "scale", UI_ITEM_NONE, std::nullopt, ICON_NONE);
   {
     layout.prop(op->ptr, "rotate", UI_ITEM_NONE, std::nullopt, ICON_NONE);
@@ -1961,6 +1963,11 @@ static void uv_pack_islands_ui(bContext * /*C*/, wmOperator *op)
 
 static wmOperatorStatus uv_pack_islands_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
+  /* Called with `confirm=False` (a script that wants the packing job without the dialog), run at
+   * once: invoked, the pack still runs as a job, with progress and Escape. */
+  if (!RNA_boolean_get(op->ptr, "confirm")) {
+    return op->type->exec(C, op);
+  }
   return WM_operator_props_popup_confirm_ex(C, op, event, IFACE_("Pack Islands"), IFACE_("Pack"));
 }
 
@@ -2004,6 +2011,7 @@ void UV_OT_pack_islands(wmOperatorType *ot)
 #endif
   ot->ui = uv_pack_islands_ui;
   ot->poll = ED_operator_uvedit;
+  WM_operator_properties_confirm_or_exec(ot);
 
   /* properties */
   RNA_def_enum(ot->srna, "udim_source", pack_target, PACK_UDIM_SRC_CLOSEST, "Pack to", "");
@@ -2042,6 +2050,16 @@ void UV_OT_pack_islands(wmOperatorType *ot)
                ED_UVPACK_SHAPE_CONCAVE,
                "Shape Method",
                "");
+  RNA_def_int(ot->srna,
+              "search",
+              0,
+              0,
+              1024,
+              "Search",
+              "Try this many more layouts, from changed island orders, and keep the tightest "
+              "(the same result on every run; 0 packs once)",
+              0,
+              64);
 }
 
 /** \} */

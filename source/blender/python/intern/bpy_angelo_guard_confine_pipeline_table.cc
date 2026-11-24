@@ -183,6 +183,9 @@ Gate gates[] = {
 
     /* Audaspace. */
     G("aud", "Sound", "__new__", N, R(0, "filename"), NONE, NONE, None),
+    /* An output device opens a sound server, which can start one (JACK runs ~/.jackdrc's first line; PulseAudio
+     * autospawns): a script plays sound through Blender's own device, never a device of its own. */
+    G("aud", "Device", "__new__", N, NONE, NONE, NONE, RefuseProgram),
     G("aud", "Sound", "file", C, R(0, "filename"), NONE, NONE, None),
     G("aud", "Sound", "write", M, W(0, "filename"), NONE, NONE, None),
     G("aud", "HRTF", "loadLeftHrtfSet", M, D(1, "directory"), NONE, NONE, None),

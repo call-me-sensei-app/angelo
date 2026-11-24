@@ -36,6 +36,7 @@ from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-director-shortcut-qa"))
@@ -186,7 +187,7 @@ def hovered(area, region):
 
 def field_points(region):
     """Pointer positions over the Properties editor's upper half, top down: where the Location X field is looked for."""
-    xs = [region.x + int(region.width * f) for f in (0.55, 0.7, 0.45, 0.8)]
+    xs = [int(qa_hit.xy(qa_hit.RAW, region, int(region.width * f), 0)[0]) for f in (0.55, 0.7, 0.45, 0.8)]
     top, bottom = region.y + region.height - 10, region.y + region.height // 3
     return [(x, y) for y in range(top, bottom, -6) for x in xs]
 

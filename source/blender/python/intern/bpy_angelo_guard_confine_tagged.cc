@@ -62,7 +62,7 @@ bool source_is_scripts(const char *source)
   }
   /* Cached per file and its identity (a script can rewrite or move a file onto a name read before). */
   BLI_stat_t info = {};
-  const bool exists = source[0] != '\0' && BLI_stat(source, &info) == 0;
+  const bool exists = source[0] != '\0' && lookup_stat(source, &info) == 0;
   const std::string identity = std::string(source) + "|" + std::to_string(uint64_t(info.st_dev)) + "|" +
                                std::to_string(uint64_t(info.st_ino)) + "|" + std::to_string(int64_t(info.st_mtime)) +
                                "|" + std::to_string(int64_t(info.st_size));

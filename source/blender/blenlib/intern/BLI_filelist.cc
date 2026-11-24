@@ -234,7 +234,11 @@ uint BLI_filelist_dir_contents(const char *dirname, direntry **r_filelist)
   dir_ctx.files_num = 0;
   dir_ctx.files = nullptr;
 
-  bli_builddir(&dir_ctx, dirname);
+  /* A listing that would reach the network for a confined thread is empty (BLI_fileops.hh, `lookup_refused`); each
+   * entry's own BLI_stat asks too. */
+  if (!BLI_fileops_gate_refuses_lookup(dirname, true)) {
+    bli_builddir(&dir_ctx, dirname);
+  }
 
   if (dir_ctx.files) {
     *r_filelist = dir_ctx.files;

@@ -46,7 +46,8 @@ os.environ["ANGELO_DISABLE_KEYCHAIN"] = "1"
 import addon_utils  # noqa: E402
 addon_utils.enable("angelo_agent", default_set=False, persistent=False)
 G = _bpy._angelo_guard
-METHODS = {"consent_regions", "take", "grant", "automatic", "granting", "define", "get", "items", "set", "remove"}
+METHODS = {"consent_regions", "cover", "take", "grant", "automatic", "granting", "define", "get", "items", "set",
+           "remove"}
 TRUSTED, APPROVED = "trusted_scripts", "approved_scripts"
 REPORT = {"success": False, "binary": bpy.app.binary_path, "results": {}}
 
@@ -166,11 +167,22 @@ class TicketTests(unittest.TestCase):
         self.assertFalse(G.take("angelo.approve", "d"))
         with self.assertRaises(PermissionError):
             G.grant("angelo.approve", "d", lambda: None)
-        self.assertTrue(G.consent_regions(1, "test", ((0, 0, 10, 10, "angelo.approve", "d", True),)))
+        self.assertTrue(G.consent_regions(1, "test", ((0, 0, 10, 10, "angelo.approve", "d", True),), 2))
         self.assertFalse(G.take("angelo.approve", "d"), "a region alone is no press")
         for bad in (((0, 0, 10, 10, "angelo.approve", "d"),), ([0, 0, 10, 10, "a", "d", True],), "x"):
             with self.subTest(bad=bad), self.assertRaises(TypeError):
-                G.consent_regions(1, "test", bad)
+                G.consent_regions(1, "test", bad, 2)
+        with self.assertRaises(TypeError):   # The region they are drawn in is required (SHOULD 1's routing).
+            G.consent_regions(1, "test", ())
+        with self.assertRaises(ValueError):
+            G.consent_regions(1, "test", (), 0)
+        self.assertIsNone(G.cover(1, "test", (0, 0, 10, 10), 2))
+        self.assertIsNone(G.cover(1, "test", None))
+        for bad in ([0, 0, 10, 10], (0, 0, 10), "x"):
+            with self.subTest(cover=bad), self.assertRaises(TypeError):
+                G.cover(1, "test", bad, 2)
+        with self.assertRaises(ValueError):   # The region it is drawn in: it goes when that region does.
+            G.cover(1, "test", (0, 0, 10, 10))
 
 
 class ConfinedTests(unittest.TestCase):
@@ -187,7 +199,8 @@ attempt("granting", G.granting)
 attempt("take", lambda: G.take("angelo.approve", "d"))
 attempt("automatic", lambda: G.automatic(G.set, "trusted_scripts", "chat-confined", True))
 attempt("widen", lambda: G.set("trusted_scripts", "chat-confined", True))
-attempt("regions", lambda: G.consent_regions(1, "script", ((0, 0, 10, 10, "angelo.approve", "d", True),)))
+attempt("regions", lambda: G.consent_regions(1, "script", ((0, 0, 10, 10, "angelo.approve", "d", True),), 2))
+attempt("cover", lambda: G.cover(1, "script", (0, 0, 10, 10), 2))
 attempt("define", lambda: G.define("script_namespace", True))
 attempt("narrow", lambda: G.set("trusted_scripts", "chat-held", False))
 attempt("remove", lambda: G.remove("always_allow", "on"))
@@ -215,7 +228,7 @@ attempt("remove_call", lambda: G.remove("approved_calls", "chat-held/7"))
             self.run_script(self.SOURCE, "chat-a/1")
         self.assertEqual(results["granting"], ("ok", False))
         self.assertEqual(results["take"], ("ok", False))
-        for name in ("automatic", "widen", "regions", "define", "narrow", "remove", "remove_call"):
+        for name in ("automatic", "widen", "regions", "cover", "define", "narrow", "remove", "remove_call"):
             self.assertEqual(results[name][0], "PermissionError", name)
         self.assertIsNone(G.get(TRUSTED, "chat-confined") or None)
         self.assertIs(G.get(TRUSTED, "chat-held"), True, "a script narrows nothing")

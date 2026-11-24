@@ -16,6 +16,7 @@ from pathlib import Path
 
 import addon_utils
 import bpy
+import qa_hit
 
 ARGS = sys.argv[sys.argv.index("--") + 1:]
 PHASE = ARGS[ARGS.index("--native-phase") + 1]
@@ -88,13 +89,12 @@ def _press(x, y):
 
 def click_card(action, value=None):
     """Click the visible card's own control, in window coordinates (mirrored back in a right-to-left language)."""
-    from angelo_agent import canvas_rtl, card_host
+    from angelo_agent import card_host
     active = card_host._active
     area = next(a for a in window().screen.areas if a.as_pointer() == active.area)
     region = next(r for r in area.regions if r.type == 'WINDOW')
     rect = next(r for r, a, v in reversed(active.plan.hits) if a == action and (value is None or v == value))
-    x = canvas_rtl.pointer_x(rect[0] + rect[2] / 2, region.width)
-    _press(int(region.x + x), int(region.y + rect[1] + rect[3] / 2))
+    _press(*qa_hit.ipoint(qa_hit.PIXELS, region, rect))
 
 
 def click_welcome(action):
@@ -102,9 +102,7 @@ def click_welcome(action):
     area = next(a for a in window().screen.areas if a.as_pointer() == intro._open["area"])
     region = next(r for r in area.regions if r.type == 'WINDOW')
     rect = next(r for r, a, v in intro._open["plan"]["hits"] if a == action)
-    from angelo_agent import canvas_rtl
-    x = canvas_rtl.pointer_x(rect[0] + rect[2] / 2, region.width)
-    _press(int(region.x + x), int(region.y + rect[1] + rect[3] / 2))
+    _press(*qa_hit.ipoint(qa_hit.PIXELS, region, rect))
 
 
 def preferences_window():

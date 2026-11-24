@@ -183,15 +183,24 @@ function markdown(container, text) {
   }
 }
 
-function renderViews(ids) {
+function renderViews(ids, unavailable) {
   $("views-panel").hidden = ids.length === 0;   // Never an empty panel over the scene.
   $("no-views").hidden = ids.length > 0;
   const list = $("views");
-  const shown = [...list.children].map((item) => item.dataset.id).join(",");
-  if (shown === ids.join(",")) return;
+  // One key per tile, a view and its unavailable mark apart; the lists compared as JSON, so no id can blur two.
+  const key = (id) => (unavailable.includes(id) ? "u:" : "v:") + id;
+  const shown = JSON.stringify([...list.children].map((item) => item.dataset.key));
+  if (shown === JSON.stringify(ids.map(key))) return;
   list.replaceChildren(...ids.map((id) => {
     const item = document.createElement("li");
-    item.dataset.id = id;
+    item.dataset.key = key(id);
+    if (unavailable.includes(id)) {   // Angelo stopped waiting for it: a mark, never a request that can't succeed.
+      item.classList.add("unavailable");
+      item.setAttribute("role", "img");
+      item.title = text("view_unavailable");
+      item.setAttribute("aria-label", item.title);
+      return item;
+    }
     const picture = document.createElement("img");
     picture.src = "picture/" + encodeURIComponent(id);
     picture.alt = "";
@@ -251,7 +260,7 @@ function render() {
   $("no-views").textContent = text("no_views");
   $("read-only").textContent = text("read_only");
   renderRows(state.rows || []);
-  renderViews(state.pictures || []);
+  renderViews(state.pictures || [], state.unavailable || []);
   if (!content) {   // Loading, or this browser can't draw it: everything else still updates.
     $("scene-hint").hidden = false;
     $("scene-hint").textContent = text(view ? "scene_loading" : "scene_unavailable");

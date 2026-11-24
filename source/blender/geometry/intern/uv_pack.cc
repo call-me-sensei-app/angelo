@@ -6,6 +6,8 @@
  * \ingroup eduv
  */
 
+#include <limits>
+
 #include "GEO_uv_pack.hh"
 
 #include "BKE_global.hh"
@@ -21,6 +23,7 @@
 #include "BLI_polyfill_2d.hh"
 #include "BLI_polyfill_2d_beautify.hh"
 #include "BLI_rect.hh"
+#include "BLI_task.hh"
 #include "BLI_vector.hh"
 
 #include "MEM_guardedalloc.h"
@@ -456,6 +459,7 @@ UVPackIsland_Params::UVPackIsland_Params()
   target_extent = 1.0f;   /* Assume unit square. */
   target_aspect_y = 1.0f; /* Assume unit square. */
   shape_method = ED_UVPACK_SHAPE_AABB;
+  search_trials = 0;
   stop = nullptr;
   do_update = nullptr;
   progress = nullptr;
@@ -1836,11 +1840,23 @@ static int64_t pack_island_xatlas(const Span<std::unique_ptr<UVAABBIsland>> isla
  * \param r_phis: Island layout information will be written here.
  * \return Size of square covering the resulting packed UVs. The maximum `u` or `v` coordinate.
  */
+/** A number in [-1, 1) from a hash of a search trial and an island (SplitMix64 finalizer). */
+static float trial_jitter(const uint32_t trial, const uint32_t index)
+{
+  uint64_t x = (uint64_t(trial) << 32) ^ uint64_t(index);
+  x += 0x9E3779B97F4A7C15ull;
+  x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ull;
+  x = (x ^ (x >> 27)) * 0x94D049BB133111EBull;
+  x ^= x >> 31;
+  return float(x >> 40) / float(1 << 24) * 2.0f - 1.0f;
+}
+
 static float pack_islands_scale_margin(const Span<PackIsland *> islands,
                                        const float scale,
                                        const float margin,
                                        const UVPackIsland_Params &params,
-                                       MutableSpan<UVPhi> r_phis)
+                                       MutableSpan<UVPhi> r_phis,
+                                       const uint32_t trial = 0)
 {
   /* #BLI_box_pack_2d produces layouts with high packing efficiency, but has `O(n^3)`
    * time complexity, causing poor performance if there are lots of islands. See: #102843.
@@ -1926,6 +1942,31 @@ static float pack_islands_scale_margin(const Span<PackIsland *> islands,
 
           /* Choose the AABB with larger rectangular area. */
           return b->uv_diagonal.x * b->uv_diagonal.y < a->uv_diagonal.x * a->uv_diagonal.y;
+        });
+  }
+
+  if (trial > 0) {
+    /* A search trial (#UVPackIsland_Params::search_trials): the same rule with each island's size
+     * changed by up to a quarter by a hash of the trial, so islands of similar size trade places.
+     * Odd trials order rotatable islands by area instead of their longest side. */
+    const bool by_area = !all_can_rotate || (trial & 1) != 0;
+    Array<float> key(islands.size());
+    for (const std::unique_ptr<UVAABBIsland> &aabb : aabbs) {
+      const float u = aabb->uv_diagonal.x * aabb->aspect_y;
+      const float v = aabb->uv_diagonal.y;
+      const float size = by_area ? u * v : std::max(u, v);
+      key[aabb->index] = size * (1.0f + 0.25f * trial_jitter(trial, uint32_t(aabb->index)));
+    }
+    std::stable_sort(
+        aabbs.begin(),
+        aabbs.end(),
+        [&](const std::unique_ptr<UVAABBIsland> &a, const std::unique_ptr<UVAABBIsland> &b) {
+          const bool can_translate_a = islands[a->index]->can_translate_(params);
+          const bool can_translate_b = islands[b->index]->can_translate_(params);
+          if (can_translate_a != can_translate_b) {
+            return can_translate_b; /* Locked islands are placed first. */
+          }
+          return key[a->index] > key[b->index];
         });
   }
 
@@ -2030,13 +2071,65 @@ static float pack_islands_scale_margin(const Span<PackIsland *> islands,
 }
 
 /**
- * Find the optimal scale to pack islands into the unit square.
- * returns largest scale that will pack `islands` into the unit square.
+ * #pack_islands_scale_margin, plus `params.search_trials` more layouts from changed island orders,
+ * packed in parallel. Writes the tightest layout to `r_phis` and returns its extent; the standard
+ * layout wins ties, then the lowest trial, so the result is the same on every run and machine.
  */
-static float pack_islands_margin_fraction(const Span<PackIsland *> islands,
-                                          const float margin_fraction,
-                                          const bool rescale_margin,
-                                          const UVPackIsland_Params &params)
+static float pack_islands_scale_margin_search(const Span<PackIsland *> islands,
+                                              const float scale,
+                                              const float margin,
+                                              const UVPackIsland_Params &params,
+                                              MutableSpan<UVPhi> r_phis)
+{
+  const float standard = pack_islands_scale_margin(islands, scale, margin, params, r_phis);
+  const int trials = std::min(params.search_trials, 1024);
+  if (trials <= 0 || islands.size() < 2 || params.isCancelled()) {
+    return standard;
+  }
+  /* Trials report no progress of their own: the job's progress stays the line search's. */
+  UVPackIsland_Params quiet = params;
+  quiet.progress = nullptr;
+  quiet.do_update = nullptr;
+  Array<float> extents(trials, std::numeric_limits<float>::infinity());
+  Array<Array<UVPhi>> layouts(trials);
+  threading::parallel_for(IndexRange(trials), 1, [&](const IndexRange range) {
+    for (const int64_t t : range) {
+      if (quiet.isCancelled()) {
+        continue;
+      }
+      layouts[t] = Array<UVPhi>(islands.size());
+      extents[t] = pack_islands_scale_margin(
+          islands, scale, margin, quiet, layouts[t], uint32_t(t + 1));
+    }
+  });
+  int64_t best = -1;
+  float best_extent = standard;
+  for (const int64_t t : IndexRange(trials)) {
+    if (extents[t] < best_extent) {
+      best = t;
+      best_extent = extents[t];
+    }
+  }
+  if (best >= 0) {
+    r_phis.copy_from(layouts[best]);
+  }
+  return best_extent;
+}
+
+/**
+ * Line search for the largest scale at which the islands, packed in order `trial` (0: the standard
+ * order, see #pack_islands_scale_margin), fit the unit square. A `seed_scale` known to fit (with its
+ * layout in `r_phis` and its `seed_value`) starts the search from that bracket. Writes the best
+ * layout found to `r_phis` and returns its scale, or 0 when no layout was found.
+ */
+static float pack_islands_margin_fraction_line_search(const Span<PackIsland *> islands,
+                                                      const float margin_fraction,
+                                                      const bool rescale_margin,
+                                                      const UVPackIsland_Params &params,
+                                                      const uint32_t trial,
+                                                      MutableSpan<UVPhi> r_phis,
+                                                      const float seed_scale = 0.0f,
+                                                      const float seed_value = 0.0f)
 {
   /*
    * Root finding using a combined search / modified-secant method.
@@ -2045,14 +2138,18 @@ static float pack_islands_margin_fraction(const Span<PackIsland *> islands,
    *
    * This is a specialized solver using domain knowledge to accelerate convergence. */
 
-  float scale_low = 0.0f;
-  float value_low = 0.0f;
+  float scale_low = seed_scale;
+  float value_low = seed_value;
   float scale_high = 0.0f;
   float value_high = 0.0f;
 
   Array<UVPhi> phis_a(islands.size());
   Array<UVPhi> phis_b(islands.size());
   Array<UVPhi> *phis_low = nullptr;
+  if (seed_scale > 0.0f) {
+    phis_a.as_mutable_span().copy_from(r_phis);
+    phis_low = &phis_a;
+  }
 
   /* Scaling smaller than `min_scale_roundoff` is unlikely to fit and
    * will destroy information in existing UVs. */
@@ -2064,11 +2161,9 @@ static float pack_islands_margin_fraction(const Span<PackIsland *> islands,
   for (int iteration = 0; iteration < max_iteration; iteration++) {
     float scale = 1.0f;
 
-    if (iteration == 0) {
+    if (scale_low == 0.0f && scale_high == 0.0f) {
       BLI_assert(iteration == 0);
       BLI_assert(scale == 1.0f);
-      BLI_assert(scale_low == 0.0f);
-      BLI_assert(scale_high == 0.0f);
     }
     else if (scale_low == 0.0f) {
       BLI_assert(scale_high > 0.0f);
@@ -2110,7 +2205,8 @@ static float pack_islands_margin_fraction(const Span<PackIsland *> islands,
     /* Evaluate our `f`. */
     Array<UVPhi> *phis_target = (phis_low == &phis_a) ? &phis_b : &phis_a;
     const float margin = rescale_margin ? margin_fraction * scale : margin_fraction;
-    const float max_uv = pack_islands_scale_margin(islands, scale, margin, params, *phis_target) /
+    const float max_uv = pack_islands_scale_margin(
+                             islands, scale, margin, params, *phis_target, trial) /
                          params.target_extent;
     const float value = sqrtf(max_uv) - 1.0f;
 
@@ -2136,15 +2232,93 @@ static float pack_islands_margin_fraction(const Span<PackIsland *> islands,
     }
   }
 
-  if (phis_low) {
-    /* Write back best pack as a side-effect. */
-    for (const int64_t i : islands.index_range()) {
-      PackIsland *island = islands[i];
-      const float island_scale = island->can_scale_(params) ? scale_low : 1.0f;
-      island->place_(island_scale, (*phis_low)[i]);
+  if (!phis_low) {
+    return 0.0f;
+  }
+  r_phis.copy_from(*phis_low);
+  return scale_low;
+}
+
+/**
+ * Find the optimal scale to pack islands into the unit square.
+ * returns largest scale that will pack `islands` into the unit square.
+ *
+ * With `params.search_trials`, the standard order's line search runs first; the trial orders are
+ * then packed once each, in parallel, at the scale it found, and only the tightest of them, if it is
+ * tighter than the standard layout there, gets a line search of its own, starting from that scale.
+ * The trial's scale replaces the standard one only when it is larger, so the search is never looser
+ * than one pass and costs about one line search more plus one pack per trial, rather than every
+ * line-search step packing every trial.
+ */
+static float pack_islands_margin_fraction(const Span<PackIsland *> islands,
+                                          const float margin_fraction,
+                                          const bool rescale_margin,
+                                          const UVPackIsland_Params &params)
+{
+  Array<UVPhi> phis(islands.size());
+  float scale = pack_islands_margin_fraction_line_search(
+      islands, margin_fraction, rescale_margin, params, 0, phis);
+  if (scale <= 0.0f) {
+    return 0.0f; /* Nothing found to write back. */
+  }
+
+  const int trials = std::min(params.search_trials, 1024);
+  if (trials > 0 && islands.size() >= 2 && !params.isCancelled()) {
+    /* Trials report no progress of their own: the job's progress stays the line search's. */
+    UVPackIsland_Params quiet = params;
+    quiet.progress = nullptr;
+    quiet.do_update = nullptr;
+    const float margin = rescale_margin ? margin_fraction * scale : margin_fraction;
+    Array<UVPhi> standard_phis(islands.size());
+    const float standard = pack_islands_scale_margin(
+        islands, scale, margin, quiet, standard_phis, 0);
+    Array<float> extents(trials, std::numeric_limits<float>::infinity());
+    Array<Array<UVPhi>> layouts(trials);
+    threading::parallel_for(IndexRange(trials), 1, [&](const IndexRange range) {
+      for (const int64_t t : range) {
+        if (quiet.isCancelled()) {
+          continue;
+        }
+        layouts[t] = Array<UVPhi>(islands.size());
+        extents[t] = pack_islands_scale_margin(
+            islands, scale, margin, quiet, layouts[t], uint32_t(t + 1));
+      }
+    });
+    int64_t best = -1;
+    float best_extent = standard; /* The standard order wins ties, then the lowest trial. */
+    for (const int64_t t : IndexRange(trials)) {
+      if (extents[t] < best_extent) {
+        best = t;
+        best_extent = extents[t];
+      }
+    }
+    if (best >= 0 && !params.isCancelled()) {
+      const float value = sqrtf(best_extent / params.target_extent) - 1.0f;
+      Array<UVPhi> trial_phis = layouts[best];
+      const float trial_scale = value <= 0.0f ?
+                                    pack_islands_margin_fraction_line_search(islands,
+                                                                             margin_fraction,
+                                                                             rescale_margin,
+                                                                             quiet,
+                                                                             uint32_t(best + 1),
+                                                                             trial_phis,
+                                                                             scale,
+                                                                             value) :
+                                    0.0f;
+      if (trial_scale > scale) {
+        scale = trial_scale;
+        phis.as_mutable_span().copy_from(trial_phis);
+      }
     }
   }
-  return scale_low;
+
+  /* Write back best pack as a side-effect. */
+  for (const int64_t i : islands.index_range()) {
+    PackIsland *island = islands[i];
+    const float island_scale = island->can_scale_(params) ? scale : 1.0f;
+    island->place_(island_scale, phis[i]);
+  }
+  return scale;
 }
 
 static float calc_margin_from_aabb_length_sum(const Span<PackIsland *> island_vector,
@@ -2370,7 +2544,7 @@ float pack_islands(const Span<PackIsland *> islands, const UVPackIsland_Params &
    * In either case, we pack them all tight to the origin. */
   Array<UVPhi> phis(islands.size());
   const float scale = 1.0f;
-  const float max_uv = pack_islands_scale_margin(islands, scale, margin, params, phis);
+  const float max_uv = pack_islands_scale_margin_search(islands, scale, margin, params, phis);
   const float result = can_scale_count && max_uv > 1e-14f ? params.target_extent / max_uv : 1.0f;
   for (const int64_t i : islands.index_range()) {
     BLI_assert(result == 1.0f || islands[i]->can_scale_(params));

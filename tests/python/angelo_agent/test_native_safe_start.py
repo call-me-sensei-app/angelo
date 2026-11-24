@@ -755,6 +755,28 @@ class SessionTests(Folder):
             "print('OK')\n") % str(self.folder))
         self.assertEqual((code, output.strip()), (0, "OK"))
 
+    def test_a_completed_start_records_the_persons_add_ons_that_loaded(self):
+        """Angelo's own load result for a later update check (angelo_addon_loads): loaded add-ons of the person's
+        with their versions; never a shipped one, one that failed, one enabled but not installed or not loaded."""
+        fake = (
+            "addons = [types.SimpleNamespace(module=m) for m in ('mine', 'old', 'broken', 'shipped', 'gone', 'off')]\n"
+            "bpy.context = types.SimpleNamespace(preferences=types.SimpleNamespace(addons=addons))\n"
+            "bpy.app.version = (5, 3, 0)\n"
+            "info = {'mine': (1, 2), 'old': (0, 9, 1), 'broken': (1, 0, 0), 'shipped': (1, 0, 0), 'off': (2, 0, 0)}\n"
+            "au = types.SimpleNamespace(addons_fake_modules={k: types.SimpleNamespace(v=v) for k, v in info.items()},\n"
+            "    modules=lambda refresh=True: None, module_bl_info=lambda m: {'version': m.v},\n"
+            "    check=lambda m: (True, m != 'off'), enable=lambda *a, **k: None)\n"
+            "sys.modules['addon_utils'] = au\n"
+            "s._shipped_here = lambda bpy: (lambda m: m == 'shipped')\n")
+        code, output = in_session(self.config, fake + (
+            "s.start(bpy)\n"
+            "s._state['failed_now']['broken'] = 'Error: x'\n"
+            "s._completed()\n"
+            "import angelo_addon_loads as loads\n"
+            "print(sorted(loads.read(s.Path(%r) / loads.FILE)[1]))\n") % str(self.folder))
+        self.assertEqual(code, 0, output)
+        self.assertEqual(output.strip().splitlines()[-1], "[('mine', '1.2.0'), ('old', '0.9.1')]", output)
+
 
 class WiringTests(unittest.TestCase):
     def test_the_startup_module_starts_before_add_ons_and_ends_on_exit(self):

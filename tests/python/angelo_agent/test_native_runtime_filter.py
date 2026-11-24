@@ -158,11 +158,35 @@ class ClaudeLaunchTests(unittest.TestCase):
                        # An organization endpoint's mapped Claude model: Claude Code treats the server's name as it.
                        {"tools": "", "direct": False, "fast": False, "model": "team-opus", "effort": "high",
                         "thinking": False, "resume": "", "gateway": False,
-                        "overrides": {"claude-opus-5-5": "team-opus", "claude-haiku-5-5": "lab/haiku:v2"}}):
+                        "overrides": {"claude-opus-5-5": "team-opus", "claude-haiku-5-5": "lab/haiku:v2"}},
+                       # An endpoint's model Claude Code can't place: its 200K window is kept.
+                       {"tools": "", "direct": False, "fast": False, "model": "house-llm", "effort": "high",
+                        "thinking": False, "resume": "", "gateway": False, "overrides": {}, "window_200k": True}):
             with self.subTest(values=values):
                 self.assertEqual(launch_values(claude_arguments("claude", values)[1:]),
                                  dict(values, hooks_blocked=False if values["gateway"] else None,
-                                      overrides=values.get("overrides", {})))
+                                      overrides=values.get("overrides", {}),
+                                      window_200k=values.get("window_200k", False)))
+
+    def test_the_settings_hold_only_keys_angelo_writes_and_never_a_sandbox(self):
+        # Claude Code 2.1.323 stops at startup on a --settings sandbox key it finds invalid. Angelo writes none, and
+        # any new key must be one Claude Code is known to accept (fastMode, hooks, modelOverrides, env, and the team
+        # route's skipWebFetchPreflight), or this fails before a session does.
+        # Hermetic: the gateway's hook shape depends on the administrator's policy (team_network.settings reads
+        # claude_managed.hooks_blocked when not told), so both answers are given here instead of the host's own.
+        known = {"fastMode", "hooks", "modelOverrides", "env", "skipWebFetchPreflight"}
+        for gateway in (False, True):
+            for hooks_blocked in ((False, True) if gateway else (None,)):
+                for extra in ({}, {"overrides": {"claude-opus-5-5": "team-opus"}}, {"window_200k": True},
+                              {"fast": True, "model": "claude-opus-5-5"}):
+                    values = dict({"tools": "WebSearch,WebFetch", "direct": False, "fast": False, "model": "",
+                                   "effort": "high", "thinking": False, "resume": "", "gateway": gateway,
+                                   "hooks_blocked": hooks_blocked}, **extra)
+                    command = claude_arguments("claude", values)
+                    settings = json.loads(command[command.index("--settings") + 1])
+                    with self.subTest(gateway=gateway, hooks_blocked=hooks_blocked, extra=extra):
+                        self.assertLessEqual(set(settings), known)
+                        self.assertNotIn("sandbox", json.dumps(settings))
 
     def test_anything_else_is_refused(self):
         good = claude_arguments("claude", {"tools": "WebSearch", "direct": False, "fast": False, "model": "",

@@ -210,6 +210,12 @@ def check_catalog(language, header, entries, template, glossary=None, logical=No
         issues.append(Issue("error", language.code, ("", ""),
                             f"header: {STATUS_FIELD} must say '{STATUS_VALUE}' "
                             "or 'reviewed by <name> on <YYYY-MM-DD>'"))
+    seen = set()
+    for entry in entries:   # msgfmt refuses a second entry for one (context, message), a retired #~ one included.
+        if entry.key in seen:
+            issues.append(Issue("error", language.code, entry.key,
+                                "held twice (a retired #~ copy beside its entry counts): msgfmt refuses the catalogue"))
+        seen.add(entry.key)
     sources_ = {entry.key: entry for entry in template}
     translated = {entry.key: entry for entry in entries if not entry.obsolete}
     for key in translated:

@@ -34,6 +34,7 @@ import bpy
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 os.environ["ANGELO_ENABLE_CHAT_HINTS"] = "1"   # The runner turns notices off for every suite; this one tests a hint.
@@ -83,8 +84,7 @@ def card_rect():
     active = card_host._active
     area = next(a for a in window().screen.areas if a.as_pointer() == active.area)
     region = next(r for r in area.regions if r.type == 'WINDOW')
-    x, y, w, h = active.plan.card
-    return (region.x + x, region.y + y, w, h), (area.x, area.y, area.width, area.height)
+    return qa_hit.rect(qa_hit.PIXELS, region, active.plan.card), (area.x, area.y, area.width, area.height)
 
 
 def click(action):
@@ -94,7 +94,7 @@ def click(action):
     area = next(a for a in window().screen.areas if a.as_pointer() == active.area)
     region = next(r for r in area.regions if r.type == 'WINDOW')
     rect = next(r for r, a, _v in active.plan.hits if a == action)
-    x, y = int(region.x + rect[0] + rect[2] / 2), int(region.y + rect[1] + rect[3] / 2)
+    x, y = qa_hit.ipoint(qa_hit.PIXELS, region, rect)
     window().event_simulate(type='MOUSEMOVE', value='NOTHING', x=x, y=y)
     window().event_simulate(type='LEFTMOUSE', value='PRESS', x=x, y=y)
     window().event_simulate(type='LEFTMOUSE', value='RELEASE', x=x, y=y)
@@ -122,7 +122,7 @@ def anchored():
     region = next(r for r in area.regions if r.type == 'WINDOW')
     cx = (rect[0] + rect[1]) / 2
     arrows = [op[2] for op in active.plan.ops if op[0] == "kit" and op[1] == "chat_hint_arrow"]
-    tip = (region.x + arrows[0][0] + arrows[0][2] / 2) if arrows else None
+    tip = qa_hit.point(qa_hit.PIXELS, region, arrows[0])[0] if arrows else None
     return {"rect": rect, "area": area.type, "under_the_button": region.x <= cx < region.x + region.width,
             "arrow_tip_x": tip, "button_x": cx, "points_at_it": tip is not None and abs(tip - cx) <= 2}
 

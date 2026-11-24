@@ -337,7 +337,8 @@ class RowTests(unittest.TestCase):
     def test_the_controller_labels_the_row_and_keeps_the_persons_draft(self):
         from angelo_agent import request_rows
         source = (ROOT / "scripts/addons_core/angelo_agent/controller.py").read_text()
-        self.assertIn("task = request_rows.request_fields(self)", source)
+        # The row's fields, plus 2.1.0's open-turn mark (crash_resume.opened), which keeps them all.
+        self.assertIn("task = {**request_rows.request_fields(self), **crash_resume.opened(self)}", source)
         self.assertIn("message.update(request_rows.kept_fields(data))", source)
         self.assertIn("request_rows.sender(self, host_request, host_kind, references)", source)
         own, kind, person = request_rows.sender(SimpleNamespace(attachments=["draft"]), [], "angelo_event")

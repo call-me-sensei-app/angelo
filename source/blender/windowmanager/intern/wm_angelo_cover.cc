@@ -38,6 +38,8 @@
 #include "GPU_immediate.hh"
 #include "GPU_state.hh"
 
+#include "UI_interface_c.hh"
+
 #include "WM_api.hh"
 #include "wm_draw.hh"
 
@@ -69,6 +71,17 @@ void WM_angelo_startup_cover_set(const float color[4])
   copy_v4_v4(g_startup_cover, color);
   if (was_shown && g_startup_cover[3] <= 0.0f) {
     startup_cover_redraw_hidden();
+    /* Angelo: every control it hid is on screen only from now (the grant guard's arming; the review of
+     * f6b01a9..da9ba66, NIT 3). The guard's consent regions restart when the next draw no longer lists
+     * it as a cover (`wm_draw_window_onscreen`). */
+    wmWindowManager *wm = G_MAIN != nullptr ? static_cast<wmWindowManager *>(G_MAIN->wm.first()) : nullptr;
+    if (wm != nullptr) {
+      for (wmWindow &win : wm->windows) {
+        rcti rect;
+        WM_window_screen_rect_calc(&win, &rect);
+        ui::UI_angelo_note_uncovered(&win, rect);
+      }
+    }
   }
 }
 

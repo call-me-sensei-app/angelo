@@ -21,6 +21,7 @@ output, and how a cancel undoes it:
 
 import bpy
 
+from . import bake_cage
 from . import job_bake_caches as caches, owned_paths
 from . import job_bake_targets as targets
 from .job_manager import JobStartError
@@ -103,10 +104,18 @@ class TextureBakeRunner(Runner):
                         if targets.is_tiled(image) and not targets.restorable_tiles(image)]
         self.restorable = self.new_size is not None or (
             not self.unsaved and sum(image.size[0] * image.size[1] for image in plain) <= targets.MAX_RESTORE_PIXELS)
-        # Where rays start and how far they reach: the request's, else the person's own bake settings.
+        # Where rays start and how far they reach: the request's, else the person's own bake settings, measured
+        # from the meshes while those are Blender's defaults (bake_cage).
         bake = self.scene.render.bake
-        self.extrusion = float(request.get("extrusion", bake.cage_extrusion))
-        self.ray_distance = float(request.get("ray_distance", bake.max_ray_distance))
+        self.cage_auto = None
+        if self.sources and bake_cage.wanted(request, self.cage, bake.cage_extrusion, bake.max_ray_distance):
+            with bpy.context.temp_override(window=self.window):
+                depsgraph = bpy.context.evaluated_depsgraph_get()
+            from . import bake_cage_host   # mathutils: Blender only.
+            self.cage_auto = bake_cage_host.measure(depsgraph, self.target, self.sources)
+        measured = self.cage_auto if self.cage_auto and "extrusion" in self.cage_auto else {}
+        self.extrusion = float(request.get("extrusion", measured.get("extrusion", bake.cage_extrusion)))
+        self.ray_distance = float(request.get("ray_distance", measured.get("ray_distance", bake.max_ray_distance)))
 
     def _admit_tiles(self, image):
         """A UDIM image's tile sizes, after checking each and that the target's faces lie in one of them."""
@@ -131,6 +140,8 @@ class TextureBakeRunner(Runner):
                          extrusion=round(self.extrusion, 6), ray_distance=round(self.ray_distance, 6))
         if self.cage is not None:
             facts["cage"] = self.cage.name
+        if self.cage_auto is not None:
+            facts["measured_distances"] = self.cage_auto
         return facts
 
     def _handler(self, outcome):

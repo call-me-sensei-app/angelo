@@ -38,7 +38,8 @@ import time
 
 from .approval_wait import SHIELD_SECONDS
 
-GRANTS = frozenset({"approve", "script_session_allow", "script_always_allow"})   # The chat's granting controls.
+GRANTS = frozenset({"approve", "script_session_allow", "script_always_allow",
+                     "script_remember"})   # The chat's granting controls.
 clock = time.monotonic   # Tests set a fake.
 _restarts = [0]    # Raised by ``restart``: every control in every window starts its shield again.
 UNKNOWN = ("unknown",)   # Where the pointer was before a view saw it: a first move is never a move into a control.

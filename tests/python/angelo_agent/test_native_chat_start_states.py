@@ -81,12 +81,19 @@ class ClassificationTests(unittest.TestCase):
         import ast
         found = {}
         for path in sorted(ADDON.glob("*.py")):
-            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            # An identity may be a module constant (``bl_idname = IDENTITY``): read it where the module sets it.
+            constants = {target.id: node.value.value for node in tree.body if isinstance(node, ast.Assign)
+                         and isinstance(node.value, ast.Constant) for target in node.targets
+                         if isinstance(target, ast.Name)}
+            for node in ast.walk(tree):
                 if isinstance(node, ast.ClassDef) and any(isinstance(b, ast.FunctionDef) and b.name == "modal"
                                                          for b in node.body):
                     for item in node.body:
                         if isinstance(item, ast.Assign) and any(getattr(t, "id", "") == "bl_idname" for t in item.targets):
-                            found[item.value.value] = path.name
+                            value = item.value
+                            identity = value.value if isinstance(value, ast.Constant) else constants[value.id]
+                            found[identity] = path.name
         self.assertTrue(found)
         sets = (input_policy.CANVAS_INPUTS, input_policy.PASSIVE_OVERLAYS, input_policy.HOLDING_TOOLS)
         for identity, module in sorted(found.items()):

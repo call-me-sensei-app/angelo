@@ -16,7 +16,7 @@ nobody is waiting on, so an approval click after the end can never start work wh
 No ``bpy``: host-testable.
 """
 
-from . import ui_text
+from . import share_refusal_notice, ui_text
 from .ui_text import n_
 
 ENDED = "The agent turn has ended"   # i18n: the cancelled calls' own error (plan_recovery reads it), never shown
@@ -59,6 +59,7 @@ def end_turn_calls(host):
     request (its ``model_text``). The end's record is popped whole: a request whose ``finished`` was dropped (a
     restore, a reconnect) never lends its record to a later turn. True when the account was added.
     """
+    share_refusal_notice.note(host)   # A share the turn's scripts were refused, named to the person (not the model).
     waiting = [call.id for call in list(host.pending.values()) if never_started(host, call)]
     host.cancel_tools(ENDED)
     with host.lock:

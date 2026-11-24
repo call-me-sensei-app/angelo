@@ -1,3 +1,4 @@
+import qa_hit
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
 """The geometry rules test_blender_rail_positions holds the Sessions panel to, in each of its places (1.0.6).
@@ -54,7 +55,7 @@ def shown(region):
 
 def local(region, other):
     """``other``'s rectangle in ``region``'s pixels."""
-    return (other.x - region.x, other.y - region.y, other.width, other.height)
+    return qa_hit.from_window_rect(qa_hit.RAW, region, (other.x, other.y, other.width, other.height))
 
 
 def view_obstacles(regions, region):

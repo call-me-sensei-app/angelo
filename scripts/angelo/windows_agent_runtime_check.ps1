@@ -180,6 +180,7 @@ try {
     # A pinned model-provider wire (wire_apis): `codex debug models` with a provider on it, offline (no request, no
     # key); a build without the wire refuses the setting. The same check as release_checks.py (wire_check_argv).
     foreach ($wire in @($pin.wire_apis | Where-Object { $_ })) {
+        if ($wire -cnotmatch '^[a-z][a-z0-9_]*$') { throw "The pin lists '$wire' as a model-provider wire, which is not spelled as one (runtime_wires.WIRE_NAME)" }
         $provider = "angelo_wire_check"
         $listed = Invoke-Native $codex @("-c", "model_provider=`"$provider`"", "-c", "model_providers.$provider.name=`"$provider`"",
             "-c", "model_providers.$provider.wire_api=`"$wire`"", "debug", "models") $environment

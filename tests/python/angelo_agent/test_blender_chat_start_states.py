@@ -23,7 +23,7 @@ with exactly one model has it chosen; a tool holding the window's input (a modal
 on, as some add-ons run) makes a click on the chat show a notice naming it, and once it ends the same click works;
 the generation suggestions follow the examples, and one fills the composer the same way (1.0.5); the chat bar's
 + menu offers Media Studio, Generation Flows, Workflows and the base meshes, and opens at its top level with every
-chat_destinations.TOP_LEVEL feature in view and nothing scrolled (1.0.8, recorded in ``plus_fold`` with the window and
+chat_destinations.shown() feature in view and nothing scrolled (1.0.8, recorded in ``plus_fold`` with the window and
 region size); a click on the base meshes' tile opens them as a page with Back, Back returns to the same tiles, again
 with every feature in view; Esc on the Flows page goes back and Esc at the top level closes the menu, which reopens
 at the top level (nothing is remembered); the Flows page's template opens a wired flow in its own window, Media Studio
@@ -60,6 +60,7 @@ from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 import qa_plus_menu  # noqa: E402  (the + menu's pages and fold, read from the chat's canvas state)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')  # The default Director startup and its chat.
 FAKE = OUT / "fake-cli"
@@ -126,7 +127,7 @@ def press(x, y):
 
 def at(rect, region):
     """The centre of a rect of a canvas that lays out in region pixels (the welcome, a card) as window pixels."""
-    return int(region.x + rect[0] + rect[2] / 2), int(region.y + rect[1] + rect[3] / 2)
+    return qa_hit.ipoint(qa_hit.PIXELS, region, rect)
 
 
 def at_chat(rect):
@@ -180,7 +181,7 @@ def menu_key(kind):
 
 def plus_fold(tag):
     """The launcher's fold as drawn now (``qa_plus_menu.fold``), kept in the report with the window's and the chat
-    region's size: every chat_destinations.TOP_LEVEL feature has a hit wholly inside the popup, with no scrolling."""
+    region's size: every chat_destinations.shown() feature has a hit wholly inside the popup, with no scrolling."""
     region = chat()[1]
     record = qa_plus_menu.fold(view(), (region.width, region.height))
     record["window"] = [window().width, window().height]

@@ -1512,7 +1512,13 @@ static bool start_ffmpeg_impl(MovieWriter *context,
       CLOG_INFO(&LOG, "ffmpeg: %s refused by the confinement", filepath);
       goto fail;
     }
-    if (avio_open(&of->pb, filepath, AVIO_FLAG_WRITE) < 0) {
+    /* Angelo: the file protocol only (movie_util.hh, `ffmpeg_open_input_local`): an output path that is a URL never
+     * reaches the network. */
+    AVDictionary *local_only = nullptr;
+    av_dict_set(&local_only, "protocol_whitelist", "file", 0);
+    const int opened = avio_open2(&of->pb, filepath, AVIO_FLAG_WRITE, nullptr, &local_only);
+    av_dict_free(&local_only);
+    if (opened < 0) {
       BKE_report(reports, RPT_ERROR, "Could not open file for writing");
       CLOG_INFO(&LOG, "ffmpeg: could not open file %s for writing", filepath);
       goto fail;

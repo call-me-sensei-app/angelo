@@ -325,20 +325,6 @@ void BKE_fluid_cache_free_all(FluidDomainSettings *fds, Object *ob)
   BKE_fluid_cache_free(fds, ob, cache_map);
 }
 
-Vector<angelo_writers::Input, 8> BKE_fluid_angelo_cache_inputs(const Object *ob,
-                                                               const FluidDomainSettings *fds)
-{
-  Vector<angelo_writers::Input, 8> inputs;
-  const ID *owner = ob ? &ob->id : nullptr;
-  inputs.append({owner, fds, "FluidDomainSettings", "cache_directory"});
-  for (const char *prop :
-       {"cache_data_format", "cache_mesh_format", "cache_particle_format", "cache_noise_format"})
-  {
-    inputs.append({owner, nullptr, "FluidDomainSettings", prop});
-  }
-  return inputs;
-}
-
 void BKE_fluid_cache_free(FluidDomainSettings *fds, Object *ob, int cache_map)
 {
   char temp_dir[FILE_MAX];
@@ -4522,6 +4508,22 @@ void BKE_fluid_particle_system_destroy(Object *ob, const int particle_type)
  *
  * Use for versioning, even when fluids are disabled.
  * \{ */
+
+/* Angelo: outside WITH_FLUID, like the versioning helpers: the fluid bake job (editors/physics) asks for it in every
+ * build, so a build without fluids (make lite) links. It reads only DNA. */
+Vector<angelo_writers::Input, 8> BKE_fluid_angelo_cache_inputs(const Object *ob,
+                                                               const FluidDomainSettings *fds)
+{
+  Vector<angelo_writers::Input, 8> inputs;
+  const ID *owner = ob ? &ob->id : nullptr;
+  inputs.append({owner, fds, "FluidDomainSettings", "cache_directory"});
+  for (const char *prop :
+       {"cache_data_format", "cache_mesh_format", "cache_particle_format", "cache_noise_format"})
+  {
+    inputs.append({owner, nullptr, "FluidDomainSettings", prop});
+  }
+  return inputs;
+}
 
 void BKE_fluid_cache_startframe_set(FluidDomainSettings *settings, int value)
 {

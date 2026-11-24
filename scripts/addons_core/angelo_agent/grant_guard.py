@@ -416,12 +416,12 @@ def setting(name):
     return update
 
 
-# Angelo's own surfaces (doc/angelo/grant_operators.rst, "Authority in C"): every control a surface draws is a consent
-# region in C, "<prefix><action>" with the digest of its value; a click on one runs in the grant scope its press's
-# ticket opens, and without one (the keyboard, a press that minted nothing) it runs outside any, so whatever it reaches
-# that grants refuses (``refusal``). No list of granting actions to keep: the guarded operators and entries are the
-# inventory. An approval's own controls (``SHIELDED``) are armed only after the shield and a move into them.
-SHIELDED = frozenset({"approve", "review", "script_session_allow", "script_always_allow", "confirm", "accept"})
+# Angelo's own surfaces (doc/angelo/grant_operators.rst, "Authority in C"): every drawn control is a C consent region,
+# "<prefix><action>" with its value's digest; a click runs in the grant scope its press's ticket opens, and without one
+# (a key, a press that minted nothing) outside any, so whatever it reaches that grants refuses (``refusal``). The
+# guarded operators and entries are the inventory; approval and plan controls (``SHIELDED``) arm after the shield.
+SHIELDED = frozenset({"approve", "review", "script_session_allow", "script_always_allow", "script_remember",
+                      "confirm", "accept", "plan_go", "plan_chip_stop", "plan_chip_revise"})
 MAX_REGIONS = 256
 
 
@@ -434,9 +434,9 @@ def value_digest(value):
 def canvas_regions(window, region, surface, hits, scale, rtl, prefix="canvas.", shielded=SHIELDED, focus=None,
                    popover=None, focus_moves=False):
     """Tell C where ``surface`` draws its controls now: ``hits`` are ``(rect, action, value)`` laid out unscaled in
-    ``region`` (mirrored in a right-to-left language), and which has keyboard focus (``focus``: ``(action, value)``
-    or None). C takes the focus as the person's only right after their own Tab or press on it (the maintainer's
-    keyboard ruling); a key on it then mints its ticket. ``popover`` False: no popover is open on the surface, so
+    ``region`` (mirrored in a right-to-left language; only input Blender routes to it reaches them), and which has
+    keyboard focus (``focus``: ``(action, value)`` or None). C takes the focus as the person's only right after their
+    own Tab or press on it (the maintainer's keyboard ruling); a key on it then mints its ticket. ``popover`` False: no popover is open on the surface, so
     one the person opened (``opened``) has closed. ``focus_moves``: the focus is a control a movement key acts on
     (a slider), the only kind an arrow mints for. Nothing while an agent script runs."""
     grant_authority = _authority()
@@ -450,7 +450,7 @@ def canvas_regions(window, region, surface, hits, scale, rtl, prefix="canvas.", 
     try:
         if popover is False and getattr(grant_authority.GUARD, "close_surface", None) is not None:
             grant_authority.GUARD.close_surface(window.as_pointer(), surface)
-        grant_authority.GUARD.consent_regions(window.as_pointer(), surface, tuple(regions))
+        grant_authority.GUARD.consent_regions(window.as_pointer(), surface, tuple(regions), region.as_pointer())
         action, value = focus if focus else ("", None)
         grant_authority.GUARD.focus(window.as_pointer(), surface, prefix + action if action else "",
                                     value_digest(value) if action else "", bool(focus_moves and action))

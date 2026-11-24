@@ -138,7 +138,8 @@ def field_hits(rect, scale, action, value=None, secret=False, reveal_action="rev
 
 @ui_kit.blending
 def draw_field(view, rect, scale, ui=None, fs=None, placeholder="", action="field", value=None, enabled=True,
-               time=0.0, reveal_action="reveal", paste_action="paste"):
+               time=0.0, reveal_action="reveal", paste_action="paste", trailing=0.0):
+    """``trailing``: the width of a caller's button inside the field's end, kept free of text (mirrored with it)."""
     fs = fs or FieldState()
     s = scale
     box = _box(rect, s, fs.error)
@@ -151,7 +152,7 @@ def draw_field(view, rect, scale, ui=None, fs=None, placeholder="", action="fiel
     edge = tk.CORAL if fs.error else tk.TEAL if fs.editing else FIELD_LINE_HOVER if st.hover else FIELD_LINE
     ui_kit.outline(box, radius, max(1.0, s * (1.5 if fs.error or fs.editing else 1)), edge)
     pad = 12 * s
-    right = w - pad
+    right = w - pad - trailing
     if fs.secret:
         reveal, paste_rect = _buttons(box, s)
         right = paste_rect[0] - x - 4 * s

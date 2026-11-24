@@ -199,15 +199,24 @@ def _nearest(models, tier):
     for distance in range(len(TIERS)):
         for index in (order + distance, order - distance):
             if 0 <= index < len(TIERS):
-                found = [m for m in models if m["tier"] == TIERS[index]]
+                found = sorted((m for m in models if m["tier"] == TIERS[index]), key=_within_tier)
                 if found:
                     return found
     return []
 
 
+def _within_tier(model):
+    """Order inside one tier: the cheaper published rates first, a model without rates last. A tier can hold
+    more than one model (Opus 5.5 and Fable 5.2 are both strong, GPT-6.2 Astra and GPT-6 Astra too), and the
+    catalog's order says nothing of cost, so a fallback or an escalation never reaches the dearer model of a tier
+    before the cheaper one. The sort is stable: equal rates keep the catalog's order."""
+    prices = model["prices"]
+    return (prices is None, prices["input"] + prices["output"] if prices else 0)
+
+
 def _ladder(models, chosen):
     above = [m for m in models if TIERS.index(m["tier"]) > TIERS.index(chosen["tier"])]
-    above.sort(key=lambda m: TIERS.index(m["tier"]))
+    above.sort(key=lambda m: (TIERS.index(m["tier"]), _within_tier(m)))
     return tuple(Rung(m["id"], m["tier"], m["effort"]) for m in above)
 
 

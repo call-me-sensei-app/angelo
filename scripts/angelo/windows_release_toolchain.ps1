@@ -122,6 +122,7 @@ function Invoke-Logged([string]$Log, [string]$Command) {
 # (runtime_wires.py) and windows_agent_runtime_check.ps1 run the same check.
 function Assert-RuntimeWires([string]$CodexExe, [string[]]$Wires) {
     foreach ($wire in @($Wires | Where-Object { $_ })) {
+        if ($wire -cnotmatch '^[a-z][a-z0-9_]*$') { throw "The pin lists '$wire' as a model-provider wire, which is not spelled as one (runtime_wires.WIRE_NAME)" }
         $listed = Invoke-NativeCapture $CodexExe @("-c", "model_provider=angelo_wire_check", "-c", "model_providers.angelo_wire_check.name=angelo_wire_check",
             "-c", "model_providers.angelo_wire_check.wire_api=$wire", "debug", "models")
         $models = $null

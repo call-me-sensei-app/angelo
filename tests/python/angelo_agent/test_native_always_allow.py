@@ -346,12 +346,18 @@ class AlwaysAllowTests(unittest.TestCase):
         self.assertIs(getter(None), True, "the property shows the saved choice")
 
     def test_preferences_show_the_toggle_or_the_organizations_lock(self):
+        from angelo_agent import script_access
         rows = []
+
+        def operator(name, **kwargs):
+            rows.append(("operator", name, kwargs.get("text")))
+            return SimpleNamespace()
         layout = SimpleNamespace(prop=lambda owner, name: rows.append(("prop", name)), row=lambda: layout,
-                                 label=lambda **kwargs: rows.append(("label", kwargs["text"])))
+                                 label=lambda **kwargs: rows.append(("label", kwargs["text"])), operator=operator)
         draw = ui_function("draw_always_allow", {})
         draw(layout, object())
-        self.assertEqual(rows, [("prop", "always_allow_scripts")])
+        # The toggle, then its limits link (re-read of dd87b2d5aa3, S-1): its description holds the sentence.
+        self.assertEqual(rows, [("prop", "always_allow_scripts"), ("operator", "wm.url_open", script_access.LINK)])
         rows.clear()
         with patch("angelo_agent.managed_policy.current", return_value=SCRIPTS_REVIEWED):
             draw(layout, object())

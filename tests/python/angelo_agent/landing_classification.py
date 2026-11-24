@@ -31,7 +31,8 @@ LANDS_NONE = {
     ("session_rail_input.py", "_watch"): "the rail's input handler and pictures",
     ("studio_assets_host.py", "_tick"): "the asset browser's lists", ("studio_library_ops.py", "_poll_free"):
     "reports freed space", ("thread_start.py", "function"): "retries starting a thread",
-    ("update_ui.py", "tick"): "update checks", ("update_ui.py", "_ready_tick"): "update card pace",
+    ("update_ui.py", "tick"): "update checks", ("addon_compat_live.py", "_poll"): "redraws the update card while add-on listings answer",
+    ("update_ui.py", "_ready_tick"): "update card pace",
     ("web_preview.py", "_tick"): "exports the scene for the preview (reads)",
     ("web_readback.py", "_tick"): "delivers a web export's read-back to its chat (no scene change)",
     ("worker_pool.py", "_timer"): "worker processes ahead of need",
@@ -40,12 +41,19 @@ LANDS_NONE = {
 
 # Timers that are not persistent, by why they land nothing.
 TIMERS_NONE = {
+    "the picture viewer's own work (its picture's load, a marked picture's encode and send, a paid edit's progress)": {
+        ('markup_overlay.py', '_load'), ('markup_send.py', 'deliver'), ('markup_edit_host.py', 'follow'),
+        ('markup_edit_host.py', 'finish')},
     "a hidden-window session's life (its saves, its end, its window brought up for the person)": {
         ('headless_window_app.py', 'tick'), ('headless_window_app.py', 'lambda: _bring_up(show, tries - 1) and N')},
     'AI Providers redraw': {('providers_page_endpoints.py', '_follow')},
     'AI Providers sheet and animation': {('providers_page_host.py', '_animate'), ('providers_page_host.py', '_watch_sheet'), ('providers_page_host.py', 'live_windows.deferred(lambda: bpy.contex'), ('providers_page_host.py', 'run')},
     'Preferences redraw': {('external_ui.py', '_redraw')},
+    "shows a refused Strict script protection change in the status bar": {
+        ('strict_protection.py', "lambda: studio_library_ops.report('WARNI")},
     "a bake's next step (its end lands in JobManager._end)": {('job_bake_maps.py', 'self.chain')},
+    "removes a stopped bake check's own scene once its render job ended (its facts land in JobManager._end)": {
+        ('bake_check_host.py', 'self._close_timer')},
     "a control's repeat while held": {('canvas_controls.py', 'fire')},
     "a look's progress (it ends in JobManager._end)": {('look_notify.py', '_timer')},
     'asks to free space': {('studio_assets_host.py', 'studio_library_ops.ask_free')},

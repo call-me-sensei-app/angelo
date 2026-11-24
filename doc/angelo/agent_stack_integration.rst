@@ -169,6 +169,44 @@ are left out of every pass rate, median and curve and counted in
 detection. A rate-limited run is invalid, not a failure; rerun it after the
 limit resets.
 
+Codex's own runtime log is evidence too, by the same rule on every Codex route
+(``eval_codex_logs.py``): Codex retries a throttled request itself and, on
+websockets, does not tell its client about the first retry, so neither side's
+stream shows it.
+
+* When: after each trial, once its runtime has exited, ``eval_live_agent.py``
+  (any connection on the Codex runtime, a team's included) and the MCP side's
+  Codex (``bench_mcp_codex.py``) read the trial's Codex homes.
+* Which homes: Angelo's is ``<connections or state folder>/codex-state/<connection
+  id, or mode without one>``, as ``runtime_launch`` names it. That is the trial's
+  own store, or the source store outside the trial for an API-key connection run
+  in place. The MCP side's is its per-trial ``CODEX_SQLITE_HOME``; its
+  ``CODEX_HOME`` log holds only other processes' rows and is not read.
+* Copies: every ``logs_*.sqlite`` there, with its ``-wal`` and ``-shm``, is copied
+  into the trial's ``codex-logs/``. Only the copy is read.
+* Which rows: only the trial's own. Its window runs from the trial's start, so a
+  throttle during its warm-up counts, to its runtime's exit. Its threads are the
+  ones its client named (the MCP side's stream), or else the ones first seen in
+  that window. A log shared by several runs, as every API-key connection's is,
+  therefore gives each trial only its own rows. That holds the same way on every
+  route.
+* What counts: a ``WARN`` row of ``codex_core::responses_retry`` among those rows
+  whose error field (``sampling_error=``/``compact_error=``) names a limit
+  (``limit_text``: HTTP 429, too many requests, a rate or usage limit, a quota).
+  It makes the trial invalid exactly as a retried 429 its client saw does. A
+  retry for any other reason, a 5xx among them, never counts.
+* Unverifiable: no log, an empty or unreadable log, no row of the trial's
+  threads, or one of its threads at Codex's per-thread retention (1,000 rows or
+  10 MiB, oldest dropped first) is no evidence and never invalidates. The
+  trial's ``codex_log`` record marks it ``unverifiable`` with the reason, and the
+  bench's summary counts those trials per side (``codex_log_unverifiable``, also
+  in ``SUMMARY.md``), so different detection rates stay visible.
+* Scrubbing: before a copy is kept, its credential-shaped values (tokens, keys,
+  cookies, authorization values, e-mail addresses: Codex's TRACE rows carry
+  response headers) are redacted and the file is rebuilt (``VACUUM``) and
+  checked. A copy that still holds one is deleted.
+* Claude routes keep their own evidence (``api_retry``, receipts).
+
 Harness runs also turn off Claude Code's automatic refusal fallback
 (``CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK=1`` in both sides' environments; the
 plan prints ``"refusal_fallback": "disabled"``), so a measured run keeps its

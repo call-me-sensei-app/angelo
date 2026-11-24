@@ -234,6 +234,32 @@ class MappingTests(unittest.TestCase):
                 self.assertEqual(rig.names[mapping.roles["Head"]], "head")
                 self.assertEqual(rig.names[mapping.roles["LeftHand"]], "hand_l")
 
+    def test_a_hand_whose_thumb_cannot_be_told_apart_is_still_the_hand(self):
+        """Digits all alike (a stylised three- or four-fingered hand, parallel fingers): the bone they hang from is
+        the hand, its fingers unmapped with a note, never the outermost fingertip (rigging lane, 2026-11-15: the
+        IK and body-pose suites' humanoid got a fingertip as its Hand)."""
+        for pose in ("T", "A"):
+            for count, segments in ((3, 2), (4, 3), (3, 3)):
+                with self.subTest(pose=pose, digits=count, segments=segments):
+                    b = humanoid(pose=pose, fingers=False)
+                    drop = math.radians(45.0) if pose == "A" else 0.0
+                    for side, sign, s in (("Left", 1.0, "l"), ("Right", -1.0, "r")):
+                        out = np.array([sign * math.cos(drop), 0.0, -math.sin(drop)])
+                        tip = np.array([sign * 0.15, 0, 1.42]) + out * 0.61
+                        for k in range(count):
+                            prev = "hand_" + s
+                            base = tip + np.array([0.0, (k - (count - 1) / 2) * 0.02, 0.0])
+                            for j in range(segments):
+                                head = base + out * 0.03 * j
+                                prev = b.add("digit_%d_%d_%s" % (k, j, s), prev, head, head + out * 0.03)
+                    rig = b.rig()
+                    mapping = map_roles(rig)
+                    for side, s in (("Left", "l"), ("Right", "r")):
+                        self.assertEqual(rig.names[mapping.roles[side + "Hand"]], "hand_" + s, mapping.notes)
+                        self.assertEqual(rig.names[mapping.roles[side + "LowerArm"]], "lowerarm_" + s)
+                        self.assertNotIn(side + "IndexProximal", mapping.roles)
+                    self.assertTrue(any("thumb" in note for note in mapping.notes), mapping.notes)
+
     def test_unweighted_end_bones_are_left_out(self):
         b = humanoid()
         b.add("head_end", "head", (0, 0, 1.8), (0, 0, 1.9))

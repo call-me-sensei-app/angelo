@@ -18,8 +18,8 @@ from bpy.types import AddonPreferences, Menu, Operator
 
 from . import grant_guard  # noqa: E402  (only the person grants: grant_guard.grant)
 from . import console, docking, preferences_ui, chat_popovers, chat_titles, chat_view, saved_keys_ui, state_paths, native_suggestions, team_account_ui
-from . import shared_keys_ui
-from . import agent_runtime, camera_preview_setting, runtime_bindings, document_identity, document_scene, external_ui, fab_preferences, job_desktop_prefs, live_windows, parallel_setting, script_errors, text_layout, worker_consent_lead, worker_dispatch, worker_mirror_reader, worker_resume
+from . import script_access, shared_keys_ui
+from . import agent_runtime, camera_preview_setting, runtime_bindings, document_identity, document_scene, external_ui, fab_preferences, job_desktop_prefs, live_windows, parallel_setting, preference_definitions, script_errors, strict_protection, text_layout, worker_consent_lead, worker_dispatch, worker_mirror_reader, worker_resume
 from . import approval_wait, changes_popup, chat_guard, chat_pending, chat_start_states, conversations_ui, edit_tool_hold, goal_loop, model_picker_ui, layout_hold, timer_jobs
 from .ui_kit import paragraph   # Dialog sentences wrap, so a longer translation is never clipped.
 from .pump_guard import keep_alive
@@ -241,6 +241,8 @@ def get_controller():
             document_identity.restore(_controller, sys.modules[__name__])   # Waits for its own file, if not open.
             from .memory_project_ui import schedule
             schedule(sys.modules[__name__], _controller)
+            from .crash_resume_ui import offer
+            offer(_controller)   # Its newest request cut off when Angelo closed: a card with Continue (crash_resume).
             _controller.api_key = _memory_keys.get(_controller.state.get("connection_id"), _memory_keys.get(_controller.state["provider"], ""))
             _controllers[_sessions.active] = _controller
             _controller.delegation_resolver = resolve_collaborator
@@ -391,6 +393,8 @@ def prepare_controller(controller=None):   # An app's External conversation (ext
     document_identity.remember(controller, sys.modules[__name__])   # The file it works on, for a relaunch.
     from .memory_project_ui import bind_current
     bind_current(sys.modules[__name__], controller)
+    from .project_rules_host import apply as apply_rules
+    apply_rules(sys.modules[__name__], controller)   # The person's standing rules, read as this request starts.
     controller.apply_next_connection()
     mode = prefs.provider if prefs else "codex_subscription"
     record = connection_record(controller)
@@ -490,6 +494,8 @@ def draw_ai_providers(layout, context):
                 box.label(text=iface_("API credits available: {balance}", balance=format(result.balance, "g")), translate=False)
     layout.separator()
     draw_always_allow(layout, prefs)  # Outside the connection groups: a team-only organization still sees it.
+    if prefs is not None:
+        layout.prop(prefs, "strict_script_protection")
     agent_changes_forget.draw_preferences(layout)
     from . import studio
     studio.draw_enhancer_settings(layout)
@@ -514,7 +520,8 @@ def draw_native_suggestions(layout, store):
 
 
 class ANGELO_Preferences(fab_preferences.FabPreferences, job_desktop_prefs.JobDesktopPreferences, parallel_setting.ParallelPreferences,
-                         camera_preview_setting.CameraPreviewPreferences, AddonPreferences):
+                         camera_preview_setting.CameraPreviewPreferences, strict_protection.StrictProtectionPreferences,
+                         AddonPreferences):
     bl_idname = __package__
     provider: EnumProperty(name="Connection", items=PROVIDERS, default="codex_subscription")
     codex_model: StringProperty(name="Codex model", default="")
@@ -544,9 +551,9 @@ class ANGELO_Preferences(fab_preferences.FabPreferences, job_desktop_prefs.JobDe
     # Always allow scripts: a view of the choice always_allow.py saves; only the person changes it (the setter's guard).
     always_allow_scripts: BoolProperty(
         name="Always allow scripts", get=always_allow_get, set=always_allow_set,
-        description="In chats set to Auto, connected apps' chats included, run Angelo's agent's Python scripts without "
-                    "asking (never code an app sends itself). Scripts have full access to files, the network and other "
-                    "apps on this computer. Ask before changes still asks; Read only still refuses")
+        description=" ".join(("In chats set to Auto, connected apps' chats included, run Angelo's agent's Python scripts "
+                              "without asking (never code an app sends itself).", script_access.SENTENCE,
+                              "Ask before changes still asks; Read only still refuses")))
     # Voice is hidden by default until it can be tested properly; this opt-in shows the microphone again (voice_ui.py).
     experimental_voice: BoolProperty(name="Experimental voice", default=False,
                                      description="Show the microphone in the chat. Needs macOS, a ChatGPT (Codex) connection "
@@ -562,11 +569,15 @@ class ANGELO_Preferences(fab_preferences.FabPreferences, job_desktop_prefs.JobDe
         self.layout.label(text="Connections are in Preferences > AI Providers.")
         self.layout.prop(self, "helper_standing_consent")
         draw_always_allow(self.layout, self)
+        self.layout.prop(self, "strict_script_protection")
         agent_changes_forget.draw_preferences(self.layout)
         draw_platform_preference(self.layout, self, "experimental_voice")
         self.layout.operator("angelo.settings", text="Open AI Providers", icon='PREFERENCES')
 
 
+# Every preference's definition as imported, written anew before each registration (preference_definitions: a
+# script's in-place change of a definition never reaches a later register_class).
+fresh_preference_definitions = preference_definitions.keep(ANGELO_Preferences)
 NOT_ON_THIS_SYSTEM = n_("Coming to this system in a later update.")
 
 
@@ -1558,8 +1569,8 @@ class ANGELO_OT_approve(Operator):
             # one Undo step are in the worker's document, so no Undo operator runs here; it runs on the chat's lane.
             worker_dispatch.approve(controller, call)
             return {'FINISHED'}
-        if call.name in {"angelo_memory_update", "angelo_discard_preview"}:
-            # Saving public notes or deleting an isolated disk stage can't become an Undo entry or need document authority.
+        if call.name in {"angelo_memory_update", "angelo_discard_preview", "angelo_context_folder_write"}:
+            # Saving notes (task memory, the working folder's text files) or deleting an isolated disk stage can't become an Undo entry or need document authority.
             controller.execute_tool(call, BlenderExecutor(main_window()), document_key())
             return {'FINISHED'}
         stage_only = call.name in {"angelo_scene_program", "angelo_apply_recipe"} and call.arguments.get("mode") == "PREVIEW"
@@ -1860,9 +1871,11 @@ def pump():
             from . import agent_target_labels
             for target in controllers if not edit_tool_hold.running() else ():   # It reads objects: never under it.
                 agent_target_labels.prepare(target, window, document_key())
-            # One shared native-operation budget across every chat. Advance
-            # from the last chat that admitted work, rather than from empty
-            # chats, so a busy background session cannot starve another one.
+            # One shared native-operation budget across every chat, taken in
+            # turn (``pump_controller_tools``): a chat that admitted work or
+            # spent the tick goes to the back, one reached with the tick spent
+            # goes first next tick, so neither a busy nor a slow session
+            # starves another.
             def apply_mutation(target, call):
                 with bpy.context.temp_override(window=window):
                     grant_guard.automatic(bpy.ops.angelo).approve('EXEC_DEFAULT', True, call_id=call.id,
@@ -2009,6 +2022,7 @@ def register():
         _authentication = NativeAuthentication()
     if _api_connections.closed:
         _api_connections = ApiConnections()
+    fresh_preference_definitions()
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     # Temporary addon enablement does not create its AddonPreferences record.
@@ -2019,6 +2033,7 @@ def register():
         _transient_preferences = True
     from . import always_allow
     always_allow.attach(state_directory())   # The person's saved choice (off when never set).
+    strict_protection.register(state_directory())   # C's flag from the saved choice (off when never set).
     preferences_ui.register()
     from . import agent_workspace_ui
     agent_workspace_ui.register()
@@ -2036,18 +2051,7 @@ def register():
     flow_ui.register()
     from . import director
     director.register()
-    connections()
-    for mode in ("codex_subscription", "claude_subscription", "codex_api"):
-        try:
-            _authentication.start(mode, connection_settings(mode), state_directory())
-        except Exception:
-            _authentication.status[mode] = Text(n_("Native runtime unavailable"))
-    for record in connections().records.values():
-        if not record["reuse_native"] and record["mode"] in {"codex_subscription", "codex_api", "claude_subscription"}:
-            try:
-                _authentication.start(record["mode"], connection_settings(record["mode"], record=record), state_directory(), identity=record["id"])
-            except Exception:
-                _authentication.status[record["id"]] = Text(n_("Not connected"))
+    connections()   # The sign-in checks start in start_native_checks, once the guard knows Angelo's own folders.
     # Prompt-free loads on the saved-key worker (Keychain, Credential Manager or keyring); results apply in pump().
     saved_keys_ui.start(sys.modules[__name__], background=bpy.app.background)
     team_account_ui.register()  # A stored team sign-in resumes on its worker; team connections appear in pump().
@@ -2083,10 +2087,28 @@ def register():
             _keymaps.append((keymap, item))
 
 
+def start_native_checks():
+    """Start-up sign-in checks: each mode, then each connection with its own runtime profile. Called by the add-on's
+    register after ``install_app``: a check builds its private profile only in a folder C knows as Angelo's
+    (``storage.private_profile``), and before that every one was refused (test_native_startup_checks_order)."""
+    for mode in ("codex_subscription", "claude_subscription", "codex_api"):
+        try:
+            _authentication.start(mode, connection_settings(mode), state_directory())
+        except Exception:
+            _authentication.status[mode] = Text(n_("Native runtime unavailable"))
+    for record in connections().records.values():
+        if not record["reuse_native"] and record["mode"] in {"codex_subscription", "codex_api", "claude_subscription"}:
+            try:
+                _authentication.start(record["mode"], connection_settings(record["mode"], record=record), state_directory(), identity=record["id"])
+            except Exception:
+                _authentication.status[record["id"]] = Text(n_("Not connected"))
+
+
 def unregister():
     global _controller, _layout_timer, _sessions, _transient_preferences, _connections, _catalogs
     from . import always_allow, external_host, references
     always_allow.detach()  # A disabled add-on keeps no consent; registering again reads the saved choice.
+    strict_protection.unregister()
     references.refresh_readers(reset=True)
     external_host.shutdown()
     from . import worker_routing

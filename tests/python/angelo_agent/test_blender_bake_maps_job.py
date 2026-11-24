@@ -9,7 +9,9 @@ view stays usable: the main thread's longest gap while it runs is measured); the
 Unreal preset in the chat's files and a baked material that is not assigned but bound to the target for Angelo's
 exports (doc/angelo/long_jobs.rst, "Baked materials at export"); Use Baked Material assigns it; the
 person's materials, images and node groups are exactly as they were; a second bake stopped mid-way publishes
-nothing and leaves nothing behind; and the Cycles bake ran on the GPU where this machine has one.
+nothing and leaves nothing behind; a third, stopped while its bake check renders a picture (Blender's render job),
+keeps its set, says the check was stopped and leaves no check scene or picture behind (doc/angelo/long_jobs.rst,
+"Bake check"); and the Cycles bake ran on the GPU where this machine has one.
 
 Run through ``run_native_suites.py --gui --include test_blender_bake_maps_job``; check ``bake-maps-job.json`` for
 ``success`` and ``phase == "complete"``. The screenshots are the GUI proof (Director, the default view).
@@ -35,6 +37,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 import bake_maps_fixtures as fx  # noqa: E402
 import qa_plus_menu  # noqa: E402  (the + menu's pages, read from the chat's canvas state)
+import qa_hit
+import qa_waits  # noqa: E402  (the runner's --timeout-scale and machine factor)
 product_env.clear('DISABLE_DEFAULT_CHAT')
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-bake-maps-qa"))
 OUT.mkdir(parents=True, exist_ok=True)
@@ -90,10 +94,35 @@ def card_hit(action, value=None):
     active = card_host._active
     area = next(a for a in window().screen.areas if a.as_pointer() == active.area)
     region = next(r for r in area.regions if r.type == 'WINDOW')
-    for (x, y, w, h), name, found in reversed(active.plan.hits):
+    for rect, name, found in reversed(active.plan.hits):
         if name == action and (value is None or found == value):
-            return region.x + x + w / 2, region.y + y + h / 2
+            return qa_hit.point(qa_hit.PIXELS, region, rect)
     return None
+
+
+def plus_dump(error):
+    """What the + menu showed when a step did not come: the steps taken, the hits, the page's rows, the sizes and a
+    screenshot (state["plus_dump"]), so a timeout says whether events, geometry or the hit list kept the row away."""
+    v = view()
+    menu = qa_plus_menu.popup(v)
+    area, region = chat()
+    win = window()
+    state["plus_dump"] = {
+        "error": str(error), "steps": state.get("plus_steps", [])[-40:],
+        "window": [win.width, win.height], "chat_region": [region.x, region.y, region.width, region.height],
+        "chat_area": [area.x, area.y, area.width, area.height], "is_open": qa_plus_menu.is_open(v),
+        "page": qa_plus_menu.page(v), "drawn_page": qa_plus_menu.drawn_page(v),
+        "chat_hits": [[list(r), a, str(val)] for r, a, val in v.get("hits", [])][:60],
+        "popup_hits": [[list(h[0]), h[1], str(h[2])] for h in qa_plus_menu.hits(v)][:80],
+        "popup_rect": list(v.get("popup_rect") or []),
+        "rows": [{key: (str(value) if key == "value" else value) for key, value in row.items()
+                  if key in ("action", "value", "kind", "depth")} for row in (menu.get("rows") or [])][:60],
+        "scroll": menu.get("scroll"), "layout": {key: value for key, value in (menu.get("layout") or {}).items()
+                                                  if key in ("rect", "max_scroll")}}
+    try:
+        capture("bake-maps-plus-timeout.png")
+    except Exception as capture_error:   # The dump is still worth having without the picture.
+        state["plus_dump"]["screenshot_error"] = str(capture_error)
 
 
 def build_scene():
@@ -124,6 +153,14 @@ def scratch_left():
     return any(image.name.startswith("Angelo Bake") for image in bpy.data.images)
 
 
+def check_left():
+    """What a bake check leaves: its scene, or a picture folder of its family in a private scratch root."""
+    from angelo_agent import bake_check_host, private_roots
+    folders = [folder / name for folder, prefix in private_roots.families() if prefix == "angelo-bake-check-"
+               and folder.is_dir() for name in os.listdir(folder) if name.startswith(prefix)]
+    return bake_check_host.SCENE_NAME in bpy.data.scenes, folders
+
+
 def tree_states():
     return {material.name: fx.tree_state(material) for material in bpy.data.materials}
 
@@ -140,10 +177,11 @@ def finish(error=None):
 
 
 def wait(phase, condition, limit=30):
+    """True once ``condition`` holds; raises after ``limit`` seconds times the runner's --timeout-scale."""
     since = state.setdefault("since", {}).setdefault(phase, time.monotonic())
     if condition():
         return True
-    if time.monotonic() - since > limit:
+    if time.monotonic() - since > limit * qa_waits.timeout_scale():
         raise AssertionError("Timed out in " + phase)
     return False
 
@@ -160,7 +198,7 @@ def probe():
     half second), which is the harness waiting, not the main thread; counted there it read as a 0.57 s stall on every
     app (3e36393's app with 3fc1f94's harness fails, 3fc1f94's app with 3e36393's passes: Mac, 2026-11-17)."""
     now = time.monotonic()
-    if ticks["last"] is not None and state["phase"] in {"running", "stopping"}:
+    if ticks["last"] is not None and state["phase"] in {"running", "stopping", "check_stopping"}:
         ticks["longest"] = max(ticks["longest"], now - ticks["last"])
         ticks["count"] += 1
     ticks["last"] = now
@@ -171,7 +209,7 @@ def tick():
     from angelo_agent import card_host, director
     phase = state["phase"]
     try:
-        assert time.monotonic() - started < 420, "Suite timed out"
+        assert time.monotonic() - started < 420 * qa_waits.timeout_scale(), "Suite timed out"
         if phase == "boot":
             if not (qa_boot.started() and director.is_director(window())):
                 return .3
@@ -188,11 +226,20 @@ def tick():
             state["phase"] = "plus"
             return .6
         if phase == "plus":
-            if wait(phase, lambda: qa_plus_menu.is_open(view()), limit=6):
+            try:
+                opened = wait(phase, lambda: qa_plus_menu.is_open(view()), limit=6)
                 # The Render group's tile opens its page, then the row is clicked, as a person does (1.0.8).
-                kind, rect = qa_plus_menu.step(view(), "popup_add_open", "bake_maps")
-                if kind in ("open", "back", "scroll", "scroll_up", "wait"):
+                kind, rect = qa_plus_menu.step(view(), "popup_add_open", "bake_maps") if opened else (None, None)
+                if opened:
+                    state.setdefault("plus_steps", []).append(
+                        [round(time.monotonic() - started, 2), kind, list(rect) if rect else None])
+                if opened and kind in ("open", "back", "scroll", "scroll_up", "wait"):
                     wait("plus_row", lambda: False, limit=6)   # Raises once the row has not come in 6 s.
+            except AssertionError as error:
+                plus_dump(error)
+                raise
+            if opened:
+                if kind in ("open", "back", "scroll", "scroll_up", "wait"):
                     if kind in ("scroll", "scroll_up"):
                         wheel = 'WHEELUPMOUSE' if kind == "scroll_up" else 'WHEELDOWNMOUSE'
                         for value in ('PRESS', 'RELEASE'):
@@ -269,7 +316,8 @@ def tick():
                 binding.ao and not binding.sources and binding.cage is None and \
                 binding.digest == export_baked.digest(crate, bpy.context.evaluated_depsgraph_get(), ao=True)
             checks["a_glTF_export_says_the_unreal_packing_stays_out"] = found["packing"] == [(crate.name, "UNREAL")]
-            checks["the_main_thread_never_stalled_half_a_second"] = ticks["longest"] < 0.5
+            # Calibrated on the reference Mac and scaled to this machine (qa_waits.machine_limit).
+            checks["the_main_thread_never_stalled_half_a_second"] = ticks["longest"] < qa_waits.machine_limit(0.5)
             # A probe that stopped (or never ran) would pass the bound above: it ran at least twice a second.
             checks["the_probe_measured_the_whole_bake"] = ticks["count"] >= 2 * state["measured"]["job_seconds"]
             shown = state["measured"]["device"] or {}
@@ -345,6 +393,54 @@ def tick():
                 len(bpy.data.node_groups) - gltf_groups() == groups - state["gltf_groups_before"] and not scratch_left()
             state["measured"]["main_thread_gap_while_stopping_s"] = round(ticks["longest"], 3)
             capture("bake-maps-6-stopped.png")
+            card_host.close()   # Not a synthetic press: one still on its way could land on the next card.
+            state["phase"] = "third"
+            return .5
+        if phase == "third":   # A small set with a baked material, stopped while its check renders a picture.
+            if not state.get("third_opened"):
+                if not wait("third_close", lambda: not card_host.is_active("bake_maps")):
+                    return .2
+                state["third_opened"] = True
+            bpy.ops.angelo.bake_maps()
+            if not wait(phase, lambda: card_host.is_active("bake_maps") and card_host._active.plan is not None):
+                return .2
+            card = card_host.active_card()
+            card.size, card.material = 512, True
+            card_host.refresh("bake_maps")
+            state["phase"] = "third_bake"
+            return .4
+        if phase == "third_bake":   # Once the card is drawn: its Bake button has a place.
+            if not card_host.is_active("bake_maps"):   # Closed under it after all: open it again.
+                state["phase"] = "third"
+                return .2
+            if not wait(phase, lambda: card_hit("bake") is not None):
+                return .2
+            press(*card_hit("bake"))
+            state["phase"] = "check_stopping"
+            return .3
+        if phase == "check_stopping":
+            from angelo_agent import bake_check_host
+            current = record()
+            rendering = bake_check_host.SCENE_NAME in bpy.data.scenes and bpy.app.is_job_running("RENDER")
+            if current is not None and current["status"] == "running" and rendering and not state.get("check_stop"):
+                state["check_stop"] = time.monotonic()
+                state["measured"]["check_render_running_at_stop"] = True
+                press(*card_hit("stop"))
+            if current is None or current["status"] not in {"cancelled", "done", "failed"}:
+                wait(phase, lambda: False, limit=240)
+                return .05
+            receipt = current.get("receipt") or {}
+            check = (receipt.get("facts") or {}).get(state["crate"], {}).get("bake_check")
+            state["measured"]["stopped_check"] = check
+            scene_left, folders = check_left()
+            state["measured"]["check_left"] = {"scene": scene_left, "folders": len(folders)}
+            checks["a_check_stopped_mid_picture_keeps_the_set_and_says_so"] = current["status"] == "done" and \
+                check == {"skipped": "stopped"} and bool(state.get("check_stop"))
+            checks["a_stopped_check_leaves_no_scene_or_picture"] = not scene_left and not folders
+            state["measured"]["main_thread_gap_with_check_s"] = round(ticks["longest"], 3)
+            checks["the_main_thread_never_stalled_half_a_second_with_the_check"] = \
+                ticks["longest"] < qa_waits.machine_limit(0.5)
+            capture("bake-maps-7-check-stopped.png")
             state["phase"] = "complete"
             finish()
             return None

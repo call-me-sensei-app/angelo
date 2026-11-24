@@ -10,6 +10,7 @@
  */
 
 #include "bpy_angelo_guard_confine_winpath.hh"
+#include "bpy_angelo_guard_confine_remote.hh"
 
 #include <cctype>
 
@@ -108,16 +109,12 @@ std::wstring to_wide(const std::string &utf8, bool *r_ok)
   if (utf8.empty()) {
     return {};
   }
-  const int size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(), int(utf8.size()), nullptr, 0);
-  if (size <= 0) {
-    return {};
+  if (utf8.find('\0') != std::string::npos) {
+    return {}; /* An embedded NUL names nothing the caller meant. */
   }
-  std::wstring wide(size_t(size), L'\0');
-  if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(), int(utf8.size()), wide.data(), size) != size) {
-    return {};
-  }
-  *r_ok = wide.find(L'\0') == std::wstring::npos; /* An embedded NUL names nothing the caller meant. */
-  return wide;
+  std::wstring wide;
+  *r_ok = utf8_to_wide(utf8, wide); /* The confinement's one decoder (remote.hh). */
+  return *r_ok ? wide : std::wstring();
 }
 
 std::string to_utf8(const std::wstring &wide, bool *r_ok)
@@ -228,13 +225,7 @@ Extended extended(const std::string &utf8)
 /** Opens a component without following it; `INVALID_HANDLE_VALUE` with the error kept on failure. */
 HANDLE open_unfollowed(const std::wstring &path)
 {
-  return CreateFileW(path.c_str(),
-                     0,
-                     FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                     nullptr,
-                     OPEN_EXISTING,
-                     FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
-                     nullptr);
+  return HANDLE(open_for_lookup(path, false)); /* Never a remote name on a share nobody connected. */
 }
 
 bool missing(const DWORD error)
@@ -303,13 +294,7 @@ std::string followed_path(const std::string &utf8)
     return {};
   }
   /* Opened as a program start opens it: every link followed, the last one included. */
-  HANDLE handle = CreateFileW(path.path.c_str(),
-                              0,
-                              FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                              nullptr,
-                              OPEN_EXISTING,
-                              FILE_FLAG_BACKUP_SEMANTICS,
-                              nullptr);
+  HANDLE handle = HANDLE(open_for_lookup(path.path, true));
   if (handle == INVALID_HANDLE_VALUE) {
     return {};
   }

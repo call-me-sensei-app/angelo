@@ -12,6 +12,9 @@ told from an unstarted one after the fact.
 * ``expired``: the step's approval card was shown and nobody answered before its deadline (``tool_deadlines``).
 * ``timed_out``: the step ran out of time before it could start (queued, held for its scene, an approved edit waiting
   for playback or the writer lease); nothing live ran.
+* ``closed``: Angelo closed (a crash, a forced quit) while the step waited, was queued or ran; the reopened chat's
+  Continue card says from the call journal whether it may have applied (``crash_resume_ui.offer`` sets it). It reads
+  *Stopped*, never a live state nothing is in any more.
 
 An ended step reads as a neutral *Expired · nothing ran* chip (``status`` / ``activity_text``), never a red *Failed*,
 and its opened row says why (``detail``). No ``bpy``: host-testable.
@@ -19,11 +22,12 @@ and its opened row says why (``detail``). No ``bpy``: host-testable.
 
 from .ui_text import iface_, n_
 
-EXPIRED, TIMED_OUT = "expired", "timed_out"
-VALUES = frozenset({EXPIRED, TIMED_OUT})
-STATUS = {EXPIRED: "expired", TIMED_OUT: "expired"}   # activity_text.step_status's value for each.
+EXPIRED, TIMED_OUT, CLOSED = "expired", "timed_out", "closed"
+VALUES = frozenset({EXPIRED, TIMED_OUT, CLOSED})
+STATUS = {EXPIRED: "expired", TIMED_OUT: "expired", CLOSED: "stopped"}   # activity_text.step_status's value for each.
 DETAIL = {EXPIRED: n_("Nobody answered in time, so this step didn't run. Ask again if you still want it."),
-          TIMED_OUT: n_("This step ran out of time before it could start, so it didn't run.")}
+          TIMED_OUT: n_("This step ran out of time before it could start, so it didn't run."),
+          CLOSED: n_("Angelo closed before this step finished. The card below says whether it may have applied.")}
 
 
 def nothing_live_ran(call):

@@ -32,7 +32,8 @@ class StartGap(HostedFixture):
         folder.mkdir()
         chat = Hosted(str(folder))
         self.addCleanup(chat.close)
-        chat.chat_host = SimpleNamespace(arrivals=None, forward=lambda *args: None, journal_written=lambda chat: None)
+        chat.chat_host = SimpleNamespace(arrivals=None, forward=lambda *args: None, journal_written=lambda chat: None,
+                                         observe=lambda chat, starting=None: None)   # No lead to tell.
         chat.busy = True
         chat.state["options"]["approval"] = "AUTO_BOUNDED"
         chat.set_document(("worker-part", 7))

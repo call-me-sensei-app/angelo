@@ -1003,7 +1003,7 @@ static void paint_brush_default_essentials_name_get(const bke::paint::AssetCateg
       }
       break;
     case bke::paint::AssetCategory::GPencilSculpt:
-      name = "Smooth";
+      name = "Pull";
       if (brush_type) {
         switch (eBrushGPSculptType(*brush_type)) {
           case GPSCULPT_BRUSH_TYPE_CLONE:

@@ -46,6 +46,7 @@ ui.refresh_connected_models = lambda *args, **kwargs: None
 addon_utils.enable('angelo_agent', default_set=False, persistent=False)
 from angelo_agent import parallel_access, parallel_capability, tool_specs  # noqa: E402
 from angelo_agent import providers_page_host as page  # noqa: E402
+import qa_hit
 
 bpy.context.preferences.view.show_splash = False
 bpy.context.preferences.use_preferences_save = False   # Never written: a disposable profile, and nothing kept.
@@ -198,8 +199,7 @@ def tick():
             if not state.get('sent'):
                 if not scroll_into_view(choices()[value], target, area, region):   # A warning moved it down.
                     return .3
-                qa_input.press(target, lambda: (region.x + choices()[value][0] + choices()[value][2] / 2,
-                                                region.y + choices()[value][1] + choices()[value][3] / 2))
+                qa_input.press(target, lambda: qa_hit.point(qa_hit.PIXELS, region, choices()[value]))
                 state['sent'] = True
                 return .3
             if not wait(lambda: prefs.parallel_workers == value):

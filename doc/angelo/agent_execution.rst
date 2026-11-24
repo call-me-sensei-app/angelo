@@ -734,16 +734,46 @@ turn only when
 
 * nothing has come from the model for 600 s (``IDLE_SECONDS``): a hung process
   or connection. Every event of the model's answer counts (the API's stream
-  events, thinking included, not only text); the runtime's own notices, such
-  as a retry, a keep-alive or the ``ping`` Claude Code puts into a quiet
-  stream, do not; or
+  events, thinking included, not only text). On Claude the runtime's own
+  notices, such as a retry, a keep-alive or the ``ping`` Claude Code puts into
+  a quiet stream, do not. On Codex a notification counts once the turn's scope
+  matches it (``CodexProvider._scoped_event``), including the notice of a
+  re-send the runtime makes itself (``error`` with ``willRetry``); the
+  model-input image proof (``turn/modelInputImages``) and the echo of a steer
+  after Stop return before it and do not count. The runtime's re-sends are
+  bounded per provider (``ai_providers.rst``, "Silent model streams"), and the
+  stretch limit below still caps each stretch; or
 * one stretch of model work has lasted 1,800 s without a result
   (``STRETCH_SECONDS``): a runaway response. A Claude round is one stretch. A
   Codex turn starts a new stretch whenever the host hands back a tool result.
 
 While the host holds a call for a Codex turn (``RuntimeContext.tools_pending``:
 waiting for approval, or running) neither clock runs; each call has its own
-expiry, above. Effort is not an input: a stream of events says directly what a
+expiry, above. Neither runs during a wait the runtime announced
+(``TurnActivity.advise``): the agent runtime's notice of a re-send names its
+wait (``error`` with ``willRetry`` and ``retryDelayMs``, every server-advised or
+5-second wait since the fork's 2.1.0 pin), and Claude Code's ``api_retry`` names
+``retry_delay_ms``. A provider's Retry-After can be many minutes (576 s in the
+2.1.0 Sol gate). Both clocks restart at the wait's deadline, as for a new
+request, so a runtime that is silent after it is still given up on. One turn's
+provider waits may rest the clocks for ``ADVISED_SECONDS`` (an hour) in all; a
+wait longer than what is left of that is not waited for: the turn ends at once
+("the provider asked to wait about N minutes…", ``ADVISED``), never with a
+countdown that reaches a false zero. The live row counts a provider's wait down
+("Provider busy — retrying in N s", the translated text of the host's own resend
+wait), never calls it a stall, and says "Provider busy, retrying…" once it has
+passed and nothing has come yet; the check and the status are one step under the
+turn's lock, so an answer that arrives meanwhile keeps its own status. A wait the
+runtime announces as a network wait (``retryWaitKind`` "network": waiting to
+reconnect) reads "Can't reach the provider · check your internet connection",
+rests only the silence clock and never starts a new stretch, so a turn offline
+for a whole stretch ends saying the provider could not be reached (``NETWORK``),
+not as long model work. A notice without a finite wait above zero changes
+nothing, and none raises. Stop ends any announced wait at once, and if the
+runtime has not ended the turn ``STOP_SECONDS`` (30 s) after Stop, the host ends
+it itself as stopped (``STOPPED``), whatever the wait; the countdown never
+overwrites the row's Stopping. ``test_native_provider_retry_wait.py`` pins it on
+both runtimes. Effort is not an input: a stream of events says directly what a
 higher effort could only suggest, and a runtime that sends nothing looks the
 same at every effort. Stop works throughout. The error names which limit was
 reached ("nothing came from the model for 10 minutes", "one stretch of model
@@ -7349,3 +7379,52 @@ any Auto chat (`Script approvals`_).
 Host tests: ``test_native_always_allow.py``. Native: the script card and its
 offer in ``test_blender_chat_cards`` and ``test_blender_translation``; the
 Preferences toggle's guard needs the compiled app (``test_blender_chat_cards``).
+
+Scripts remembered for a project
+================================
+
+A build script the agent runs again and again needs one approval, not one per run (``reviewed_scripts``; consent
+``reviewed_script``).
+
+**Off in 2.1.0** (``reviewed_scripts.OFFERED = False``; break-it re-read of 23413c6bae1, M-1): a check over a script's
+text can't promise "only its own bytes", because a remembered script can run Python kept elsewhere (a text block through
+``wm.context_set_value``, a ``logging.config`` factory, Blender's other string evaluators). Nothing is offered, nothing
+remembered runs unasked, and the Rules page has no Scripts tab. It turns on only once a run-time check in C refuses
+every compile, exec or import outside the approved bytes (Blender's own runners included) and is re-reviewed;
+``script_reach`` then only decides whether to show the button. What follows is the mechanism as built, tested with the
+switch on.
+
+* **Offered** on a script's approval card, as its standing-consent button (**Always run this exact script in this
+  project**), only once the person has opened that script's exact text (``TrustedScripts.offers_remember_script``),
+  outside a recovery review, and never while an agent script runs (``trusted_scripts_ui.remember_script_from_card``),
+  so no script approves itself. A card asked again a moment ago takes no click (``review_again``).
+* **Bound to the bytes,** never a name, description or path: the SHA-256 of the script's UTF-8 text. One changed byte
+  is another script, which asks. What is remembered is the text C approved when the person opened it
+  (``APPROVED_SCRIPTS``), never what the call holds by the press (the 2.1.0 break-it review, A-1).
+* **Only its own bytes.** What a script reads (a text block, a file, a scene property) isn't covered, and the card
+  says so. A script Angelo sees may run code from outside its text isn't offered this (``script_reach``, A-2 and
+  review rounds 2 and 3): judged on its syntax tree, one judgement per name whether it is written as a name, an
+  attribute, a constant ``getattr``/``setattr`` argument or an import; imports only from the app's modules and an
+  allow-list of Python's; and the import system's state, star imports, Python's string runners, code objects, another
+  program, a driver expression that isn't a constant and Blender's driver namespace. Each script is judged once, by
+  its digest. A check over text can't recognise every way, so the card asks the person to check what the script
+  loads rather than promising one.
+* **Held in C** (grant_operators.rst, "Authority in C"): each remembered script is also ``reviewed_scripts`` in C's
+  ledger, a namespace C defines as it starts. Only the person's own aimed press on the card's button (a shielded
+  control) widens it; reading the saved list mirrors it into C as Angelo's own decision, never while an agent script
+  runs. A script runs unasked only while the file and C both hold it, so nothing a script changes in Python or on disk
+  is a consent.
+* **Per user and project.** Kept in the person's state folder (``reviewed-scripts.json``, owner-only), never in a
+  .blend, a chat or a transcript, so a downloaded project brings no approval with it. A project is its document id and
+  its real path together: a copy elsewhere, or another file that borrowed the id, is another project; an unsaved
+  document has none, so nothing is offered. At most 200 scripts per project and 100 projects, oldest dropped first.
+* **Effect** (``script_consent_kind``): the remembered bytes run without asking in Ask and in Auto bounded edits;
+  Read only still rejects them. Never in an External conversation (``script_file`` is its own), a worker chat (its
+  document is a copy; a hosted worker's ``LeasedConsent`` offers and applies none), a changed document or a closing
+  chat, nor with ``AllowAutoApproval`` off, nor for a script ``consent_excluded`` names (preferences, Angelo's
+  add-on). Checked at admission and again at dispatch (``script_authorized``), so a removal reaches a script already
+  waiting.
+* **Seen and removed** on the chat's Rules page, Scripts tab (``rules_sheet``): what each script said it does, its size
+  and when it was remembered, with Remove; the next run of a removed script asks again.
+
+Tests: ``test_native_reviewed_scripts``.

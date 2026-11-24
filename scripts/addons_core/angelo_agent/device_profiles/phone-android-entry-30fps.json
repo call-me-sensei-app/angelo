@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "id": "phone-android-entry-30fps",
+  "name": "Phone, Android entry level (OpenGL ES 3.0), 30 fps",
+  "fps": 30,
+  "basis": "OpenGL ES 3.0 guarantees ETC2/EAC textures in its core (Khronos OpenGL ES 3.0 specification), so every Android device with ES 3.0 or later reads them. ETC2 RGBA for colour (alpha kept) and normal maps. Budgets are left unset: a team sets its own in its own profile.",
+  "texture_formats": {
+    "default": "ETC2_RGBA"
+  },
+  "passes_per_primitive": 1,
+  "budgets": {
+    "triangles": null,
+    "vertices": null,
+    "draw_calls": null,
+    "texture_memory_mb": null,
+    "bones": null,
+    "influences": null,
+    "morph_targets": null,
+    "file_mb": null,
+    "app_mb": null
+  }
+}

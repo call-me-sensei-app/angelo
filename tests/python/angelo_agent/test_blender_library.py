@@ -42,6 +42,7 @@ from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402
 import qa_input  # noqa: E402
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-library-qa"))
@@ -178,8 +179,7 @@ def capture(name):
 
 
 def centre(rect):
-    r = region()
-    return r.x + rect[0] + rect[2] / 2, r.y + rect[1] + rect[3] / 2
+    return qa_hit.point(qa_hit.RAW, region(), rect)   # The overlay's input reads region pixels, never mirrored.
 
 
 def type_text(text):
@@ -205,14 +205,14 @@ def tile(identity):
 
 def ground_point(offset_x):
     r = region()
-    return r.x + r.width / 2 + offset_x, r.y + r.height * 0.28
+    return qa_hit.xy(qa_hit.RAW, r, r.width / 2 + offset_x, r.height * 0.28)
 
 
 def cube_point():
     from bpy_extras.view3d_utils import location_3d_to_region_2d
     cube = bpy.data.objects.get("Cube")
     point = location_3d_to_region_2d(region(), view3d().spaces.active.region_3d, cube.matrix_world.translation)
-    return region().x + point.x, region().y + point.y
+    return qa_hit.xy(qa_hit.RAW, region(), point.x, point.y)
 
 
 def library_objects():

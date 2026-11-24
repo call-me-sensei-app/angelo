@@ -242,6 +242,21 @@ patched Codex build it bundles, or the one ``ANGELO_AGENT_RUNTIME`` names
 applies to Claude Code, and to Codex only in a build without the runtime or
 with ``ANGELO_AGENT_RUNTIME=off``.
 
+The runtime never loads the person's own ``~/.codex/config.toml``
+(``--ignore-user-config``; doc/angelo/releasing.rst, "Agent runtime"): it
+reuses their ChatGPT sign-in and what that sign-in reads there (where it is
+kept, the keyring backend ``features.secret_auth_storage``, the organization's
+sign-in rules), plus an analytics or feedback opt-out (``enabled = false``; an
+opt-in is not carried). Its proxy settings (``features.respect_system_proxy``,
+``features.system_proxy_fallback``) do not apply: Angelo's agents follow
+``HTTPS_PROXY``/``NO_PROXY`` (``enterprise_policy.rst``). A gateway set there
+(``openai_base_url``, ``chatgpt_base_url``) does not apply inside Angelo: route
+through Angelo's custom-endpoint setting instead. With
+``ANGELO_AGENT_RUNTIME=off`` a release build runs the person's own Codex with
+its own settings, and the chat says so. Under the shared ChatGPT-plan sign-in,
+Angelo's chats are stored as Codex sessions in ``~/.codex/sessions`` beside the
+person's own (a known limit).
+
 ``cli_runtime.py`` (no ``bpy``). A Finder-launched macOS app inherits the
 minimal ``/usr/bin:/bin:/usr/sbin:/sbin`` PATH, which misses Homebrew,
 npm-global and Node-version-manager installs of ``claude`` and ``codex``. So
@@ -255,10 +270,16 @@ executable file:
    (Claude's native installer), ``~/.npm-global/bin``, ``~/.volta/bin``,
    ``~/.asdf/shims``, ``~/.local/share/mise/shims``, ``~/.nodenv/shims``,
    ``~/.bun/bin``, ``~/.yarn/bin``, pnpm and Cargo homes, the prefixes named by
-   ``NPM_CONFIG_PREFIX``, ``VOLTA_HOME``, ``ASDF_DATA_DIR``, ``PNPM_HOME``,
+   ``NPM_CONFIG_PREFIX``, ``HOMEBREW_PREFIX``, ``VOLTA_HOME``, ``ASDF_DATA_DIR``, ``PNPM_HOME``,
    ``BUN_INSTALL`` and ``N_PREFIX``, ``/opt/homebrew/bin``, ``/usr/local/bin``,
    ``/opt/local/bin``, and the ``bin`` of the newest six nvm and fnm Node
-   versions.
+   versions. For Linux, whose desktop launchers start apps with as short a PATH:
+   Claude Code's per-user ``~/.claude/local``, Homebrew on Linux
+   (``~/.linuxbrew/bin``, and ``HOMEBREW_PREFIX`` as its shellenv sets it), Snap's
+   ``/snap/bin`` and Nix's profiles (``~/.nix-profile/bin``,
+   ``/nix/var/nix/profiles/default/bin``, ``/run/current-system/sw/bin``). The
+   not-found and too-old messages name Linux's installers there (Claude Code's
+   ``install.sh`` or npm; Linux has no Homebrew casks).
 4. Only when all of those miss: the PATH a login shell exports. It is probed
    once per process (the answer, even an empty one, is remembered), with ``-l``
    (the login profile, where Homebrew, Volta and asdf add their directories; not
@@ -680,6 +701,17 @@ Linux keyrings, KDE, Flatpak and Snap
 
 Based on the sources listed in `Saved-key sources`_. No
 row has run on a real Linux system yet; see `How to continue (saved keys)`_.
+
+**The bundled Codex's own key store on Linux.** A ``codex_api`` connection
+launches Codex with ``cli_auth_credentials_store="keyring"``. The pinned fork
+builds its ``keyring-store`` crate on Linux with ``keyring`` 3.6's
+``linux-native-async-persistent`` backend: the freedesktop Secret Service over
+``zbus`` (pure Rust, no ``libdbus``), with the kernel keyring only as a cache in
+front of it, so the key lives in the person's login keyring and survives a
+logout or reboot like Angelo's own saved keys. Read from the fork's
+``codex-rs/keyring-store/Cargo.toml`` at the pin; **not yet run** on a real
+desktop. Owner: Linux QA (lane D), with the keyring rows above, on the final
+candidate.
 
 .. list-table:: Saved API keys on Linux
    :header-rows: 1
@@ -1453,8 +1485,11 @@ form never offers ``TEAM``.
   host, before any setting, so the team route stays uncompressed. Keys are never on
   argv or in a file. ``codex_team`` takes the personal OpenAI mode's path
   (``team_runtime.openai_service``): deferred tools and typed plans. It has no
-  account catalog, so its models are pinned (GPT-6.1 Sol, the default, and
-  GPT-6 Astra, efforts low/medium/high). Catalog and balance probes are never
+  account catalog, so its models are pinned (GPT-6.2 Sol, the default,
+  GPT-6.2 Astra, GPT-6.1 Sol and GPT-6 Astra, efforts low/medium/high). The
+  6.2 models need a runtime whose bundled catalog lists them (codex-cli
+  0.169.1 and later); an older one runs them on Codex's generic fallback,
+  without code mode. Catalog and balance probes are never
   sent: the gateway refuses them.
 * **Media Studio, Flows and AI Enhance** use the in-memory access token
   (``Authorization: Bearer``) against the provider's gateway route
@@ -2062,8 +2097,8 @@ pinned runtime that declares it, as the Gemini API connection does),
 ``requires_openai_auth = false``, ``supports_websockets = false``, no request
 compression, the key by ``env_key`` for ``Authorization: Bearer`` and by
 ``env_http_headers`` for any other header or scheme, the fixed headers as
-``http_headers``, and the format's own provider settings (Gemini keeps
-``stream_idle_timeout_ms`` at 900,000). Web search is off: Codex's is a hosted
+``http_headers``, and the wire's silent-stream rules (see "Silent model
+streams"). Web search is off: Codex's is a hosted
 OpenAI tool that a server may not pass through. Voice is refused.
 
 ``anthropic-messages`` runs on Claude Code with ``ANTHROPIC_BASE_URL`` set to the
@@ -2085,7 +2120,16 @@ name (``endpoint_connections.claude_model_overrides``, Claude Code's documented
 way to "correct the window for a gateway or custom model ID"); Claude Code then
 treats the server's name as that model. A worker's launch carries the overrides
 Angelo derives from the chat's own endpoint, never a list the worker sent.
-Unmapped models keep the 200K assumption.
+Unmapped models, and the server's default when no model is chosen, keep the
+200K assumption: Claude Code 2.1.323 and later assume 1M for a name they
+don't know, so a smaller server model would fill and fail every turn, and
+such a launch's ``--settings`` sets ``CLAUDE_CODE_DISABLE_1M_CONTEXT=1``
+(``endpoint_connections.claude_window_unknown``; a worker's launch gets the
+same rule from the chat's endpoint). A mapped or real Claude name keeps its
+own window: Claude Code's aliases and any Anthropic model ID (``claude-``
+followed by a Claude family, such as ``claude-opus-4-8``), whether or not
+Angelo prices it, and any name with the ``[1m]`` suffix
+(``endpoint_connections.claude_code_places``).
 
 The child reaches the endpoint's host only (``team_network.apply`` with that
 host; every other connection is refused). The host names one server for every
@@ -2109,10 +2153,18 @@ Model profiles
 
 A model mapped to an Angelo model inherits that model's efforts, image input and
 context window from the registry, and Codex gets that model's own catalog entry
-under the server's name (``endpoint_catalog``: copied from the runtime's bundled
-catalog, ``codex debug models --bundled``, and passed as ``model_catalog_json``),
-so its requests take the same form, tool-output budget and context as the model
-itself. An unmapped model is offered, labelled untested in the model picker; it
+under the server's name (``endpoint_catalog``: copied from the runtime's catalog
+for the profile's own wire, ``codex debug models --bundled`` for Responses and
+the Gemini wire's own listing for a Gemini model, and passed as
+``model_catalog_json``), so its requests take the same form, tool-output budget
+and context as the model itself. An explicit catalog replaces Codex's built-in
+one for the format's wire, so the written catalog also carries that wire's own
+entries after Angelo's: a server model named as the runtime names one keeps
+what it had without a catalog. A listing runs offline from an empty CODEX_HOME
+and folder of its own (nobody's configuration reaches it); a failed listing is
+logged once and tried again at a launch 30 seconds or more later, a successful
+one is kept for the runtime's life, and concurrent launches share one listing
+and never one temporary file. An unmapped model is offered, labelled untested in the model picker; it
 has no effort control, and its turns send no reasoning level (the server's
 default applies), and Codex uses its generic metadata. A format whose every model
 maps to an OpenAI model gets the OpenAI request features (deferred tools, typed
@@ -2272,14 +2324,15 @@ not evidence of this boundary. Native clarification requests are rejected
 Gemini 4 Carbon
 ===============
 
-Google's ``gemini-4-carbon`` is the one Gemini coding model Angelo offers
-(``provider_registry.SPECS["gemini_api"]``): connection type *Gemini API*, a
-Google AI Studio key, efforts low, medium and high (Carbon's thinking cannot be
-turned off), **medium** by default, its 1,048,576-token window shared by input,
-thinking and output. No other Gemini model is listed, whatever the key's
-catalog holds; the connection check reads that catalog
-(``GET /v1beta/models?pageSize=1000`` with the ``x-goog-api-key`` header, no
-inference) and admits only Carbon.
+Google's ``gemini-4-carbon`` and ``gemini-4-neon`` (`Gemini 4 Neon`_) are the
+Gemini coding models Angelo offers (``provider_registry.SPECS["gemini_api"]``;
+maintainer 2026-11-23): connection type *Gemini API*, a Google AI Studio key.
+Carbon is the connection's default, with efforts low, medium and high (Carbon's
+thinking cannot be turned off), **medium** by default, its 1,048,576-token
+window shared by input, thinking and output. No other Gemini model is listed
+(Argon stays out), whatever the key's catalog holds; the connection check reads
+that catalog (``GET /v1beta/models?pageSize=1000`` with the ``x-goog-api-key``
+header, no inference) and admits only Carbon and Neon, the ones it lists.
 
 Google serves Gemini over its own ``generateContent`` API and an OpenAI-style
 Chat Completions layer, not the Responses API the other coding connections use
@@ -2289,15 +2342,146 @@ a wire that only Angelo's agent runtime provides (``wire_api = "gemini"`` in its
 that wire (the ``gemini`` entry of ``agent_runtime.json`` ``wire_apis``;
 ``agent_runtime.supports_wire``, ``provider_registry.available``), so no build lists a connection its runtime
 would fail on, and ``runtime_launch.codex_command`` refuses to start it on the
-person's own Codex. Its provider entry raises Codex's stream idle limit to 15
-minutes (``provider_settings``): Carbon can think for minutes before its first
-byte, and Google advises client timeouts of at least 15 minutes. Angelo's Codex
+person's own Codex. Its provider entry carries the Gemini wire's rules for a
+silent stream (see "Silent model streams"). Angelo's Codex
 opening carries no date, time or per-chat path (``runtime_launch``), so Gemini's
 implicit prefix cache can reuse it across chats. There is no team route yet:
 the gateway's ``google`` routes admit the image paths only.
 
 Prices in ``model_profiles`` are Google's standard rates (from 2026-12-01; the
 introductory rates through 2026-11-30 are half).
+
+Gemini 4 Neon
+-------------
+
+``gemini-4-neon`` runs on the same connection, key, wire and runtime as Carbon:
+Google documents the same Gemini 4 API with no request schema changes (thought
+signatures returned unchanged), paid tier only (checked 2026-11-23,
+aistudio.google.com/docs/whats-new-gemini-4-neon and /docs/models). It is
+listed after Carbon, which stays the connection's default, so existing
+connections and chats keep Carbon; a chat runs Neon when its person picks it,
+each turn naming the chosen model. Its window is the same shared 1,048,576
+tokens (65,536 synchronous output), images in. The pinned runtime's Gemini wire
+lists Carbon alone, so each launch of the connection lists that wire's catalog
+offline and passes Codex a catalog (``endpoint_catalog``, ``model_catalog_json``)
+in which Neon has Carbon's entry under its own name, efforts and default
+(``provider_registry.RUNTIME_ENTRY_LIKE``): without it Codex would run Neon on
+its generic fallback (10 KB of tool output, generic shell and patch tools). A
+runtime that cannot list the catalog launches as before. Efforts are low, medium and
+high, **high** by default (the common rule, no exception). Google also offers
+``xhigh``, which Angelo does not list yet: the bundled runtime's Gemini wire
+sends xhigh and above as ``high``, so the choice would silently run at high;
+it waits for the runtime's mapping. Neon rejects ``minimal``, which no Gemini
+model here lists. Prices are $3 / $15 per million tokens, $0.15 for an implicit
+cache read from 4,096 tokens; there is no explicit caching. The runtime's own
+helper tasks stay on Carbon. A custom endpoint's ``gemini`` model may name
+``gemini-4-neon`` as its profile.
+
+Silent model streams
+====================
+
+A provider can keep a request open and send nothing, or fail it partway. The
+agent runtime re-sends such a request itself, and the host gives up on the turn
+only later (``turn_activity.IDLE_SECONDS``, 600 s; ``agent_execution.rst``,
+"How long a turn may run"). Every provider entry Angelo writes carries its
+wire's rules (``provider_registry.STREAM_SETTINGS``, written by
+``team_runtime.model_provider_entry`` and
+``endpoint_connections.provider_entry``), so registry, team and custom-endpoint
+connections on one wire share them, and none falls back to a runtime default
+the host never checked:
+
+* ``responses``: a silent stream is re-sent after 300 s, and a failed or silent
+  request up to 5 times (the runtime's own Responses rules, written out).
+* ``gemini``: a failed or silent Gemini request is re-sent once; a request
+  counts as silent after 360 s with no data, both before its response starts
+  (Gemini sends its headers only with its first output) and between the
+  stream's chunks. Gemini thinks for long stretches
+  without streaming anything. The longest quiet stretch of a healthy turn in the
+  2.0.0 and 2.1.0 gate records was 168 s (697 completed turns, p99 102 s). That
+  stretch is the time with nothing visible in the chat, and a runtime event the
+  chat does not show ends a stream's silence without ending the stretch, so no
+  healthy stream was silent for longer. 360 s is about twice that and 240 s
+  under the host's limit. Only one re-send, because each repeats the whole
+  prompt (mostly cached) and its thinking. Before 2.1.0 the wire waited 900 s
+  with no re-send (Google advises long client timeouts), longer than the host:
+  a request that went silent after a tool result was never re-sent, and the
+  person read an error after 10 minutes although the edit had committed (9 of
+  742 Gemini gate turns on 2.0.0 and 2.1.0; none of 1,470 Claude and ChatGPT
+  turns). The runtime log of the 2.1.0 Neon miss shows that phase: after the
+  tool result the follow-up request never got its response headers (time to
+  headers over 688 healthy Gemini requests: p50 5.7 s, p99 83.5 s, max
+  179.8 s), and in the pinned runtime nothing bounded that wait until the
+  fork's 2.1.0 pin.
+
+Since the fork's 2.1.0 pin, ``stream_idle_timeout_ms`` bounds both waits on
+every HTTP streaming wire (``EndpointSession.stream_encoded_json_with``:
+Responses over HTTP and the Gemini wire): the wait for a response to start (its
+headers), per send attempt, so backoff and a server's Retry-After between
+attempts never count and an attempt that fails sooner keeps its own error, and
+the silence between its chunks. Both end in the same retryable error, so
+``stream_max_retries``, the announced wait and the host's countdown apply to
+both. Each window stays under the host's limit on its own; a response that
+starts just before the limit and then goes silent can pass the host's limit in
+all, and then the host gives up first, with its own message. A request the
+runtime cuts may still finish, and bill, on the provider's side, and its
+re-send repeats the whole prompt (mostly cached).
+
+A custom endpoint (an organization's own server, often self-hosted or behind a
+buffering proxy) may hold its headers through a prompt prefill whose length
+Angelo cannot know, on any wire, so its entry outlasts every hosted wire's:
+570 s, just under the host's 600 s (which alone bounded that wait before), and
+one re-send, since a re-send repeats the whole prefill
+(``provider_registry.ENDPOINT_STREAM_SETTINGS``). Both apply to the whole request
+on an endpoint, not only to its start: 570 s is also its silence limit between
+chunks (a stalled stream is noticed later than on a hosted wire), and the one
+re-send also covers a transient 5xx or a dropped connection, where a
+Responses-wire endpoint had the runtime's five before. Responses over WebSockets was already bounded: its handshake by
+``websocket_connect_timeout_ms`` and each frame, the first after a request
+included, by the idle limit.
+
+``stream_max_retries`` governs the runtime's re-send of the whole model request
+whatever ended it (codex ``session/turn.rs`` ``run_sampling_request`` and
+``compact.rs``), not only silence: a stream that broke partway, a dropped
+connection, a 5xx answer, and a 429 or 503 the provider gave a retry delay
+for. A compaction request is re-sent the same way. On Gemini each of these is
+therefore re-sent once, where before the turn ended at once. The runtime
+announces each re-send (``error`` with ``willRetry``, "Reconnecting…") and,
+since the fork's 2.1.0 pin, names its wait (``retryDelayMs``). That notice rules
+out the host's own resend of the turn (``codex_retry``: retries never stack),
+the chat counts the wait down, and the host's clocks rest until it has passed
+(``agent_execution.rst``, "How long a turn may run").
+
+A re-send repeats the turn's recorded history, a finished tool call and its
+output included, so no tool runs twice and the host sends no turn of its own.
+
+Time to an error, from the last thing the runtime sent:
+
+* a request that hangs (before or after its response starts), then a re-send
+  that hangs too: about 720 s (360 s twice), then the runtime's error;
+* before 2.1.0, a hang before the response started: 600 s, the host's
+  give-up, with no re-send; after it started: the same, since the 900 s idle
+  limit outlasted the host.
+
+The host's stretch limit (1,800 s) still caps each stretch of model work, and a
+tool result handed back starts a new stretch, so it caps a stretch, not the
+whole turn.
+
+Gates: a re-send the runtime makes after a 429 counts in the receipt as
+``provider_retries_rate``, which the harness reads as a provider limit
+(``eval_provider_limits.THROTTLE_RESENDS``): the trial is invalid, as a
+throttled Gemini turn already was before (the host's resend counted the same,
+or the turn ended on a "Too many requests" row). A re-send after silence, a
+broken stream or a 5xx is not a limit: the trial stays valid and its time
+includes the wait.
+
+``test_native_stream_silence.py`` checks every entry Angelo writes and every
+wire the runtime may run against the host's limit, from the configuration rather
+than a list of providers; ``stream_settings`` refuses a wire without rules.
+
+Not covered: Claude Code connections have no runtime provider entry; Claude Code sends
+keep-alives and retries on its own. The runtime's built-in OpenAI provider
+(ChatGPT sign-in, OpenAI API key) has no Angelo entry and keeps the runtime's
+Responses rules.
 
 One key for several connections
 ===============================

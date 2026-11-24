@@ -43,6 +43,18 @@ def source(window, checked, references, controller):
     except Exception:
         references.discard_observation(reference)
         raise
+    facts = page_facts(server)
+    note = ""
+    if facts["page_version"] is not None and facts["page_version"] != server.version:
+        note = " The page was still loading the latest export when it drew this."
+    return Source(reference["path"], reference["name"], "The live web preview in the browser", facts, reference,
+                  then=THEN, note=note, framing="WEB_PREVIEW")
+
+
+def page_facts(server):
+    """What the open page reported: the export version it shows, its web shaders, the look it applied and what it
+    frames (``web_preview_frame``: mode, Follow, the objects or camera framed), so the agent knows what the person's
+    browser looks at."""
     feedback = dict(server.feedback)
     facts = {"image": "WEB", "preview_version": server.version,
              "page_version": feedback.get("version"), "web_shaders": feedback.get("shaders", [])[:32]}
@@ -50,11 +62,10 @@ def source(window, checked, references, controller):
         facts["look"] = {key: feedback["look"][key] for key in ("toneMapping", "exposure", "outputColorSpace",
                                                                "environment", "light", "background", "pending")
                          if key in feedback["look"]}
-    note = ""
-    if facts["page_version"] is not None and facts["page_version"] != server.version:
-        note = " The page was still loading the latest export when it drew this."
-    return Source(reference["path"], reference["name"], "The live web preview in the browser", facts, reference,
-                  then=THEN, note=note, framing="WEB_PREVIEW")
+    frame = server.page_frame()
+    if frame is not None:
+        facts["framing"] = {key: frame[key] for key in ("mode", "follow", "framed", "camera")}
+    return facts
 
 
 def _linked(references, Source, engine_link_capture):

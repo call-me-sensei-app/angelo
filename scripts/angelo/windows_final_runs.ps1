@@ -78,16 +78,6 @@ function Get-Meta([string]$Name, [string]$Default = "") {
 # The billed runs' expected accounts, sent in metadata by the operator's kit (never in this repository); every run inherits them.
 $codexAccount = "$(Get-Meta 'angelo-bench-codex-account' '')".Trim(); if ($codexAccount) { $env:ANGELO_TEST_CODEX_ACCOUNT = $codexAccount }
 $claudeAccount = "$(Get-Meta 'angelo-bench-claude-account' '')".Trim(); if ($claudeAccount) { $env:ANGELO_TEST_CLAUDE_ACCOUNT = $claudeAccount }
-function Refresh-Path {
-    $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
-}
-function Add-MachinePath([string]$Folder) {
-    $machine = [Environment]::GetEnvironmentVariable("Path", "Machine")
-    if (($machine.Split(";") | Where-Object { $_ -eq $Folder }).Count -eq 0) {
-        [Environment]::SetEnvironmentVariable("Path", "$Folder;$machine", "Machine")
-    }
-    Refresh-Path
-}
 function Invoke-Checked([string]$File, [string[]]$Arguments) {
     & $File @Arguments
     if ($LASTEXITCODE -ne 0) { throw "$File $($Arguments -join ' ') exited with $LASTEXITCODE" }
@@ -114,6 +104,7 @@ function Read-Facts { if (Test-Path (Join-Path $state "facts.json")) { Get-Conte
 . (Join-Path $PSScriptRoot "windows_bench_preboot.ps1")   # Assert-PrebootReady, Wait-PrebootCandidate (functions only)
 . (Join-Path $PSScriptRoot "windows_release_toolchain.ps1")   # the release build folder's name (functions only)
 . (Join-Path $PSScriptRoot "windows_session_start.ps1")   # Wait-SessionStarted, Get-SessionNotStarted (functions only)
+. (Join-Path $PSScriptRoot "windows_bench_session_command.ps1")   # a request's session command in place of final_runs.py
 
 # The commit under test: the commit sent, once the tree is proven to be it (windows_source_send.ps1), never metadata.
 # Each mode reads it inside its own error handling: a refusal here, outside the session's try, would never write
@@ -274,6 +265,9 @@ if ($Session) {
         if ($facts.oneshot_sources) { $env:ANGELO_ONESHOT_SOURCES = $facts.oneshot_sources }
         $py = $facts.harness_python
         $gateKey = Use-GateKey $py $SourceDir $bench @($facts.api_key_accounts) "load"   # Before any trial; unloaded below.
+        if (Get-BenchSessionInput) {   # The request's own session command (windows_bench_session_command.ps1).
+            $code = Invoke-BenchSessionCommand (Join-Path $bench "session-$Nonce") (Join-Path $state "facts.json") $connections
+        } else {
         if (-not (Test-Path (Join-Path $campaign "CONFIG.json"))) {
             # The campaign's scope is the machine's selection (angelo-bench-only): without an MCP side, init needs no
             # stock Blender or MCP side, and the facts have none.
@@ -301,6 +295,7 @@ if ($Session) {
         }
         & $py $finalRuns status --output $campaign
         & $py $finalRuns report --output $campaign | Set-Content (Join-Path $campaign "REPORT.json")
+        }
     } catch {
         $reason = "$_"
         Write-Host "bench session failed: $_"
@@ -439,6 +434,7 @@ if (-not (Test-Path (Join-Path $connections "SIGNED-IN"))) { throw "not signed i
 $winlogon = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
 $run = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
 $prepared = Join-Path $state "session-$nonce"
+$sessionDir = Join-Path $bench "session-$nonce"; if (Get-BenchSessionInput) { Receive-BenchSessionCommand (Get-BenchSessionInput) $Bucket $sessionDir }
 if (-not (Test-Path $prepared)) {
     Add-Type -AssemblyName System.Web
     $pw = [System.Web.Security.Membership]::GeneratePassword(20, 4) + "aA1!"
@@ -472,6 +468,7 @@ if (-not (Test-Path $prepared)) {
     # the next send's new user was refused it). A file moved in, or a folder whose rights do not inherit, gets the group.
     Get-ChildItem $bench -Directory -Filter "*connections" | ForEach-Object { & icacls.exe $_.FullName /grant "${benchGroup}:(OI)(CI)M" /T /C /Q | Out-Null }
     foreach ($folder in $SourceDir, $logs) { & icacls.exe $folder /grant "${benchGroup}:(OI)(CI)M" /C /Q | Out-Null }
+    if (Test-Path $sessionDir) { & icacls.exe $sessionDir /grant "${benchGroup}:(OI)(CI)M" /T /C /Q | Out-Null }   # A session command's folder.
     if (-not (Test-Path "HKLM:\SOFTWARE\Microsoft\ServerManager")) { New-Item "HKLM:\SOFTWARE\Microsoft\ServerManager" | Out-Null }
     Set-ItemProperty "HKLM:\SOFTWARE\Microsoft\ServerManager" DoNotOpenServerManagerAtLogon 1 -Type DWord
     $command = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{0}" -Session -SourceDir "{1}" -Mode {2} -Nonce {3}' -f $PSCommandPath, $SourceDir, $mode, $nonce
@@ -495,6 +492,7 @@ Remove-ItemProperty $run AngeloFinalRuns -ErrorAction SilentlyContinue
 $cleanup = @($staleUser, (Remove-BenchUser $benchUser)) | Where-Object { $_ }   # In the result: it fails the request.
 if ($cleanup) { Write-Host "== $($cleanup -join '; ')"; $result = "$result; $($cleanup -join '; ')" }
 if (Test-Path $campaign) { Invoke-Gcloud @("storage", "rsync", "--recursive", $campaign, "gs://$Bucket/bench/$short") -Optional }
+if (Get-BenchSessionInput) { Publish-BenchSessionCommand $sessionDir $Bucket $nonce }
 Invoke-Gcloud @("storage", "cp", "--quiet", (Join-Path $state "facts.json"), "gs://$Bucket/bench/facts-$short.json") -Optional
 if ($result -notmatch "exit code: 0$") { exit 1 }
 exit 0

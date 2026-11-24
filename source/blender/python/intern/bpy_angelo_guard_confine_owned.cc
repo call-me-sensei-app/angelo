@@ -95,18 +95,22 @@ bool born_since(const std::string &path, const struct timespec &since, bool unkn
          (info.st_birthtimespec.tv_sec == since.tv_sec &&
           info.st_birthtimespec.tv_nsec >= since.tv_nsec);
 #elif defined(_WIN32)
-  WIN32_FILE_ATTRIBUTE_DATA data;
-  int size = MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, nullptr, 0);
-  std::wstring wide(size > 0 ? size : 1, L'\0');
-  if (size <= 0 || MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, wide.data(), size) <= 0 ||
-      !GetFileAttributesExW(wide.c_str(), GetFileExInfoStandard, &data))
-  {
+  std::wstring wide;
+  if (!utf8_to_wide(path, wide)) {
     return false;
   }
-  ULARGE_INTEGER created;
-  created.LowPart = data.ftCreationTime.dwLowDateTime;
-  created.HighPart = data.ftCreationTime.dwHighDateTime;
-  return blender::file_time::nanoseconds_from_filetime(created.QuadPart) >=
+  /* The entry itself, not followed (as `GetFileAttributesExW` reads it), through the confinement's only lookup. */
+  HANDLE handle = HANDLE(open_for_lookup(wide, false));
+  if (handle == INVALID_HANDLE_VALUE) {
+    return false;
+  }
+  FILE_BASIC_INFO basic;
+  const bool known = GetFileInformationByHandleEx(handle, FileBasicInfo, &basic, sizeof(basic)) != 0;
+  CloseHandle(handle);
+  if (!known) {
+    return false;
+  }
+  return blender::file_time::nanoseconds_from_filetime(uint64_t(basic.CreationTime.QuadPart)) >=
          blender::file_time::nanoseconds_saturated(since.tv_sec, since.tv_nsec);
 #else
   (void)path;
@@ -139,18 +143,11 @@ bool text_argument(PyObject *arg, std::string &out)
  * when it can't be opened. Opened for no access, sharing read, write and delete. */
 bool win_identity(const std::string &path, uint64_t &volume, uint64_t index[2])
 {
-  const int size = MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, nullptr, 0);
-  std::wstring wide(size > 0 ? size : 1, L'\0');
-  if (size <= 0 || MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, wide.data(), size) <= 0) {
+  std::wstring wide;
+  if (!utf8_to_wide(path, wide)) {
     return false;
   }
-  HANDLE handle = CreateFileW(wide.c_str(),
-                              0,
-                              FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                              nullptr,
-                              OPEN_EXISTING,
-                              FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
-                              nullptr);
+  HANDLE handle = HANDLE(open_for_lookup(wide, false));
   if (handle == INVALID_HANDLE_VALUE) {
     return false;
   }
@@ -443,6 +440,8 @@ bool record_owned(const std::string &path)
 void owned_region_began()
 {
   writable_region_began();
+  remote_region_began(); /* Roots named from now on may hold what a script appended: their shares are not noted. */
+  lookup_cache_forget(); /* The folders resolved before may hold a link since (wrap_lookup.cc). */
   /* File systems stamp with a coarse clock (Linux: the last tick), which can read earlier than this precise one:
    * 20 ms earlier still counts as made in the region (a script can make nothing in Angelo's private folders). */
   timespec_get(&region_began, TIME_UTC);
@@ -536,10 +535,8 @@ static PyObject *guard_make_owned_dir(PyObject * /*self*/, PyObject *args)
     char suffix[17];
     snprintf(suffix, sizeof(suffix), "%08x%08x", unsigned(source()), unsigned(source()));
     const std::string candidate = parent + "\\" + prefix + suffix;
-    const int size = MultiByteToWideChar(CP_UTF8, 0, candidate.c_str(), -1, nullptr, 0);
-    std::wstring wide(size > 0 ? size : 1, L'\0');
-    if (size > 0 && MultiByteToWideChar(CP_UTF8, 0, candidate.c_str(), -1, wide.data(), size) > 0 &&
-        CreateDirectoryW(wide.c_str(), &attributes))
+    std::wstring wide;
+    if (utf8_to_wide(candidate, wide) && !wide.empty() && CreateDirectoryW(wide.c_str(), &attributes))
     {
       made = candidate;
     }

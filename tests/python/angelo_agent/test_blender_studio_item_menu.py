@@ -44,6 +44,7 @@ import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 from angelo_agent import studio, studio_assets, studio_assets_host, studio_item_menu  # noqa: E402
 from angelo_agent.studio_state import StudioLibrary  # noqa: E402
 import qa_input  # noqa: E402
+import qa_hit
 
 REPORT = OUT / "studio-item-menu.json"
 state = {"phase": "boot", "success": False, "checks": {}, "details": {}, "screenshots": []}
@@ -171,8 +172,7 @@ def layout(window):
 def tile(area, identity):
     hit = next((r for r, action, value in studio.view(area).get("hits", []) if action == "asset" and value == identity),
                None)
-    region = region_of(area)
-    return (region.x + hit[0] + hit[2] / 2, region.y + hit[1] + hit[3] / 2) if hit else None
+    return qa_hit.point(qa_hit.mirrored_about(studio.view(area).get("mirror")), region_of(area), hit) if hit else None
 
 
 def red_near(path, xy, area):

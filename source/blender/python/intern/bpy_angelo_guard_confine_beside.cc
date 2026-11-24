@@ -43,6 +43,7 @@
 
 #include "bpy_angelo_guard_confine.hh"
 #include "bpy_angelo_guard_confine_intern.hh"
+#include "bpy_angelo_guard_confine_remote.hh"
 #include "bpy_angelo_guard_confine_vouches.hh"
 
 namespace blender::angelo_guard {
@@ -179,6 +180,9 @@ std::string make_below(const std::string &anchor,
     const std::string next = current + (current.back() == SEP ? "" : std::string(1, SEP)) + parts[i];
     if (last && file) {
 #ifdef _WIN32
+      if (!lookup_may_touch(next)) {
+        return ""; /* A remote name on a share nobody connected: never created (remote.hh). */
+      }
       FILE *handle = BLI_fopen(next.c_str(), "wbx"); /* Exclusive: never an existing file, nor a link put there. */
       if (handle == nullptr) {
         return "";
@@ -313,6 +317,16 @@ namespace blender {
 
 using namespace angelo_guard;
 
+void BPY_angelo_guard_connections_at_start()
+{
+  remote_connections_at_start();
+}
+
+void BPY_angelo_guard_connections_ready()
+{
+  remote_connections_ready();
+}
+
 void BPY_angelo_guard_document_settled()
 {
   const char *document = BKE_main_blendfile_path_from_global();
@@ -320,6 +334,13 @@ void BPY_angelo_guard_document_settled()
                                                                           parent_key(write_key(document, false));
   /* The thread's confinement only: the window manager calls this with no GIL held (startup's own load). */
   const bool scripts = confined_now();
+  /* The person's document on a share: theirs, so it stays usable after scripts ran (remote.hh). Not while any
+   * thread is confined: a script's queued open never counts. */
+  if (document != nullptr && document[0] != '\0') {
+    note_person_document(document,
+                         !scripts && BLI_fileops_confine_open.load(std::memory_order_acquire) == 0 &&
+                             !python_on_stack()); /* The person's own open only (head-10/11 re-read SHOULD). */
+  }
   std::lock_guard<std::mutex> guard(document_lock);
   if (!scripts) {
     person_document = key; /* The person's own open or save (or Angelo's on their behalf, unconfined). */

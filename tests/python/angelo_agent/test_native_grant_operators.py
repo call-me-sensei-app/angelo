@@ -61,6 +61,10 @@ AUDIT = {
     "angelo.review_tool": False, "angelo.undo_settings_import": False,
     # Guard piece 7b (2026-11-16): code agent scripts wrote loads as the person's own again.
     "angelo.forget_agent_changes": False,
+    # Plan mode (2.1.0, plan_mode.rst): Go leaves planning in the setting pressed (Auto widens) and sends the plan as
+    # the person's request; Stop planning ends it in Ask (break-it review M1), which is no longer Read only.
+    "angelo.plan_go": False, "angelo.plan_stop": False,
+    "angelo.context_folder": False,   # 2.1.0: lets the agent read a folder of the person's in this chat.
 }
 
 
@@ -88,6 +92,8 @@ ENTRY_FOR = {
     "angelo.enhancer_settings": (["studio_state.StudioLibrary.configure_enhancer"], "configure_enhancer"),
     "angelo.trusted_scripts": (["trusted_scripts.TrustedScripts.set_trusted_scripts"], "set_trusted_scripts"),
     "angelo.set_approval": (["controller.Controller.set_options"], "set_options"),
+    "angelo.plan_go": (["planning_controls.go", "controller.Controller.set_options"], "planning_controls.go"),
+    "angelo.plan_stop": (["planning_controls.stop", "controller.Controller.set_options"], "planning_controls.stop"),
     "angelo.approve": (["controller.Controller.approve_tool", "controller.Controller.execute_tool"], "approve_tool"),
     "angelo.apply_approved_tool": (["controller.Controller.execute_tool"], "execute_tool"),
     "angelo.ai_render": (["ai_render.start"], "AiRenderCard"),   # Its card's Render starts it.
@@ -106,6 +112,7 @@ ENTRY_FOR = {
     "angelo.review_tool": (["trusted_scripts.TrustedScripts.review_script"], "review_script("),
     "angelo.undo_settings_import": (["settings_import.undo"], "_ask_undo"),
     "angelo.forget_agent_changes": (["agent_changes_forget.forget"], "forget("),
+    "angelo.context_folder": (["context_folder_host.attach"], "context_folder_host.attach"),
 }
 PACKAGE = "angelo_agent."   # ENTRIES names each entry by its full module name (r2 N4); the tables above omit it.
 
@@ -646,6 +653,35 @@ class SettingTests(unittest.TestCase):
         source = (ADDON / "ui.py").read_text(encoding="utf-8")
         for name in self.guard.WIDENING:
             self.assertIn('update=grant_guard.setting("%s")' % name, source)
+
+
+class ScannerReadsTests(unittest.TestCase):
+    """The grant-state scanner reads a write as a write and nothing else (break-it re-read of a92ed1bae16, NIT 6): a
+    dataclass copy (``dataclasses.replace``) or a text substitution (``"a".replace("b", "c")``) beside a grant-state
+    path is no write, while ``os.replace``, a path's ``replace`` and any other ``replace(a, b)`` still are."""
+
+    def writes(self, source):
+        tree = ast.parse(source)
+        function = next(n for n in tree.body if isinstance(n, ast.FunctionDef))
+        return inventory._writes(function, inventory._pure_names(tree))
+
+    def test_reads_are_not_writes(self):
+        for source in ("from dataclasses import replace\ndef f(p):\n    return replace(p, a=1)\n",
+                       "from dataclasses import replace as copy\ndef f(p):\n    return copy(p, a=1)\n",
+                       "def f(text):\n    return text.replace('a', 'b')\n",
+                       "def f(text):\n    return text.replace('a', 'b', 1)\n"):
+            with self.subTest(source=source):
+                self.assertFalse(self.writes(source))
+
+    def test_writes_stay_writes(self):
+        for source in ("import os\ndef f(a, b):\n    os.replace(a, b)\n",
+                       "def f(path, target):\n    path.replace(target)\n",
+                       "from . import shared_replace\ndef f(tmp, path):\n    shared_replace.replace(tmp, path)\n",
+                       "from os import replace\ndef f(a, b):\n    replace(a, b)\n",
+                       "def f(a, b):\n    replace(a, b)\n",
+                       "def f(text, path):\n    text.replace('a', path)\n"):
+            with self.subTest(source=source):
+                self.assertTrue(self.writes(source))
 
 
 class InventoryTests(unittest.TestCase):

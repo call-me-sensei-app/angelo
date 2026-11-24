@@ -379,10 +379,15 @@ def native_python_sweep(package, installed_file):
     return begin, end
 
 
-def blender_sweep(bpy, defer, is_agent_function, widening=(), widens=None, preferences=None, package=None):
+def blender_sweep(bpy, defer, is_agent_function, widening=(), widens=None, preferences=None, package=None,
+                  protective=(), resync=None, protecting_now=None):
     """(begin, end) for Blender's places: ``bpy.app.handlers`` lists, ``bpy.app.driver_namespace``, texts that run at
-    load, and the widening Angelo settings (``preferences()`` gives them). A handler that is a function of Angelo's own
-    ``package`` is left as it is (Angelo's code added it)."""
+    load, and the widening Angelo settings (``preferences()`` gives them): ``widening`` widen as ``widens`` says,
+    ``protective`` ones (Strict script protection) widen when they turn off, so one a run turned off is put back on;
+    while one of them is on at the run's start, a setting whose RNA definition changed is reported (C refuses that to a
+    script) and ``resync()`` runs last. With every protective setting off (the default), the run reads no definition
+    and re-syncs nothing: those reads cost every script measurably (Ruling 17: the macOS bench, 2026-11-22).
+    A handler that is a function of Angelo's own ``package`` is left as it is (Angelo's code added it)."""
     _list, _dict, _id, _getattr, _setattr, _hash, _callable = list, dict, id, getattr, setattr, hash, callable
     _isinstance, _str, _Exception, _set, _enumerate, list_type = isinstance, str, Exception, set, enumerate, list
     handlers = bpy.app.handlers
@@ -401,14 +406,36 @@ def blender_sweep(bpy, defer, is_agent_function, widening=(), widens=None, prefe
                 found[text.name_full] = _hash(text.as_string())
         return found
 
-    def settings_now():
-        prefs = preferences() if preferences is not None else None
-        return {name: _getattr(prefs, name, None) for name in widening} if prefs is not None else {}
+    def settings_now(prefs, protecting):
+        chosen = (*widening, *protective) if protecting else tuple(widening)
+        return {name: _getattr(prefs, name, None) for name in chosen} if prefs is not None else {}
+
+    def definitions_now(prefs, chosen):
+        properties = _getattr(_getattr(prefs, "bl_rna", None), "properties", None)
+        found = {}
+        for name in chosen:
+            prop = properties.get(name) if properties is not None else None
+            found[name] = prop.as_pointer() if prop is not None else None
+        return found
 
     def begin():
+        prefs = preferences() if preferences is not None else None
+        # Whether Strict protects, from C's own flag (one atomic load; the coordinator's (Q)): the flag C enforces
+        # follows the preference at registration, after every preference read and at each change (strict_protection
+        # .sync), and a run can't change either. The RNA setting is read only while it protects.
+        if protecting_now is not None:
+            protecting = bool(protecting_now())
+        else:
+            protecting = any(_getattr(prefs, name, None) is True for name in protective) if prefs is not None else False
+        settings = settings_now(prefs, protecting)
+        # Every definition only while Strict protects. Off (the default), none: comparing the widening ones cost ~19 us
+        # a run on macOS (two linear RNA lookups per name; the v210-rc bench, 2026-11-22), measurable under Ruling 17,
+        # and C refuses every definition change from a confined script anyway (2.0.1 compared none).
+        chosen = (*widening, *protective) if protecting else ()
         return {
+            "definitions": definitions_now(prefs, chosen), "protecting": protecting,
             "handlers": {name: [_id(item) for item in _getattr(handlers, name)] for name in names},
-            "drivers": _dict(bpy.app.driver_namespace), "texts": texts_now(), "settings": settings_now(),
+            "drivers": _dict(bpy.app.driver_namespace), "texts": texts_now(), "settings": settings,
         }
 
     def end(snapshot):
@@ -435,12 +462,21 @@ def blender_sweep(bpy, defer, is_agent_function, widening=(), widens=None, prefe
         prefs = preferences() if preferences is not None else None
         for name, value in snapshot["settings"].items():
             now = _getattr(prefs, name, None)
-            if prefs is not None and now != value and (widens is None or widens(now, value)):
+            widened = (value is True and now is not True) if name in protective else \
+                (widens is None or widens(now, value))
+            if prefs is not None and now != value and widened:
                 try:
                     _setattr(prefs, name, value)
                     findings.append("setting " + name)
                 except _Exception:   # noqa: BLE001 - reported; the grant guard refuses the setting too.
                     findings.append("setting " + name + " not restored")
+        if snapshot["definitions"] and definitions_now(prefs, _list(snapshot["definitions"])) != snapshot["definitions"]:
+            findings.append("a setting's definition changed")
+        if resync is not None and snapshot["protecting"]:
+            try:
+                resync()   # C's flags from what the settings hold now (as Angelo: the script has left the stack).
+            except _Exception:   # noqa: BLE001 - reported.
+                findings.append("settings not re-synced")
         return findings
 
     return begin, end

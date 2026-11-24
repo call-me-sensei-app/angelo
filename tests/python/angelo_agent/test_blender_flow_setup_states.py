@@ -50,6 +50,7 @@ prefs = bpy.context.preferences
 prefs.view.show_splash = False
 prefs.use_preferences_save = False
 from angelo_agent import flow_host, flow_nodes, flow_templates, flow_text_field, flow_tree  # noqa: E402
+import qa_hit
 
 REPORT = OUT / "flow-setup-states.json"
 RED_MOST, RED_LEAST = 20, 150
@@ -105,8 +106,9 @@ def red_by_node(path):
     px = pixels(path)
     result = {}
     for node, (left, bottom, right, top) in zip(area.spaces.active.node_tree.nodes, rects):
-        x0, y0 = max(0, int(region.x + left)), max(0, int(region.y + bottom))
-        block = px[y0:max(y0, int(region.y + top)), x0:max(x0, int(region.x + right))]
+        x0, y0 = (max(0, int(v)) for v in qa_hit.xy(qa_hit.RAW, region, left, bottom))
+        x1, y1 = (int(v) for v in qa_hit.xy(qa_hit.RAW, region, right, top))
+        block = px[y0:max(y0, y1), x0:max(x0, x1)]
         r, g, b = block[..., 0], block[..., 1], block[..., 2]
         result[node.name] = int(((r > 180) & (r - g > 90) & (numpy.abs(g - b) < 12)).sum()) if block.size else 0
     return result

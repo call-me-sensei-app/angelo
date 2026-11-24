@@ -102,10 +102,12 @@ def mcp_record(**extra):
 
 class UsageTests(unittest.TestCase):
     def test_list_cost_is_tokens_at_published_prices(self):
-        # GPT-6 Astra: 10 / 50 / 1 / 12.5 USD per million fresh, output, cached and cache-write tokens.
-        usage = {"input_tokens": 1_000_000, "cached_input_tokens": 600_000, "cache_write_input_tokens": 100_000,
-                 "output_tokens": 20_000}
-        self.assertAlmostEqual(metrics.list_cost(usage, "gpt-6-astra"), 0.3 * 10 + 0.6 * 1 + 0.1 * 12.5 + 0.02 * 50)
+        # GPT-6 Astra: 10 / 50 / 1 / 12.5 USD per million fresh, output, cached and cache-write tokens, within
+        # its 272K-token per-request step.
+        usage = {"input_tokens": 250_000, "cached_input_tokens": 150_000, "cache_write_input_tokens": 25_000,
+                 "output_tokens": 5_000}
+        self.assertAlmostEqual(metrics.list_cost(usage, "gpt-6-astra"),
+                               0.075 * 10 + 0.15 * 1 + 0.025 * 12.5 + 0.005 * 50)
         # Claude Opus 5.5: 4 / 20 / 0.20, cache writes 5 (5-minute) or 8 (1-hour) USD per million.
         self.assertAlmostEqual(metrics.list_cost(USAGE, "claude-opus-5-5", "1h"), 0.1 * 4 + 1.0 * 0.2 + 0.1 * 8 + 0.03 * 20)
         self.assertAlmostEqual(metrics.list_cost(USAGE, "claude-opus-5-5", "5m"), 0.1 * 4 + 1.0 * 0.2 + 0.1 * 5 + 0.03 * 20)

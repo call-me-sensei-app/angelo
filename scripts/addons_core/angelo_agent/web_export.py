@@ -50,6 +50,17 @@ UNAVAILABLE = {
              n_("Install gltfpack and set its path in the glTF add-on's preferences")),
     "ktx2_failed": (n_("gltfpack couldn't write KTX2 textures; textures are WebP"),
                     n_("Use a gltfpack build with texture compression (-tc)")),
+    # Angelo refused to start gltfpack (web_compat.ktx2_refused names which).
+    "ktx2_refused_script": (n_("Angelo didn't start gltfpack because an agent script wrote or named it; textures are "
+                               "WebP"),
+                            n_("Check gltfpack (reinstall it if in doubt), then choose its folder in Preferences > "
+                               "Forget Agent Changes in a Folder…")),
+    "ktx2_refused_changed": (n_("gltfpack changed on disk after Angelo recorded it, so Angelo didn't start it; "
+                                "textures are WebP"),
+                             n_("Restart Angelo to use it")),
+    "ktx2_refused": (n_("Angelo starts only installed programs, programs on PATH or ones you chose, so it didn't "
+                        "start gltfpack; textures are WebP"),
+                     n_("Set gltfpack's path in the glTF add-on's preferences, or reinstall it")),
 }
 
 
@@ -229,6 +240,10 @@ def _run_gltfpack(binary, source, target, settings):
         command.append("-kn")     # Keep every named node, as merge=false promises.
     try:
         owned_paths.require_runnable(binary)   # Never one a script wrote (C's change record); refused: not packed.
+    except PermissionError as error:
+        settings["ktx2_refused"] = web_compat.ktx2_refused(error)   # Said as the refusal and why, not a failure.
+        return False
+    try:
         subprocess.run(command, check=True, timeout=GLTFPACK_SECONDS, stdout=subprocess.DEVNULL,
                        stderr=subprocess.DEVNULL)
     except (OSError, subprocess.SubprocessError):
@@ -374,8 +389,9 @@ def export(window, scene, view_layer, path, request, require_environment=True, p
             if os.path.exists(leftover):
                 os.remove(leftover)
         raise
+    refused = settings.pop("ktx2_refused", "")
     if settings.pop("ktx2_failed", False):
-        findings.insert(0, _note("ktx2_failed"))
+        findings.insert(0, _note(refused or "ktx2_failed"))
     settings.update(look=_look_settings(facts["look"]), environment=environment)
     report = {"settings": settings, "findings": findings, "baked": public_baked(baked), "budget": budget,
               "merged": merged, "export_ms": round((time.perf_counter() - started) * 1000.0, 1)}

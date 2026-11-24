@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 import test_native_session_rail_strip as strips
 import rail_positions_checks as geometry
+import qa_hit  # The suite reads window rects back into the rail's region pixels through it.
 import angelo_agent
 from angelo_agent import session_rail as rail
 
@@ -82,7 +83,7 @@ class FrameFixtureTests(unittest.TestCase):
                    session_rail_draw=NS(last={7:(11,plan)}),rail_pictures=NS(_drawn={}),
                    live_view_draw=NS(_offscreens={}),_bpy=NS(_angelo_live=NS(text_info_end=lambda r:468)),
                    parallel_sessions=NS(sessions=lambda:['lead','w1','w2','w3']),session_rail=rail,
-                   time=NS(monotonic=lambda:10),frames=records)
+                   time=NS(monotonic=lambda:10),frames=records,qa_hit=qa_hit)
         pills=NS(places={11:(7,(('studio',(10,42,200,42)),))})
         with patch.dict(sys.modules,{'angelo_agent.asset_shelf_add':pills}), \
                 patch.object(angelo_agent,'asset_shelf_add',pills,create=True):

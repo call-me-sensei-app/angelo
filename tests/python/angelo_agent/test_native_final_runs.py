@@ -59,9 +59,10 @@ class OrderTests(unittest.TestCase):
         steps = plan.campaign("macos")
         gates = [s for s in steps if s["phase"] == "gate"]
         self.assertEqual(steps[:len(gates)], gates)
-        self.assertEqual(sorted({s["model"] for s in gates}), ["claude-opus-5-5", "gpt-6-astra", "gpt-6.1-sol"])
-        windows = [s for s in plan.campaign("windows") if s["phase"] == "gate"]   # Carbon's gate: the Windows MSI's.
-        self.assertEqual(sorted({s["model"] for s in windows} - {s["model"] for s in gates}), ["gemini-4-carbon"])
+        self.assertEqual(sorted({s["model"] for s in gates}), ["claude-opus-5-5", "gpt-6.2-astra", "gpt-6.2-sol"])
+        windows = [s for s in plan.campaign("windows") if s["phase"] == "gate"]   # Gemini's gates: the Windows MSI's.
+        self.assertEqual(sorted({s["model"] for s in windows} - {s["model"] for s in gates}),
+                         ["gemini-4-carbon", "gemini-4-neon"])
         prompts = {s["id"]: plan.estimate(s)["prompts"] for s in gates + windows}
         for model in plan.GATED:
             self.assertEqual(prompts["gate-%s-default" % model], 30)
@@ -91,7 +92,7 @@ class OrderTests(unittest.TestCase):
             self.assertIn("--returning-user", next(s for s in steps if s["id"] == "returning-%s-default" % model)["args"])
         windows = plan.campaign("windows")
         self.assertFalse([s for s in windows if s["tool"] == "pilot"], "The pilot adapter is macOS only")
-        self.assertEqual(len(windows), 57, "52 and Carbon's five gate steps, Windows only")
+        self.assertEqual(len(windows), 62, "52 and Carbon's and Neon's five gate steps each, Windows only")
 
     def test_accounts_alternate_and_the_heaviest_runs_come_last(self):
         h2h = [s for s in plan.campaign("macos") if s["phase"] == "h2h"]

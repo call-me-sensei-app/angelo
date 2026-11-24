@@ -49,7 +49,7 @@ MOVED_REGION = (100, 140, 80, 24, IDNAME, MOVED_DIGEST, True)
 INSIDE_MOVED, BETWEEN = (140, 152), (140, 132)
 SHIELD = 1.0
 report = {'success': False, 'checks': {}}
-state = {'phase': 'boot', 'started': time.monotonic(), 'window': None, 'drawn': 0.0}
+state = {'phase': 'boot', 'started': time.monotonic(), 'window': None, 'drawn': 0.0, 'offset': (0, 0)}
 
 
 def check(name, value):
@@ -57,7 +57,8 @@ def check(name, value):
 
 
 def send(kind, value='NOTHING', at=INSIDE):
-    state['window'].event_simulate(type=kind, value=value, x=at[0], y=at[1])
+    dx, dy = state['offset']
+    state['window'].event_simulate(type=kind, value=value, x=at[0] + dx, y=at[1] + dy)
 
 
 def window_state():
@@ -69,7 +70,15 @@ def draw(*regions):
     """Register ``regions`` as a surface's draw does, then redraw the window: C counts a region's shield and arm from
     the first frame with it on screen (``note_presented``, wm_draw), and a region registered from a timer with nothing
     to redraw never reaches the screen, so it never arms."""
-    G.consent_regions(state['window'].as_pointer(), 'guard_tickets', tuple(regions))
+    window, (dx, dy) = state['window'].as_pointer(), state['offset']
+    regions = tuple((x + dx, y + dy, *rest) for x, y, *rest in regions)
+    # In the region Blender routes their points to (the review of f6b01a9..da9ba66, SHOULD 1): the layout sits in
+    # the window's largest main region (``offset``), so every region shares it.
+    owners = {_bpy._angelo_jobs.pointer_region(window, x + w // 2, y + h // 2) for x, y, w, h, *_ in regions or
+              ((REGION[0] + dx, REGION[1] + dy, REGION[2], REGION[3]),)}
+    if len(owners) != 1 or None in owners:
+        raise RuntimeError('the regions are not all in one Blender region: %r' % (owners,))
+    G.consent_regions(window, 'guard_tickets', regions, owners.pop())
     for area in state['window'].screen.areas:
         area.tag_redraw()
     state['drawn'] = time.monotonic()
@@ -91,6 +100,9 @@ def tick():
         phase = state['phase']
         if phase == 'boot':
             state['window'] = bpy.context.window_manager.windows[0]
+            main = max((r for a in state['window'].screen.areas for r in a.regions if r.type == 'WINDOW'),
+                       key=lambda r: r.width * r.height)   # The layout (x 100..200, y 90..164) sits inside it.
+            state['offset'] = (main.x, main.y)
             send('MOUSEMOVE', at=(10, 10))   # The pointer known, far from the region.
             send('MOUSEMOVE', at=INSIDE)     # Resting where the region is about to appear.
             draw(REGION)                     # It appears under the resting pointer.

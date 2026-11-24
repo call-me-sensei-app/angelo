@@ -40,6 +40,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fake_provider_cli  # noqa: E402
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')  # This suite needs the default Director startup.
 
@@ -83,7 +84,7 @@ def click_card(action, value=None):
         rect = next((r for r, a, v in plan.hits if a == action and (value is None or v == value)), None)
         assert rect is not None, f"no {action} {value} on the card"
         _, region, _ = view()
-        x, y = region.x + rect[0] + rect[2] / 2, region.y + rect[1] + rect[3] / 2
+        x, y = qa_hit.point(qa_hit.PIXELS, region, rect)
         send('MOUSEMOVE', x=x, y=y)
         send('LEFTMOUSE', 'PRESS', x=x, y=y)
         send('LEFTMOUSE', 'RELEASE', x=x, y=y)
@@ -137,7 +138,7 @@ def open_next_details():
 def wheel_down():
     rect = plan_now().scroll["findings"]["rect"]
     _, region, _ = view()
-    x, y = region.x + rect[0] + rect[2] / 2, region.y + rect[1] + rect[3] / 2
+    x, y = qa_hit.point(qa_hit.PIXELS, region, rect)
     send('MOUSEMOVE', x=x, y=y)
     send('WHEELDOWNMOUSE', 'PRESS', x=x, y=y)
 

@@ -115,5 +115,76 @@ class GroupedStepsTests(unittest.TestCase):
         self.assertEqual(_grouped_steps(same, {"$c": "Cube"}), ["1–2. Material principled · “Cube”"])
 
 
+ADDON = Path(__file__).resolve().parents[3] / "scripts/addons_core/angelo_agent"
+
+
+def _function(module, name):
+    import ast
+    tree = ast.parse((ADDON / (module + ".py")).read_text(encoding="utf-8"))
+    return next(node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == name)
+
+
+def _handled(function):
+    """Every action literal ``function`` compares ``action`` with (``==`` or ``in``)."""
+    import ast
+    return {k.value for node in ast.walk(function) if isinstance(node, ast.Compare)
+            and isinstance(node.left, ast.Name) and node.left.id == "action"
+            for c in node.comparators for k in ast.walk(c) if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+
+
+def _routed_to_cards(action):
+    """Whether ``chat_view.dispatch_action``'s branch chain hands a click on ``action`` to ``chat_cards.dispatch``:
+    the first branch whose test matches it (``==``, ``in`` or ``startswith``) decides, as the code runs."""
+    import ast
+
+    def matches(test):
+        if isinstance(test, ast.Compare) and isinstance(test.left, ast.Name) and test.left.id == "action":
+            values = {k.value for c in test.comparators for k in ast.walk(c) if isinstance(k, ast.Constant)}
+            return action in values
+        if (isinstance(test, ast.Call) and isinstance(test.func, ast.Attribute) and test.func.attr == "startswith"
+                and isinstance(test.func.value, ast.Name) and test.func.value.id == "action"):
+            prefixes = {k.value for a in test.args for k in ast.walk(a) if isinstance(k, ast.Constant)}
+            return any(action.startswith(prefix) for prefix in prefixes)
+        return False   # A test on other state (an open sheet, a module's constant): not a card action's branch.
+
+    def to_cards(body):
+        return any(isinstance(n, ast.Attribute) and n.attr == "dispatch" and isinstance(n.value, ast.Name)
+                   and n.value.id == "chat_cards" for statement in body for n in ast.walk(statement))
+
+    for statement in _function("chat_view", "dispatch_action").body:
+        node = statement
+        while isinstance(node, ast.If):
+            if matches(node.test):
+                return to_cards(node.body)
+            node = node.orelse[0] if len(node.orelse) == 1 and isinstance(node.orelse[0], ast.If) else None
+    return False
+
+
+class CardActionsReachTheirHandlerTests(unittest.TestCase):
+    """A card control the chat draws acts only if the chat's click dispatch hands it to the cards' handler: a renamed
+    or new card action outside the routed names or prefixes would be a live-looking button that does nothing."""
+
+    def test_every_action_the_cards_handle_is_routed_to_them(self):
+        handled = _handled(_function("chat_cards", "dispatch"))
+        self.assertIn("script_always_allow", handled)   # The reader sees the handler's actions.
+        self.assertEqual(sorted(action for action in handled if not _routed_to_cards(action)), [])
+
+    def test_the_standing_consent_buttons_are_handled_actions(self):
+        from angelo_agent import chat_cards
+        controller = types.SimpleNamespace(offers_remember_script=lambda call: True,
+                                           offers_session_allow=lambda call: True,
+                                           offers_always_allow=lambda call: True)
+        with patch.object(chat_cards, "iface_", lambda text: text):
+            buttons = chat_cards.always_allow_button(controller, None)
+        self.assertEqual([button[0] for button in buttons],
+                         ["script_remember", "script_session_allow", "script_always_allow", "url"])
+        for action, *_rest in buttons:
+            if action == "url":   # The limits page: chat_view opens it (its own "url" action), never a card's.
+                self.assertIn('action == "url"', (ADDON / "chat_view.py").read_text(encoding="utf-8"))
+                continue
+            self.assertIn(action, _handled(_function("chat_cards", "dispatch")))
+            self.assertTrue(_routed_to_cards(action))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -7,7 +7,7 @@ each block only where the thread has its tools (tool_guidance), so a lead and it
 here from providers, which re-exports these names. Text only; test_native_per_model_text pins its bytes.
 """
 
-from .agent_guidance import (BLENDER_API_FACTS, SCULPT_SENTENCE, SCULPT_GUIDANCE, STUDIO_GUIDANCE, FLOW_GUIDANCE,
+from .agent_guidance import (BLENDER_API_FACTS, PLAN_SENTENCE, SCULPT_SENTENCE, SCULPT_GUIDANCE, STUDIO_GUIDANCE, FLOW_GUIDANCE,
                              JOB_SENTENCE, WHOLE_SCENE)
 from . import image_proof
 from .codex_plan import PLAN_GUIDANCE
@@ -192,7 +192,7 @@ _FAMILIES = (("sculpt", SCULPT_NAMES), ("hand rigging", RIG_NAMES), ("Media Stud
              ("background jobs", JOB_NAMES), ("the web export", WEB_NAMES), ("the engine live link", ENGINE_LINK_NAMES),
              ("downloads", DOWNLOAD_NAMES),
              ("the game-engine preflight", ENGINE_NAMES), ("angelo_skeleton_check", ()),
-             ("the game-ready check", GAME_READY_NAMES), ("angelo_goal", ()), ("angelo_memory_update", ()),
+             ("the game-ready check", GAME_READY_NAMES), ("angelo_goal", ()), ("angelo_plan", ()), ("angelo_memory_update", ()),
              ("angelo_expand_recipe", ()), ("angelo_blend_file", ()))
 
 
@@ -223,7 +223,8 @@ def codex_tail(allowed, *, deferred, team):
     else:
         blocks = (JOB_SENTENCE, DELEGATE_GUIDANCE, BLEND_FILE_GUIDANCE, SCULPT_GUIDANCE, DIRECTOR_GUIDANCE,
                   STUDIO_GUIDANCE, FLOW_GUIDANCE)
-    return told(blocks + ("angelo_goal holds a goal across turns when the person asks for that continuation.\n",), allowed)
+    return told(blocks + ("angelo_goal holds a goal across turns when the person asks for that continuation.\n",
+                          PLAN_SENTENCE + "\n"), allowed)
 
 
 def _shared(allowed, deferred, forwarded=False):

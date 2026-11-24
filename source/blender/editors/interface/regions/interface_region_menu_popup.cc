@@ -958,6 +958,14 @@ static void append_button_places(const ARegion &region, Vector<PopupButtonPlace>
       place.xmax = rect.xmax;
       place.ymax = rect.ymax;
       place.armed = but.angelo_armed;
+      place.placed = but.angelo_placed;
+      place.place_xmin = but.angelo_place.xmin;
+      place.place_ymin = but.angelo_place.ymin;
+      place.place_xmax = but.angelo_place.xmax;
+      place.place_ymax = but.angelo_place.ymax;
+      place.epoch = but.angelo_epoch;
+      place.frame = but.angelo_frame;
+      place.since = but.angelo_since;
       places.append(std::move(place));
     }
   }

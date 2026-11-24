@@ -53,6 +53,7 @@ import qa_input  # noqa: E402
 import qa_waits  # noqa: E402
 import undo_unrecorded_qa as qa  # noqa: E402
 from bpy_extras.view3d_utils import location_3d_to_region_2d  # noqa: E402
+import qa_hit
 
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-undo-unrecorded"))
 OUT.mkdir(parents=True, exist_ok=True)
@@ -372,7 +373,7 @@ def edit_keys_then_python_add():   # The path learn-l3 found.
     yield 0.6
     area, region = qa.view3d()
     point = location_3d_to_region_2d(region, area.spaces.active.region_3d, cube.matrix_world.translation)
-    qa_input.press(qa.window(), region.x + point.x, region.y + point.y)
+    qa_input.press(qa.window(), *qa_hit.xy(qa_hit.RAW, region, point.x, point.y))
     yield from until(lambda: bpy.context.view_layer.objects.active == cube and cube.select_get(), "the cube selected")
     yield 0.6
     qa.key('TAB')

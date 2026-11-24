@@ -50,8 +50,8 @@ def draw_glyph(view, glyph, tx, ty):
     """A row's 32 px tile: attach (+), base_mesh (a head on shoulders), studio (a framed spark), flow (three linked
     nodes), new (+ in teal), web (a globe), region (a frame with a teal quarter), link (two chain links), apps (a plug), video (a film
     frame around a play mark), library (a magnifier over tiles), bake_maps (a 2 x 2 grid of maps), tension (a spring),
-    feedback (a speech bubble), select (a dashed marquee), goal (a target), anything else a dot. Shapes and strokes only:
-    no icon font, nothing mirrored."""
+    feedback (a speech bubble), select (a dashed marquee), goal (a target), plan (a checklist), scatter (three trees), look (a lens),
+    anything else a dot. Shapes and strokes only: no icon font, nothing mirrored."""
     from . import render_glyphs
     if render_glyphs.draw_tile(view, glyph, tx, ty):   # AI render and the engines (render_glyphs).
         return
@@ -65,7 +65,14 @@ def draw_glyph(view, glyph, tx, ty):
         return
     view.shape(tx, ty, 32, 32, ui_tokens.TEAL_SOFT, 8)
     teal = ui_tokens.TEAL
-    if glyph == "base_mesh":
+    if glyph == "markup":   # A picture frame with a ring drawn on it (markup_ui).
+        view.shape(tx + 7, ty + 9, 18, 14, teal, 3)
+        view.shape(tx + 8.6, ty + 10.6, 14.8, 10.8, opening(), 2)
+        for step in range(16):
+            a0, a1 = math.tau * step / 16, math.tau * (step + 1) / 16
+            view.stroke(tx + 19 + 4.5 * math.cos(a0), ty + 18 + 3.5 * math.sin(a0), tx + 19 + 4.5 * math.cos(a1),
+                        ty + 18 + 3.5 * math.sin(a1), teal, 1.6)
+    elif glyph == "base_mesh":
         view.shape(tx + 11, ty + 13, 10, 12, teal, 5)
         view.shape(tx + 7, ty + 5, 18, 7, teal, 3)
     elif glyph == "studio":
@@ -87,6 +94,10 @@ def draw_glyph(view, glyph, tx, ty):
         view.shape(tx + 11, ty + 11, 10, 10, teal, 5)
         view.shape(tx + 12.6, ty + 12.6, 6.8, 6.8, opening(), 3.4)
         view.shape(tx + 14.5, ty + 14.5, 3, 3, teal, 1.5)
+    elif glyph == "plan":   # Plan first: a short checklist, as its chip's.
+        for row in range(3):
+            view.shape(tx + 8, ty + 9 + row * 6, 4, 4, teal, 2)
+            view.shape(tx + 15, ty + 10 + row * 6, 10, 2, teal, 1)
     elif glyph == "web":
         view.shape(tx + 7, ty + 7, 18, 18, teal, 9)
         view.shape(tx + 8.6, ty + 8.6, 14.8, 14.8, opening(), 7.4)
@@ -156,6 +167,16 @@ def draw_glyph(view, glyph, tx, ty):
                                        ((8, start), (8, start + 2)), ((24, start), (24, start + 2))):
                 view.stroke(tx + ax, ty + ay, tx + bx, ty + by, teal, 1.4)
         view.shape(tx + 12.5, ty + 12.5, 7, 7, teal, 1.5)
+    elif glyph == "scatter":   # Three trees of different sizes on the ground, apart from each other: Scatter.
+        view.stroke(tx + 5, ty + 8, tx + 27, ty + 8, teal, 1.5)
+        for x, top, radius in ((9.5, 15, 3), (16.5, 19.5, 4.5), (23.5, 16, 3.5)):
+            view.stroke(tx + x, ty + 8, tx + x, ty + top - radius, teal, 1.5)
+            view.shape(tx + x - radius, ty + top - radius, radius * 2, radius * 2, teal, radius)
+    elif glyph == "look":   # A lens: its rim, the glass and a highlight across it: Camera Look.
+        view.shape(tx + 6, ty + 6, 20, 20, teal, 10)
+        view.shape(tx + 9, ty + 9, 14, 14, opening(), 7)
+        view.shape(tx + 12, ty + 12, 8, 8, teal, 4)
+        view.stroke(tx + 11, ty + 20, tx + 15, ty + 23, ui_tokens.TEXT, 1.4)
     else:
         view.shape(tx + 12, ty + 12, 8, 8, teal, 4)
 

@@ -14,6 +14,10 @@ PREVIEW_ACTIONS = ("START", "STOP")
 MAX_OUTPUT = 1024
 DEFAULT_OUTPUT = "web/scene.glb"
 CHECK, EXPORT, PREVIEW = "angelo_web_check", "angelo_web_export", "angelo_web_preview"
+# The live preview's export, the same from every entry point. Textures are kept as authored (PNG, JPEG): the page is
+# on this computer, so there is no download to save, and a lossy re-encode would show the artist a texture that is
+# not theirs (a painted atlas went soft as WebP). angelo_web_check gives the shipping export's size.
+PREVIEW_REQUEST = {"meshes": "AUTO", "textures": "KEEP", "merge": True, "selection_only": False}
 
 _OPTIONS = {
     "meshes": {"type": "string", "enum": list(MESHES)},

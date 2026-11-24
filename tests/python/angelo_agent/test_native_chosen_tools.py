@@ -100,11 +100,12 @@ class ChoiceTests(unittest.TestCase):
 
 
 class HandsChoiceTests(unittest.TestCase):
-    """Work on hands (the person's choice): one row after the base meshes, one click chooses it, and its facts reach
-    the model with that request only (an event key of the observation, never repeated as state)."""
+    """Work on hands (the person's choice): one row in the Rig group (where the hands tile was: chat_destinations.
+    RIG_GROUP, v210-features' ruling of 2026-11-18), one click chooses it, and its facts reach the model with that
+    request only (an event key of the observation, never repeated as state)."""
 
     def test_one_row_that_chooses_in_one_click(self):
-        (row,) = [r for r in ct.menu_rows() if r.get("value") == "hands"]
+        (row,) = [r for r in ct.menu_rows(open_groups=("rig",)) if r.get("value") == "hands"]
         self.assertEqual((row["kind"], row["action"], row["label"]), ("row", "popup_add_choose", "Work on hands"))
         self.assertEqual(ct.choose([], "hands", ct.tool("hands").options[0][0]),
                          [{"tool": "hands", "option": "hands", "fit_selected": False}])

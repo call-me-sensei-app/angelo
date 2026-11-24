@@ -674,6 +674,7 @@ static void rna_BlenderProject_active_asset_library_set(PointerRNA *ptr, int val
 }
 
 static bUserAssetLibrary *rna_BlenderProject_asset_library_new(const bContext *C,
+                                                               ReportList *reports,
                                                                const char *name,
                                                                const char *directory,
                                                                const char *uuid_str,
@@ -682,11 +683,16 @@ static bUserAssetLibrary *rna_BlenderProject_asset_library_new(const bContext *C
   /* Keep this function in sync with the logic in project_asset_library_add in
    * blender_project_config.cc. */
 
-  bUserAssetLibrary *new_library;
+  bUserAssetLibrary *new_library = nullptr;
   Main *bmain = CTX_data_main(C);
   const bool is_remote = remote_url && remote_url[0];
 
   BKE_blender_project_write_callback(bmain, [&](bke::BlenderProject *project) {
+    /* Angelo: the collection takes no `self`, so it can be called with no active project. */
+    if (project == nullptr) {
+      BKE_report(reports, RPT_ERROR, "No active project");
+      return;
+    }
     std::optional<UUID> uuid = {};
     bool invalid_uuid = false;
     if (uuid_str) {
@@ -745,6 +751,11 @@ static void rna_BlenderProject_asset_library_remove(bContext *C,
   Main *bmain = CTX_data_main(C);
 
   BKE_blender_project_write_callback(bmain, [&](bke::BlenderProject *project) {
+    /* Angelo: the collection takes no `self`, so it can be called with no active project. */
+    if (project == nullptr) {
+      BKE_report(reports, RPT_ERROR, "No active project");
+      return;
+    }
     if (BLI_findindex(&U.asset_libraries, library) == -1) {
       BKE_report(reports, RPT_ERROR, "Asset Library not found");
       return;
@@ -948,10 +959,12 @@ static void rna_def_project_asset_library_collection(BlenderRNA *brna, PropertyR
   RNA_def_struct_ui_text(srna, "Project Asset Libraries", "Collection of project asset libraries");
 
   func = RNA_def_function(srna, "new", "rna_BlenderProject_asset_library_new");
-  RNA_def_function_flag(func, FUNC_NO_SELF | FUNC_USE_CONTEXT);
+  RNA_def_function_flag(func, FUNC_NO_SELF | FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Add a new Project Asset Library");
   RNA_def_string(func, "name", nullptr, sizeof(bUserAssetLibrary::name), "Name", "");
-  RNA_def_string(func, "directory", nullptr, sizeof(bUserAssetLibrary::dirpath), "Directory", "");
+  /* Angelo: a folder the asset system scans later, so a confined script's value is judged
+   * (doc/angelo/script_confinement.rst); `remote_url` is judged as the network (bpy_angelo_guard_confine_ops.cc). */
+  RNA_def_string_dir_path(func, "directory", nullptr, sizeof(bUserAssetLibrary::dirpath), "Directory", "");
   RNA_def_string(func, "uuid", nullptr, sizeof(bUserAssetLibrary::uuid), "UUID", "");
   RNA_def_string(func,
                  "remote_url",

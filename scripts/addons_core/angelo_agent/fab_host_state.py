@@ -8,11 +8,30 @@ from .fab_catalog import FabError, MAX_RESULTS, MAX_VARIANTS, thumb_url
 from .fab_formats import BY_CODE, MAX_DOWNLOAD, RANK
 
 
-def initial(generation=None, *, available=False):
+def platform_supported():
+    """Whether Fab's sign-in browser is built for this system (``platform_features``: macOS and Windows)."""
+    from . import platform_features
+    return platform_features.supported("fab_browser")
+
+
+def browser_owner():
+    """Fab's browser connection factory. Where the browser is not built (Linux beta) it raises ImportError before
+    anything of the browser is imported, so the host stays unregistered and says why (``initial``)."""
+    if not platform_supported():
+        raise ImportError("Fab's browser is not built for this system")
+    from .fab_browser_connection import create_owned_connection
+    return create_owned_connection
+
+
+def initial(generation=None, *, available=False, reason=None):
+    """The first record; ``reason``: why an unavailable Fab is (by default ``PLATFORM_UNAVAILABLE`` on a system
+    without Fab's browser, else ``LIVE_CONNECTOR_UNAVAILABLE``)."""
+    if reason is None:
+        reason = 'LIVE_CONNECTOR_UNAVAILABLE' if platform_supported() else 'PLATFORM_UNAVAILABLE'
     return dict(version=1, generation=generation, request_id=0,
                 status='disconnected' if available else 'unavailable',
                 can_connect=available, can_disconnect=False, can_search=False,
-                reason_code=None if available else 'LIVE_CONNECTOR_UNAVAILABLE',
+                reason_code=None if available else reason,
                 search_status='idle', query='', items=[], lookup_status='idle',
                 selected_item_id=None, selected_item=None, selected_variant_id=None,
                 variants=[], import_ready=False)

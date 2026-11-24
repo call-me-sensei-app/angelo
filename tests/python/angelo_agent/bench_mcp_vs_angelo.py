@@ -78,6 +78,7 @@ import eval_warm_up as warm_up  # noqa: E402  (--warm-up-only: one untimed, ungr
 import eval_gate  # noqa: E402
 import eval_live_tasks as live  # noqa: E402
 import eval_provider_limits as limits  # noqa: E402
+import eval_codex_logs as codex_logs  # noqa: E402  (a trial whose Codex log could not show every throttle)
 import gui_launch  # noqa: E402
 import provider_isolation as isolation  # noqa: E402
 from angelo_agent import product_env, session_journal  # noqa: E402  (standard library only)
@@ -90,7 +91,7 @@ RESULTS = "bench-mcp-vs-angelo.json"
 RUN_PLAN = "RUN-PLAN.json"  # The plan a run started with; --resume continues only the same plan.
 SUMMARY = "SUMMARY.md"
 DEFAULT_MODEL = "claude-opus-5-5"
-DEFAULT_MODELS = {"claude": DEFAULT_MODEL, "codex": "gpt-6-astra"}
+DEFAULT_MODELS = {"claude": DEFAULT_MODEL, "codex": "gpt-6.2-astra"}   # The shipped Astra (2.1.0).
 BUILD_FIELDS = ("Blender", "build date", "build hash", "build branch", "build type")
 # --dry-run-scenario --sides: the dry run's own three sides (both MCP runtimes, then Angelo).
 DRY_RUN_SIDES = {"both": ("mcp-claude", "mcp-codex", "angelo"), "mcp": ("mcp-claude", "mcp-codex"),
@@ -739,7 +740,8 @@ def gather(output, trials, reuse=None, task_list=None, returning=False):
                                           cold_warm.launch_of(trial, returning))
             stamp = source / ("mcp-trial-%02d-source.json" % trial)   # The checkout that ran it.
             trial_meta.append(dict({k: v for k, v in data.items() if k != "tasks"},
-                                   source=json.loads(stamp.read_text()) if stamp.is_file() else None))
+                                   source=json.loads(stamp.read_text()) if stamp.is_file() else None,
+                                   codex_log_unverifiable=codex_logs.unverifiable(data)))
         if send_record.finished(output / ("angelo-trial-%02d" % trial) / send_record.NAME):   # Not one at send.
             trial_report, angelo = load_angelo_trial(output, trial, task_list)
             if trial_report.get("invalid"):
@@ -751,7 +753,8 @@ def gather(output, trials, reuse=None, task_list=None, returning=False):
             meta.update(version=trial_report.get("version"), binary=trial_report.get("binary"),
                         aborted=trial_report.get("aborted"), success=trial_report.get("success"),
                         invalid=trial_report.get("invalid"), scenario=trial_report.get("scenario"),
-                        addon=trial_report.get("addon") or meta.get("addon"))   # What the trial imported.
+                        addon=trial_report.get("addon") or meta.get("addon"),   # What the trial imported.
+                        codex_log_unverifiable=codex_logs.unverifiable(trial_report))
             trial_meta.append(meta)
     return records, trial_meta
 
@@ -851,6 +854,7 @@ def finish(args, output, records, trial_meta, extra=None):
     graded, invalid = limits.valid_records(records)
     summary = report.summarize(graded)
     summary["invalid_rate_limited"] = invalid
+    summary["codex_log_unverifiable"] = codex_logs.unverifiable_counts(trial_meta)   # Each side's, beside the invalid.
     reuse = Path(args.reuse_mcp_results).resolve() if getattr(args, "reuse_mcp_results", "") else None
     meta_plan, recorded = plan(args), integrity.recorded_plan(output) or {}
     # The run's own setting: a run recorded before the plan had one says nothing, never today's flags (E2E-9 L-5).

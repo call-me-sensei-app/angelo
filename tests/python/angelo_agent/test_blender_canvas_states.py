@@ -50,6 +50,7 @@ import qa_input  # noqa: E402
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')  # This suite needs the default Director startup and its chat.
 
@@ -418,7 +419,7 @@ def tick():
             region = next(r for r in area.regions if r.type == 'WINDOW')
             start = next(r for r, a, v in intro._open["plan"]["hits"] if a == "start")
             state["welcome_region"] = (region.x, region.y)
-            state["pointer"] = (int(region.x + start[0] + start[2] / 2), int(region.y + start[1] + start[3] / 2))
+            state["pointer"] = qa_hit.ipoint(qa_hit.PIXELS, region, start)
             move_to(*state["pointer"])
             state["phase"] = "welcome_hover"
             return .3

@@ -22,6 +22,7 @@ import os
 import sys
 import threading
 import time
+import traceback
 from dataclasses import replace
 from pathlib import Path
 
@@ -52,8 +53,11 @@ def directory():
     for folder in (getattr(bpy.app, "cachedir", ""), bpy.app.tempdir):
         if folder and os.path.isabs(folder):
             from . import owned_paths
-            owned_paths.register_writable(Path(folder) / "updates")   # Blender's own: at startup, before any region.
-            return Path(folder) / "updates"
+            # Normal once, here: cleanup compares recorded paths as strings (update_flow._clean), so an XDG cache
+            # path with a ``..`` part would otherwise never match and leak every update's previous app.
+            updates = Path(os.path.normpath(os.path.join(folder, "updates")))
+            owned_paths.register_writable(updates)   # Blender's own: at startup, before any region.
+            return updates
     return None
 
 
@@ -96,7 +100,9 @@ def _support():
     if _support_reason is None:
         instance = preparer()
         reason = instance.support()[0] if instance is not None else "location"
-        _support_reason = "location_windows" if reason == "location" and sys.platform.startswith("win") else reason
+        if reason == "location" and sys.platform.startswith(("win", "linux")):
+            reason = "location_windows" if sys.platform.startswith("win") else "location_linux"
+        _support_reason = reason
     return _support_reason
 
 
@@ -143,7 +149,10 @@ def _handle_results_once():
     _results_handled = True
     instance = preparer()
     if instance is not None:
-        _restart_module().handle_results(instance, _state_directory())
+        try:   # Once (the flag is set first): every caller (timers, consider(), operators) is behind this.
+            _restart_module().handle_results(instance, _state_directory())
+        except Exception:   # Cleanup at launch must never end a timer or an operator: logged, start-up goes on.
+            traceback.print_exc()
 
 
 def _supersede(version):

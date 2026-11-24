@@ -27,21 +27,28 @@ POT = LOCALE_DIR / "angelo.pot"
 UI_MODULES = frozenset("""
 headless_window_lock headless_window_relay
 learn_card_draw learn_cards learn_resolver learn_routes learn_ui
+rules_ui rules_sheet project_rules_host composer_mention_ui crash_resume_ui context_folder_ui context_folder_host
+context_folder_write
+loops_menu
+collision_fit splat_mesh
+markup_chrome markup_draw markup_edit markup_edit_host markup_layout markup_overlay markup_resize markup_send markup_ui
 fab_preferences fab_settings fab_ui fab_overlay worker_mirror_events
-camera_preview_setting agent_changes_forget
+camera_preview_setting agent_changes_forget strict_protection
 about_card game_physics game_physics_ui agent_workspace_ui approvals approval_review canvas_controls chat_composer chat_drop clipboard_image chat_popovers chat_settings chat_titles chat_view
 chat_welcome checkpoint_images checkpoint_restore_ui checkpoint_seal connect_hero team_access
 chat_replies chat_notices chat_resend chat_pending turn_end call_ended review_again chat_start_states chat_toggle chat_hint chat_launcher asset_shelf_add media_shelf shelf_empty studio_toggle studio_video studio_video_ui studio_media_tiles flow_video_node flow_open flow_window flow_start flow_menu studio_to_flow flow_text_field flow_setup asset_browser_entry asset_browser_states studio_workspaces chat_destinations
 checkpoint_review_ui checkpoint_settings_ui console director director_select_through feedback_ui uv_checker uv_checker_card display_text editor_types first_run flow_approvals
 flow_chat flow_drop flow_nodes flow_recipe_ui flow_ui intro key_store managed_policy preferences_ui preview_branding
 project_brief_rebind_ui quick_connect saved_keys_ui shared_keys_ui settings_import_card settings_import_ui snapshot_blocks splash_setup setup_card start_card firstlaunch_controls studio studio_draw studio_input studio_ops studio_asset_ops studio_library_ops media_drop studio_item_menu media_menus studio_approvals
-studio_chat team_account_ui team_chat team_connections team_errors team_library_approvals team_pages
+studio_chat team_account_ui policy_notes team_chat team_connections team_errors team_library_approvals team_pages
 team_status_bar team_token_store ui voice_ui welcome_screen welcome_slides welcome_art flow_character_nodes flow_character_ui studio_workflow_ops studio_workflows
-app_notices card_draw card_host card_kit crash_card crash_ui update_card update_restart update_ui updates_prefs whatsnew_card
+app_notices card_draw card_host card_kit crash_card crash_ui update_card update_card_addons update_restart update_ui updates_prefs whatsnew_card
 grant_hints approval_steps chat_card_draw chat_cards detail_keys review_card review_text job_approvals job_chat job_desktop job_ui trusted_scripts_ui recovery_review
+uv_layout_ui
 activity_text chat_history chat_rows live_progress edit_tool_hold edit_tool_status live_row chat_guard chat_blocks changes_popup approval_wait launcher_waiting auto_reasons
-stop_notice
+stop_notice share_refusal_notice
 ui_kit ui_kit_builder ui_kit_controls ui_kit_field ui_kit_rows ui_kit_select ui_kit_status ui_formats activity_details draft_overflow chat_goal
+planning_card planning_text planning_ui
 chat_add_menu chat_add_nav chat_add_draw chosen_tools
 library_actions library_overlay library_overlay_draw library_ui library_approvals
 web_export_ui web_preview session_page web_shader web_shader_ui engine_link_ui shot_capture shot_capture_ui engine_suggest_ui
@@ -55,9 +62,12 @@ worker_consent_lead worker_mirror_cards worker_mirror_opens
 photo_drop photo_drop_card photo_drop_choices photo_drop_jobs
 render_engines ai_render ai_render_card engine_setup engine_status
 bake_maps_card bake_maps_text
-render_region render_region_card render_region_draw render_region_pills
-tension_map tension_map_card tension_map_logic
+render_region render_region_card render_region_draw render_region_pills shape_cut_tool
+tension_map tension_map_card tension_map_logic retopology_ui
+scatter_ui scatter_card scatter_text
+look_ui look_card
 skeleton_report_card skeleton_check_ui skeleton_menu
+rigging_ops ik_controls rig_edit
 version_carry_over_ui safe_start_notice carry_over_finish
 conversations conversations_delete conversations_layout conversations_popover conversations_ui model_picker_ui
 agent_target_labels surface_focus
@@ -81,6 +91,22 @@ library_spec library_agent blender_assets_agent blender_asset_previews
 
 # Modules with UI-looking code that never shows translatable chrome, and why.
 NON_UI_MODULES = {
+    "markup_message": "the marked-up message's blocks for the model (English); its one refusal, FULL_BOX, is an n_ "
+                      "constant its callers translate where they show it",
+    "picture_budget": "encodes the viewer's pictures within the chat's limit (no drawing): its one refusal is an n_ "
+                      "constant the viewer translates where it shows it",
+    "studio_tile_previews": "reads pictures into bounded pixels and textures (no drawing): its refusals are n_ "
+                            "constants the viewer translates where it shows them",
+    "picture_size": "reads a picture's size and orientation from its header (no drawing): its refusals are n_ "
+                    "constants the viewer translates where it shows them",
+    "markup_tools": "the picture viewer's session (no drawing): its bound sentences are n_ constants markup_overlay "
+                    "translates where it shows them; its ValueErrors are English for its callers",
+    "context_folder_grants": "the chats' folder grants: its refusals are exception classes the Folder as context "
+                             "operator (context_folder_ui) reports in translated sentences",
+    "context_folder_working": "the working folder's disk writes: its refusals are sentences for the model "
+                              "(context_folder_write says them), never drawn",
+    "script_access": "the sentence and link every offer to run scripts without asking shows: n_ constants that "
+                     "chat_cards, trusted_scripts_ui, ui and the AI Providers page translate where they draw them",
     "external_cli": "the apps' local listener: its refusals are English envelopes for the app's model and the CLI, "
                     "and its log lines; it draws nothing in Angelo",
     "session_page_ended": "a live page's end after an error: its one notice (FAILED) is an n_ constant the "
@@ -210,6 +236,7 @@ NON_UI_MODULES = {
     "session_rail_strip": "pure layout of the Sessions panel's strips (the session rail's tiles side by side); no "
                           "interface text of its own (session_rail_draw draws and translates it)",
     "rtl_text": "right-to-left text processing; no interface text of its own",
+    "rtl_isolate": "isolated units in right-to-left text (marks and remembered lines); no interface text of its own",
     "canvas_rtl": "right-to-left canvas drawing; no interface text of its own",
     "canvas_wrap": "incremental wrapping of already-localized canvas text; no interface text of its own",
     "text_layout": "line breaking; no interface text of its own",
@@ -233,10 +260,21 @@ NON_UI_MODULES = {
                    "translated where the job card shows them",
     "job_render_region": "the region render job: refusals are model-facing English; marked notes are translated "
                          "where the job card shows them",
+    "job_uv_layout": "the UV_LAYOUT job: refusals are model-facing English; marked reasons and notes are translated "
+                     "where the job card shows them",
+    "job_uv_layout_spec": "the UV_LAYOUT job's request and receipt: model-facing English only",
+    "uv_layout": "UV Layout's unwrap and pack steps: refusals are model-facing English (the operator reports them as "
+                 "Blender reports an error); no interface text",
+    "uv_layout_job": "drives UV Layout's packs as jobs: its failure reasons are model-facing English; no interface text",
+    "uv_layout_math": "UV Layout's pure geometry and tile arithmetic; no text",
+    "uv_layout_ops": "the agent's uv_layout operation, declared for the shared typed-operation pattern: its parameter "
+                     "descriptions and checks are model-facing English; no interface text",
     "job_bakes": "bake jobs: refusals are model-facing English; marked reasons and notes are translated where the "
                  "job card shows them",
     "job_bake_maps": "texture-set bake job: refusals are model-facing English; marked reasons and notes are "
                      "translated where the job card shows them",
+    "job_retopology": "Retopology job: refusals are model-facing English; its marked notice is translated where the "
+                      "job card shows it",
     "job_fluid": "Mantaflow bake jobs: refusals are model-facing English; marked reasons and notes are translated "
                  "where the job card shows them",
     "job_desktop_prefs": "the job_desktop preference properties, whose names and descriptions Blender translates "
@@ -260,6 +298,8 @@ NON_UI_MODULES = {
     "engine_detect": "which engines run or are installed: process names and paths, never shown",
     "engine_suggest": "when to suggest the engine link, and the agent's model-facing English note",
     "feature_guide": "model-facing English: the FEATURES lookup's entries",
+    "feature_guide_scene": "model-facing English: the FEATURES lookup's scene, modelling, UV and rigging entries",
+    "feature_guide_types": "the FEATURES entry type and its examples' placeholders: model-facing English",
     "app_feature_spec": "model-facing tool schema",
     "app_feature_host": "the agent tool's host route; results and refusals are model-facing English",
     "engine_link_tool_spec": "model-facing tool schema",
@@ -319,6 +359,9 @@ NON_UI_MODULES = {
                    "announcing a capture is a notice, translated where the chat shows it",
     "cache_affinity": "cache-affinity keys and the agent runtime's support check are wire data; the check's three "
                       "failures are notices, translated where the chat shows the error",
+    "agent_runtime": "which Codex runs and with what command line; its refusals (no flag, a refused command line, a "
+                     "missing runtime) are display_text.Text errors and its own-Codex note a notice, translated where "
+                     "the chat shows them",
     "unsent_loss": "the retry of a request whose runtime ended before it sent anything; its log lines are English, "
                    "and the one chat error it raises is a notice, translated where the chat shows it",
     "codex_login": "the Codex login file's stamp; the one chat error a person reads (an unreadable sign-in file) "
@@ -402,7 +445,9 @@ source/blender/render/intern/angelo_region_render.cc
 source/blender/blenkernel/intern/mesh_remesh_voxel_estimate.cc
 source/blender/blenloader/intern/writefile.cc
 source/blender/editors/object/object_remesh.cc
+source/blender/editors/object/object_retopology.cc
 source/blender/editors/undo/angelo_undo.cc
+source/blender/editors/space_sequencer/sequencer_edit.cc
 """.split())
 
 def _release_notes_msgids():
@@ -424,6 +469,10 @@ def _release_notes_msgids():
 # Text Angelo adds to Blender's own RNA from C++ (dynamic enum items, renamed operators): (context, msgid, origin).
 # The RNA dump records these under Blender's class names, so they are listed here and checked by the native suite.
 EXTRA_MSGIDS = (
+    # The rigging operators' enum item "FK": Blender's catalogue has "IK" but not "FK", and the app's extraction
+    # does not keep a two-letter item name (test_native_translation_class_text).
+    ("", "FK", "angelo_agent/ik_controls.py"),
+    ("", "FK", "angelo_agent/rigging_ops.py"),
     ("Operator", "Before Asset Import", "source/blender/editors/undo/angelo_undo.cc"),
     ("Operator", "Import Asset", "source/blender/editors/undo/angelo_undo.cc"),
     ("", "AI", "source/blender/makesrna/intern/rna_screen.cc"),
@@ -471,6 +520,27 @@ EXTRA_MSGIDS = (
     ("", "Write the Smooth by Angle result into the selected objects' meshes and remove the modifier from every "
          "object that uses them, so a mesh shared by many objects is evaluated once. The angle no longer updates "
          "when the mesh is edited", "source/blender/editors/object/object_shade_bake.cc"),
+    # Retopology (object.retopology, Properties > Mesh > Remesh): its operator name and options; the option names
+    # Blender already translates (Faces, Symmetry, Smooth Normals...) are left to its catalogue.
+    ("Operator", "Retopology", "source/blender/editors/object/object_retopology.cc"),
+    ("", "Make clean quad topology that follows the shape of the active mesh, its sharp edges and the "
+     "edges marked Sharp, Seam or Crease. Works on scanned and generated meshes with holes, loose "
+     "parts or broken faces", "source/blender/editors/object/object_retopology.cc"),
+    ("", "Approximate number of faces of the result (both sides of a symmetric result together)", "source/blender/editors/object/object_retopology.cc"),
+    ("", "Make the result exactly symmetric across the mesh's symmetry axes (Mesh > Symmetry)", "source/blender/editors/object/object_retopology.cc"),
+    ("", "Mirror planes through the object's origin when not using the mesh's own symmetry", "source/blender/editors/object/object_retopology.cc"),
+    ("", "Sharp Angle", "source/blender/editors/object/object_retopology.cc"),
+    ("", "Edges where faces meet at more than this angle become edges of the result; 0 follows only marked "
+     "edges", "source/blender/editors/object/object_retopology.cc"),
+    ("", "Follow Marked Edges", "source/blender/editors/object/object_retopology.cc"),
+    ("", "Keep the edges marked Sharp, Seam or Crease as edges of the result", "source/blender/editors/object/object_retopology.cc"),
+    ("", "Follow Curvature", "source/blender/editors/object/object_retopology.cc"),
+    ("", "How strongly the flow follows the directions the surface curves in (0 for the smoothest flow)", "source/blender/editors/object/object_retopology.cc"),
+    ("", "Only Quads", "source/blender/editors/object/object_retopology.cc"),
+    ("", "Make every face a quad", "source/blender/editors/object/object_retopology.cc"),
+    ("", "Carry vertex groups and other attributes over to the result from the nearest surface", "source/blender/editors/object/object_retopology.cc"),
+    ("", "Shade the result smooth", "source/blender/editors/object/object_retopology.cc"),
+    ("", "Put the result in a new object and leave the active mesh unchanged", "source/blender/editors/object/object_retopology.cc"),
     # Voxel Remesh's hidden size, set by its "too large" dialog (Blender #77868).
     ("", "Voxel size to use, written to the mesh first (0: the mesh's own)",
      "source/blender/editors/object/object_remesh.cc"),
@@ -485,6 +555,11 @@ EXTRA_MSGIDS = (
     ("", "This file has morph targets (shape keys) and Merge Vertices is off: its seams will shade apart when the "
          "shape keys move, because split seam vertices stay split and glTF morph normals are not kept. Import with "
          "Merge Vertices on (merge_vertices=True) to weld them", "io_scene_gltf2/__init__.py"),
+    # The person's glTF import welds files with morph targets (its option, on in File > Import and a drop).
+    ("", "Weld Shape Key Seams", "io_scene_gltf2/__init__.py"),
+    ("", "Merge Vertices for a file with morph targets (shape keys), so its seams do not shade apart when a shape key "
+         "moves. UVs, colors and hard edges are kept. Files without morph targets are not changed",
+     "io_scene_gltf2/__init__.py"),
     # Blender's own text that names the running app, reworded to Angelo (doc/angelo/localization.rst, "The
     # running app is Angelo"). Blender's catalogues translate only the old wording, so Angelo's catalogue does.
     ('', 'Path to the library .blend file. WARNING: Typically, this value should be considered read-only, changing this path without proper processing afterwards can leave Angelo data in an invalid state',
@@ -501,6 +576,14 @@ EXTRA_MSGIDS = (
      'scripts/addons_core/rigify/ui.py'),
     ('', 'Angelo was compiled without a viewport denoiser',
      'intern/cycles/blender/addon/properties.py'),
+    # Cycles' denoisers, findable on every GPU vendor (doc/angelo/render_engines.rst, "Denoisers on every GPU").
+    ('', 'Use the OpenImageDenoise AI denoiser. It runs on the CPU and on the GPU with supported AMD, Apple, Intel '
+         'and NVIDIA graphics', 'intern/cycles/blender/addon/properties.py'),
+    ('', 'Use NVIDIA DLSS Ray Reconstruction on NVIDIA RTX graphics. It denoises and upscales the Rendered viewport '
+         'only; final renders use OpenImageDenoise or OptiX', 'intern/cycles/blender/addon/properties.py'),
+    ('', 'A GPU here can denoise. Choose it in Preferences > System > Cycles Render Devices.',
+     'intern/cycles/blender/addon/ui.py'),
+    ('', 'No GPU here supports OpenImageDenoise, so it denoises on the CPU.', 'intern/cycles/blender/addon/ui.py'),
     ('', "List all repositories stored in Angelo's preferences.",
      'scripts/addons_core/bl_pkg/bl_extension_cli.py'),
     ('', 'Angelo was launched in offline mode, which cannot be changed at runtime',
@@ -682,6 +765,9 @@ EXTRA_MSGIDS = (
     # translation of its message yet, so Angelo's carries it until they do.
     ('', 'Stopped baking because frame {} could not be written to {}',
      'source/blender/editors/object/object_bake_simulation.cc'),
+    # The refusal of every GPU-drawn feature on a machine without a usable GPU (WM_gpu_unavailable_message).
+    ('', 'This needs a graphics card (GPU), and none is usable on this computer',
+     'source/blender/windowmanager/intern/wm_init_exit.cc'),
 ) + _release_notes_msgids()
 
 # The repository's own msgfmt (from a build) when set; otherwise gettext's.

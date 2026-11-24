@@ -1028,8 +1028,10 @@ void RNA_api_strips(StructRNA *srna, const bool metastrip)
   RNA_def_function_ui_description(func, "Add a new image strip");
   parm = RNA_def_string(func, "name", "Name", 0, "", "Name for the new strip");
   RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
-  parm = RNA_def_string(func, "filepath", "File", 0, "", "Filepath to image");
-  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  /* Angelo: a file path (as `bpy.data.*.load`'s), so a confined script's path is judged like any other loader's
+   * (doc/angelo/script_confinement.rst); the strip resolves "//" against the document itself. */
+  parm = RNA_def_string_file_path(func, "filepath", "File", 0, "", "Filepath to image");
+  RNA_def_parameter_flags(parm, PROP_PATH_SUPPORTS_BLEND_RELATIVE, PARM_REQUIRED);
   parm = RNA_def_int(func,
                      "channel",
                      0,
@@ -1066,8 +1068,10 @@ void RNA_api_strips(StructRNA *srna, const bool metastrip)
   RNA_def_function_ui_description(func, "Add a new movie strip");
   parm = RNA_def_string(func, "name", "Name", 0, "", "Name for the new strip");
   RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
-  parm = RNA_def_string(func, "filepath", "File", 0, "", "Filepath to movie");
-  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  /* Angelo: a file path (as `bpy.data.*.load`'s), so a confined script's path is judged like any other loader's
+   * (doc/angelo/script_confinement.rst); the strip resolves "//" against the document itself. */
+  parm = RNA_def_string_file_path(func, "filepath", "File", 0, "", "Filepath to movie");
+  RNA_def_parameter_flags(parm, PROP_PATH_SUPPORTS_BLEND_RELATIVE, PARM_REQUIRED);
   parm = RNA_def_int(func,
                      "channel",
                      0,
@@ -1106,8 +1110,10 @@ void RNA_api_strips(StructRNA *srna, const bool metastrip)
   RNA_def_function_ui_description(func, "Add a new sound strip");
   parm = RNA_def_string(func, "name", "Name", 0, "", "Name for the new strip");
   RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
-  parm = RNA_def_string(func, "filepath", "File", 0, "", "Filepath to movie");
-  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  /* Angelo: a file path (as `bpy.data.*.load`'s), so a confined script's path is judged like any other loader's
+   * (doc/angelo/script_confinement.rst); the strip resolves "//" against the document itself. */
+  parm = RNA_def_string_file_path(func, "filepath", "File", 0, "", "Filepath to movie");
+  RNA_def_parameter_flags(parm, PROP_PATH_SUPPORTS_BLEND_RELATIVE, PARM_REQUIRED);
   parm = RNA_def_int(func,
                      "channel",
                      0,

@@ -42,6 +42,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_input, inside the
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-media-shelf-qa"))
@@ -159,7 +160,7 @@ def first_tile():
     scale = prefs.system.ui_scale
     with shelf_override():
         size = bpy.context.asset_shelf.preview_size
-    return shelf.x + (size / 2 + 8) * scale, shelf.y + shelf.height - (size / 2 + 10) * scale
+    return qa_hit.xy(qa_hit.RAW, shelf, (size / 2 + 8) * scale, shelf.height - (size / 2 + 10) * scale)
 
 
 def tile_box():
@@ -184,7 +185,7 @@ def cube_point():
     cube = next(o for o in bpy.context.scene.objects if o.type == 'MESH' and o.name != MODEL)
     point = location_3d_to_region_2d(view, view3d().spaces.active.region_3d, cube.matrix_world.translation)
     state["cube"] = cube.name
-    return view.x + point.x, view.y + point.y
+    return qa_hit.xy(qa_hit.RAW, view, point.x, point.y)
 
 
 def finish(error=None):

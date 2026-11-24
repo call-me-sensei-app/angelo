@@ -362,6 +362,11 @@ which Blender registers before it enables add-ons):
   those that failed, which their own notice names with causes, so none is named twice. Without Angelo's add-on
   enabled, only the console names them. An add-on
   importable only from outside the add-on folders (``site-packages``) counts as shipped and is never named.
+* **What loaded is recorded.** Each completed start (or preference read's enabling) writes, in this version's
+  ``<config>/angelo-start/addon-loads.json``, the person's add-ons that loaded with their versions
+  (``angelo_addon_loads``; module names and versions only, written only when it changes), and keeps this session's
+  failures (``failed_now``). An update's card reads both to say which add-ons are not yet known to work on the version
+  it installs (``updates_and_reports.rst``, "Your add-ons and the update").
 * **The left-off add-ons are saved off.** A launch that left add-ons off saves the preferences once its start
   completes (``wm.save_userpref``), whatever Auto-Save Preferences says, with any other change still in memory, so
   a later normal start does not load them again.

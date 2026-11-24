@@ -8,9 +8,11 @@
  * Manage initializing resources and correctly shutting down.
  */
 
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 
 #ifdef _WIN32
 #  include <io.h>
@@ -36,6 +38,8 @@
 #include "BLI_threads.hh"
 #include "BLI_timer.hh"
 #include "BLI_utildefines.hh"
+
+#include "BLT_translation.hh"
 
 #include "BLO_undofile.hh"
 #include "BLO_writefile.hh"
@@ -77,6 +81,7 @@
 #ifdef WITH_PYTHON
 #  include "BPY_extern_python.hh"
 #  include "BPY_extern_run.hh"
+#  include "intern/bpy_angelo_guard_confine.hh"
 #endif
 
 #include "GHOST_ISystem.hh"
@@ -97,6 +102,7 @@
 #include "wm_platform_support.hh"
 #include "wm_surface.hh"
 #include "wm_window.hh"
+#include "wm_window_private.hh"
 
 #include "ED_anim_api.hh"
 #include "ED_asset.hh"
@@ -140,6 +146,7 @@ CLG_LOGREF_DECLARE_GLOBAL(WM_LOG_MSGBUS_PUB, "msgbus.pub");
 CLG_LOGREF_DECLARE_GLOBAL(WM_LOG_MSGBUS_SUB, "msgbus.sub");
 
 static CLG_LogRef LOG_BLEND = {"blend"};
+static CLG_LogRef LOG_GPU_INIT = {"gpu.init"};
 
 static void wm_init_scripts_extensions_once(bContext *C);
 
@@ -157,17 +164,36 @@ void WM_init_state_start_with_console_set(bool value)
  * so that it does not break anything that can run in headless mode (as in
  * without display server attached).
  */
-static bool gpu_is_init = false;
+static std::atomic<bool> gpu_is_init = false;
+/** The system refused a GPU context (or the backend is unsupported) once: never retried. */
+static std::atomic<bool> gpu_context_unavailable = false;
+/** Serializes the on-demand start in background mode (a job thread and the main thread may both
+ * ask). */
+static std::mutex gpu_init_mutex;
+/** QA only, background only: the system's refusal of a context, on any machine, so the refusals
+ * of GPU-drawn features are tested on GPU machines too (test_blender_gpu_unavailable). Read once
+ * as #WM_init starts, before Python runs: a script cannot set it. */
+static bool gpu_refused_for_qa = false;
 
 void WM_init_gpu_backend()
 {
   GPU_backend_type_selection_detect();
 }
 
+/** Refuse from now on, saying why once. */
+static void wm_gpu_refused(const char *why)
+{
+  gpu_context_unavailable = true;
+  CLOG_WARN(&LOG_GPU_INIT, "%s: GPU features (such as the GPU compositor) are unavailable", why);
+}
+
 void WM_init_gpu_offscreen()
 {
-  /* Must be called only once. */
-  BLI_assert(gpu_is_init == false);
+  /* Runs once: a second caller (another thread that asked meanwhile) finds it done. */
+  std::scoped_lock lock(gpu_init_mutex);
+  if (gpu_is_init || gpu_context_unavailable) {
+    return;
+  }
 
   if (G.background) {
     /* Init on demand for background mode, already done for foreground mode. */
@@ -178,11 +204,16 @@ void WM_init_gpu_offscreen()
   }
 
   if (!GPU_backend_supported()) {
+    wm_gpu_refused("The GPU backend is not supported");
     return;
   }
 
-  /* Needs to be first to have an OpenGL context bound. */
-  DRW_gpu_context_create();
+  /* Needs to be first to have an OpenGL context bound. Without a context the GPU module stays
+   * uninitialized, so GPU users take their CPU path or report the GPU as unavailable. */
+  if (gpu_refused_for_qa || !DRW_gpu_context_create()) {
+    wm_gpu_refused("Unable to create a GPU context");
+    return;
+  }
 
   GPU_init();
 
@@ -194,6 +225,30 @@ void WM_init_gpu_offscreen()
   DRW_gpu_context_disable_ex(true);
 
   gpu_is_init = true;
+}
+
+bool WM_gpu_is_available()
+{
+  if (gpu_is_init) {
+    return true;
+  }
+  if (gpu_context_unavailable) {
+    return false;
+  }
+  if (!G.background) {
+    /* Foreground mode initializes the GPU with its first window. */
+    return false;
+  }
+  /* The on-demand start, from whichever thread asks first: the draw manager's own background
+   * start (#DRW_render_context_enable) makes it from a job's thread too, so the answer is always
+   * the system's, never a guess. */
+  WM_init_gpu_offscreen();
+  return gpu_is_init;
+}
+
+const char *WM_gpu_unavailable_message()
+{
+  return N_("This needs a graphics card (GPU), and none is usable on this computer");
 }
 
 static void sound_jack_sync_callback(Main *bmain, int mode, double time)
@@ -222,6 +277,7 @@ static void sound_jack_sync_callback(Main *bmain, int mode, double time)
 
 void WM_init(bContext *C, int argc, const char **argv)
 {
+  gpu_refused_for_qa = G.background && BLI_getenv("ANGELO_QA_REFUSE_GPU_CONTEXT") != nullptr;
 
   if (!G.background) {
     wm_ghost_init(C); /* NOTE: it assigns C to ghost! */
@@ -306,6 +362,10 @@ void WM_init(bContext *C, int argc, const char **argv)
   read_homefile_params.app_template_override = WM_init_state_app_template_get();
   read_homefile_params.is_first_time = true;
 
+#ifdef WITH_PYTHON
+  /* Angelo: Windows' share connections before any document loads (a startup file's own paths can't add one). */
+  BPY_angelo_guard_connections_at_start();
+#endif
   wm_homefile_read_ex(C, &read_homefile_params, nullptr, &params_file_read_post);
 
   /* NOTE: leave `G_MAIN->filepath` set to an empty string since this
@@ -338,6 +398,23 @@ void WM_init(bContext *C, int argc, const char **argv)
     WM_ndof_deadzone_set(U.ndof_deadzone);
 #endif
     WM_init_gpu_offscreen();
+
+    if (!gpu_is_init) {
+      /* Windows got a context but the draw manager did not: nothing could draw. Blender's own
+       * words for an unsupported platform, then exit (the interface would draw without one). */
+      char title[256], message[1024];
+      SNPRINTF(title,
+               "%s - %s",
+               ANGELO_PRODUCT_NAME,
+               CTX_IFACE_(BLT_I18NCONTEXT_ID_WINDOWMANAGER, "Platform Unsupported"));
+      SNPRINTF(message,
+               "%s\n \n%s",
+               CTX_IFACE_(BLT_I18NCONTEXT_ID_WINDOWMANAGER,
+                          "Your graphics card or driver version is not supported."),
+               CTX_IFACE_(BLT_I18NCONTEXT_ID_WINDOWMANAGER, "Angelo will now close."));
+      WM_ghost_show_message_box(title, message, "", "Exit", "", GHOST_DialogError);
+      WM_exit(C, -1);
+    }
 
     if (!WM_platform_support_perform_checks()) {
       WM_exit(C, -1);

@@ -55,6 +55,7 @@
 
 #include "bpy_angelo_guard_confine_intern.hh"
 #include "bpy_angelo_guard_confine_paths.hh"
+#include "bpy_angelo_guard_confine_remote.hh"
 #include "bpy_angelo_guard_confine_vouches.hh"
 #include "bpy_angelo_guard_confine_winpath.hh"
 
@@ -692,6 +693,9 @@ static PyObject *guard_create_beside(PyObject * /*self*/, PyObject *args)
   }
   const std::string path = key.substr(0, cut == 0 ? 1 : cut) + (cut == 0 ? "" : std::string(1, SEP)) + name;
 #ifdef _WIN32
+  if (!lookup_may_touch(path)) {
+    Py_RETURN_NONE; /* A remote name on a share nobody connected: never created (remote.hh). */
+  }
   FILE *file = BLI_fopen(path.c_str(), "wbx"); /* Exclusive: never an existing file (nor a link put there). */
   if (file == nullptr) {
     Py_RETURN_NONE;

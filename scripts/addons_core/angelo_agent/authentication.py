@@ -12,7 +12,13 @@ from pathlib import Path
 
 from . import owned_paths
 from .cli_runtime import chosen, launch, with_runtime_path
+from . import runtime_environment
 from .providers import child_environment, find_executable, profile_environment
+
+
+def browser_sign_in(login, api_key):
+    """Whether this sign-in command opens the person's browser (``codex login`` without an API key)."""
+    return bool(login) and not api_key
 
 
 def native_auth_command(mode, settings, state_dir, login=False, api_key=False):
@@ -24,6 +30,10 @@ def native_auth_command(mode, settings, state_dir, login=False, api_key=False):
     executable = find_executable(name, chosen(name))
     env = with_runtime_path(profile_environment(child_environment(mode), mode, settings.get("auth_directory", state_dir),
                             settings.get("reuse_codex_login", True), settings.get("connection_id"), settings.get("native_profile")), executable)
+    # Angelo's own runtime: no loader variables (the API key passes through this process), and on Linux the system's
+    # program folders, except for the browser sign-in, which keeps the person's PATH: the sign-in page opens through
+    # their browser opener (runtime_environment.for_agent_runtime). child_process applies the same at the start.
+    runtime_environment.for_agent_runtime(env, executable, keep_path=browser_sign_in(login, api_key))
     if name == "codex":
         command = [executable]
         if mode == "codex_api":
@@ -113,7 +123,8 @@ class NativeAuthentication:
                 if not cancelled:
                     # Provider-owned browser flow; cancellation never closes a browser window.
                     process = launch(command, env=env, cwd=str(state_dir), stdin=subprocess.PIPE if api_key else subprocess.DEVNULL,
-                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, keep_gui_programs=True)
+                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                     keep_gui_programs=browser_sign_in(login, api_key))
                     with self.lock:
                         if self._attempts.get(identity) == attempt:
                             self.processes[identity] = process

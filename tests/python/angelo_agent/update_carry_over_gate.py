@@ -11,7 +11,9 @@ Run with host Python 3.9+ (``doc/angelo/releasing.rst``, "Update carry-over gate
    briefs and native contexts, an attachment, a deduplicated snapshot with a file journal, a saved scene and changed
    preferences. ``--connections-from`` copies the saved coding accounts' metadata (never a credential) from a
    signed-in account folder, each isolated native profile named by its absolute path, as a person's 1.0 install
-   names it.
+   names it (``recover_connections.py``), and recorded in the account store's retained-profile list, as every save
+   of that install records it (``ConnectionStore.save``, since 1.0.6): Angelo starts a runtime only with a profile in
+   its own folders, and that list is what makes such a profile one of them (``private_roots``).
 2. **Update** (the candidate, a window): the state moved, every chat, brief, attachment, snapshot and preference is
    here and works, no setup card or Quick Setup, one notice (captured); each account's sign-in command resolved.
 3. **Restart** (the candidate again): nothing moves twice, no notice, everything still here.
@@ -38,13 +40,17 @@ Isolation (``--profile``): ``sandbox`` (macOS, Linux) points HOME, CFFIXED_USER_
 install does. ``account`` uses this account's own folders (a Windows VM, whose known folders cannot be redirected):
 it refuses to start when an Angelo user or data folder exists and moves both into ``--out`` at the end (never
 deletes). ``--as-older-version 5.1`` seeds into that version's folder (``BLENDER_USER_RESOURCES`` for the earlier app
-only), to prove the mechanism when both apps share a Blender base. Receipt: ``<out>/update-gate.json``.
+only), to prove the mechanism when both apps share a Blender base. Without it, two apps on one base (a patch release)
+are gated as that update is: nothing carried over, no notice, the state used in place, and the earlier app listing the
+same chats (``same_base`` in the receipt; ``update_carry_over_phases.phase_update_same_base``). Receipt:
+``<out>/update-gate.json``.
 """
 
 import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -56,14 +62,15 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(ROOT / "scripts/modules"))
 import angelo_identity  # noqa: E402
+import update_carry_over_contract as contract  # noqa: E402
+import update_carry_over_prefs  # noqa: E402
 import crash_dialog  # noqa: E402
 import fake_provider_cli  # noqa: E402
 import gui_launch  # noqa: E402
 import native_suite_checks  # noqa: E402
-from angelo_agent import authentication, storage  # noqa: E402
+from angelo_agent import authentication, private_roots, storage  # noqa: E402
 
 CODING = ("claude_subscription", "codex_subscription", "codex_api")
-SIGNED_IN = {"Connected to Claude", "Connected to ChatGPT", "Native API credential configured"}
 LAUNCH_TIMEOUT = 300   # Seconds per app launch (each phase quits itself; this is the hard cap).
 
 
@@ -114,7 +121,55 @@ def seed_connections(source, env):
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
     (folder / "connections.json").write_text(json.dumps({"version": 3, "active": records[0]["id"] if records else None,
                                                          "connections": records, "ignored_native_modes": []}))
+    # What the store's own save writes beside the file (connections.ConnectionStore.save): each named profile in the
+    # retained-profile list. Without it the seed is a store no Angelo wrote, whose outside profiles the candidate
+    # rightly refuses (storage.ProfileOutside: 2.0.0's Windows state receipt, the bench folder outside the profile).
+    if not private_roots.remember_profiles(folder, records):
+        raise SystemExit("The seeded accounts' native profiles could not be recorded in %s" % folder)
     return folder
+
+
+VERSION_LINE = re.compile(r"^Blender (\d+)\.(\d+)\.(\d+)", re.M)
+BUILD_HASH = re.compile(r"build hash:\s*([0-9a-f]{7,40})")
+BUILD_BRANCH = re.compile(r"build branch:[ \t]*([^\r\n]*)")
+
+
+def app_version(binary, env):
+    """What the app itself says it is (``--version``): its Blender version, base (major.minor), build hash and branch
+    (" (modified)" when built from a changed tree), and the executable's own SHA-256, which names the very binary
+    (a build hash names a commit, and an upstream one when the tree was ahead)."""
+    result = subprocess.run([str(binary), "--version"], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            timeout=120)
+    text = result.stdout.decode("utf-8", errors="replace")
+    version, built, branch = VERSION_LINE.search(text), BUILD_HASH.search(text), BUILD_BRANCH.search(text)
+    return {"blender": ".".join(version.groups()) if version else None,
+            "base": "%s.%s" % version.groups()[:2] if version else None,
+            "build_hash": built.group(1) if built else None,
+            "build_branch": branch.group(1).strip() if branch else None,
+            "executable_sha256": digest(binary)}
+
+
+def same_base(earlier, candidate, as_older_version=None):
+    """Whether the update stays on one Blender base, from both apps' own versions: then nothing is carried over by
+    design and the gate checks that update's contract. ``--as-older-version`` seeds an earlier base's folder: never."""
+    if not earlier["base"] or not candidate["base"]:
+        raise SystemExit("An app did not say its Blender version (--version): %s, %s" % (earlier, candidate))
+    return earlier["base"] == candidate["base"] and not as_older_version
+
+
+GATE_FILES = ("update_carry_over_gate.py", "update_carry_over_phases.py", "update_carry_over_contract.py",
+              "update_carry_over_prefs.py", "update_carry_over_seed.py")
+
+
+def tools():
+    """What produced this receipt: the source commit the runner proved (ANGELO_SOURCE_COMMIT, set by the bench session
+    or the driver), each gate file's SHA-256, and a session command's own files (ANGELO_GATE_SESSION_TOOLS)."""
+    try:
+        session = json.loads(os.environ.get("ANGELO_GATE_SESSION_TOOLS") or "{}")
+    except ValueError:
+        session = {"unreadable": os.environ.get("ANGELO_GATE_SESSION_TOOLS")}
+    return {"source_commit": os.environ.get("ANGELO_SOURCE_COMMIT"),
+            "files": {name: digest(HERE / name) for name in GATE_FILES}, "session": session}
 
 
 def digest(path):
@@ -162,16 +217,18 @@ def dialog_checks(dialog, code, platform=sys.platform):
 
 
 def sign_in_status(entry, executables):
-    """The host-side status of one resolved account: the command Angelo resolved, run with the person's home."""
+    """The host-side status of one resolved account, the command Angelo resolved, run with the person's home:
+    (Angelo's own whitelisted status text, the command's exit code). The output itself is never kept (it can name
+    the account); the exit code says why a status is "Not connected" (a CLI that refused, or one never signed in)."""
     env = dict(os.environ)
     env.update(entry["profile_env"])
     name = "claude" if entry["mode"].startswith("claude_") else "codex"
     executable = executables.get(name) or shutil.which(name)
     if not executable:
-        return "No %s command on this computer" % name
+        return "No %s command on this computer" % name, None
     command = [executable] + entry["command"][1:]
     result = subprocess.run(command, env=env, capture_output=True, text=True, timeout=60)
-    return authentication.metadata_status(entry["mode"], result.returncode, result.stdout + result.stderr)
+    return authentication.metadata_status(entry["mode"], result.returncode, result.stdout + result.stderr), result.returncode
 
 
 def main():
@@ -214,6 +271,8 @@ def main():
         report["checks"][name] = bool(condition)
 
     try:
+        report["apps"] = {"from": app_version(args.from_app, env), "to": app_version(args.to_app, env)}
+        report["same_base"] = same_base(report["apps"]["from"], report["apps"]["to"], args.as_older_version)
         accounts = seed_connections(args.connections_from, env) if args.connections_from else None
         before_accounts = digest(accounts / "connections.json") if accounts else None
         earlier_env = dict(env, ANGELO_QA_DIR=str(fixture))
@@ -239,12 +298,13 @@ def main():
         phases = ("crash", "safe", "safe_restart") if args.crashing_addon else ("update", "restart")
         early = args.crashing_addon and args.launch_while_dialog_open
 
-        def launch(phase, while_open=None):
-            code, findings, dialog = run_window(args.to_app, ["--disable-autoexec", *gui_launch.window_flags(),
+        def launch(phase, while_open=None, binary=None, env=None):
+            code, findings, dialog = run_window(binary or args.to_app, ["--disable-autoexec", *gui_launch.window_flags(),
                                                    "--window-geometry", "60", "60", "1440", "900", "--offline-mode",
                                                    "--python", str(HERE / "update_carry_over_phases.py"), "--",
-                                                   "--native-phase", phase, "--fixture-root", str(fixture)],
-                                                candidate_env, out / (phase + ".out"), while_open=while_open)
+                                                   "--native-phase", phase, "--fixture-root", str(fixture),
+                                                   "--same-base", "1" if report["same_base"] else "0"],
+                                                env or candidate_env, out / (phase + ".out"), while_open=while_open)
             path = fixture / (phase + ".json")
             data = json.loads(path.read_text()) if path.exists() else {}
             report["phases"][phase] = dict(data, exit=code, findings=findings, crash_dialog=dialog)
@@ -254,30 +314,66 @@ def main():
                     check("first_launch_" + name, ok)
                 return
             check(phase + "_passed", data.get("success") and code == 0 and not findings)
+        # Both contracts: the earlier app opens in its window once, as the person who used it has (a keymap edit of
+        # theirs made there), and its own reading of every preference then is the "before" (a background seed never
+        # ran its window's start-up, and has no user keymap items).
+        launch("earlier_open", binary=args.from_app, env=earlier_env)
+        before_values = report["phases"]["earlier_open"].pop("preference_values", None) or {}
+        before_prefs = digest(earlier_prefs)
+        report["preference_families"] = update_carry_over_prefs.families(before_values)
+        report["preference_unreadable"] = {"before": update_carry_over_prefs.unreadable(before_values)}
+        for name, ok in contract.seeded_in_before(before_values).items():
+            check(name, ok)
         for phase in phases:
             if phase == "crash" and early:   # The crashed process still holds its record under its open dialog.
                 launch("crash", while_open=lambda: launch("safe"))
                 check("safe_launched_while_the_crash_dialog_was_open", "safe" in report["phases"])
             elif not (phase == "safe" and early):
                 launch(phase)
-        check("earlier_preferences_unchanged", digest(earlier_prefs) == before_prefs)
+        rewritten = digest(earlier_prefs) != before_prefs
+        report["earlier_preferences_file_rewritten"] = rewritten
+        # The candidate's own reading in its windows: every value the person had, as the candidate applies it.
+        report["candidate_preferences"] = {}
+        for phase in ("update", "restart"):
+            if phase in report["phases"]:
+                held = report["phases"][phase].pop("preference_values", None) or {}
+                report["preference_unreadable"][phase] = update_carry_over_prefs.unreadable(held)
+                verdict, details = contract.candidate_preferences(phase, before_values, held, report["same_base"])
+                report["candidate_preferences"][phase] = dict(details, compared=len(held))
+                for name, ok in verdict.items():
+                    check(name, ok)
         if accounts:
             check("account_folder_unchanged", digest(accounts / "connections.json") == before_accounts)
-        code, findings = run_app(args.from_app, ["--background", "--python-expr", GO_BACK], earlier_env,
+        code, findings = run_app(args.from_app, ["--background", "--python-expr", GO_BACK],
+                                 dict(earlier_env, ANGELO_QA_HELPERS=str(HERE)),
                                  out / "back.out")
         back = json.loads((fixture / "back.json").read_text()) if (fixture / "back.json").exists() else {}
+        back_values = back.pop("preference_values", None) or {}   # never into the receipt: only keys and counts
         report["phases"]["go_back"] = dict(back, exit=code, findings=findings)
         check("earlier_app_opens_with_its_preferences", code == 0 and not findings and back.get("preferences_kept"))
-        check("earlier_app_starts_its_own_chats", back.get("seeded_chats_listed") == 0)
+        for name, ok in contract.go_back(report["same_base"], back, len(seed["chats"])).items():
+            check(name, ok)
+        after_values = back_values
+        if report["same_base"]:   # The earlier app in its window again: the "after", read as the "before" was.
+            launch("earlier_reopen", binary=args.from_app, env=earlier_env)
+            after_values = report["phases"]["earlier_reopen"].pop("preference_values", None) or {}
+            report["preference_unreadable"]["after"] = update_carry_over_prefs.unreadable(after_values)
+        report["preference_values_compared"] = len(set(before_values) | set(after_values))
+        report["tools"] = tools()
+        report["preference_exclusions"] = dict(update_carry_over_prefs.EXCLUDED)
+        report["preference_differences"] = update_carry_over_prefs.differences(before_values, after_values)
+        for name, ok in contract.preferences_kept(report["same_base"], rewritten, before_values, after_values).items():
+            check(name, ok)
         entries = report["phases"].get("update", {}).get("sign_ins", [])
         if args.skip_sign_in:
             report["sign_in"] = "skipped (--skip-sign-in)"
         else:
             check("accounts_seeded_for_the_sign_in_step", bool(entries))
             executables = {"claude": args.claude, "codex": args.codex}
-            report["sign_in"] = [dict(entry, status=sign_in_status(entry, executables)) for entry in entries]
+            report["sign_in"] = [dict(entry, **dict(zip(("status", "exit"), sign_in_status(entry, executables))))
+                                 for entry in entries]
             for entry in report["sign_in"]:
-                check("signed_in_%s_%s" % (entry["mode"], entry["id"][:8]), entry["status"] in SIGNED_IN)
+                check("signed_in_%s_%s" % (entry["mode"], entry["id"][:8]), contract.signed_in(entry["status"]))
         report["success"] = bool(report["checks"]) and all(report["checks"].values())
     except Exception as error:   # Recorded in the receipt; the exit status fails the gate.
         report["error"] = "%s: %s" % (type(error).__name__, error)
@@ -303,11 +399,14 @@ fixture = Path(os.environ["ANGELO_QA_DIR"])
 seed = json.loads((fixture / "seed.json").read_text())
 prefs = bpy.context.preferences
 kept = all(getattr(getattr(prefs, g), n) == v for g, n, v in seed["preferences"])
+sys.path.insert(0, os.environ["ANGELO_QA_HELPERS"])
+import update_carry_over_prefs
 from angelo_agent import ui
 from angelo_agent.sessions import SessionCollection
 listed = SessionCollection(Path(ui.state_directory())).records
 count = sum(1 for chat in seed["chats"] if chat["id"] in listed)
-(fixture / "back.json").write_text(json.dumps({"preferences_kept": kept, "seeded_chats_listed": count}))
+(fixture / os.environ.get("ANGELO_QA_BACK", "back.json")).write_text(json.dumps({"preferences_kept": kept, "seeded_chats_listed": count,
+                                               "preference_values": update_carry_over_prefs.values(prefs, bpy.context.window_manager.keyconfigs.user)}))
 """
 
 

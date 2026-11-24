@@ -43,6 +43,7 @@
 
 #include "bpy_capi_utils.hh"
 #include "bpy_rna.hh"
+#include "bpy_angelo_guard_confine.hh"
 #include "bpy_rna_anim.hh"
 
 #include "../generic/py_capi_rna.hh"
@@ -73,6 +74,18 @@
   "'GENERATED']"
 
 namespace blender {
+
+/** Angelo: a confined script keys or drives nothing it may not write (`BPY_angelo_guard_write_refusal`: Preferences,
+ * the keymap, an open file browser), as every other value change in bpy_rna.cc asks (the review of 93ef5b1, M1, as
+ * a class). The paths these take resolve below `ptr`, whose owner the refusal judges. */
+static bool angelo_anim_refused(const PointerRNA *ptr, const char *what)
+{
+  if (const char *refusal = BPY_angelo_guard_write_refusal(ptr)) {
+    BPY_angelo_guard_raise(refusal, what);
+    return true;
+  }
+  return false;
+}
 
 /* for keyframes and drivers */
 static int pyrna_struct_anim_args_parse_ex(PointerRNA *ptr,
@@ -364,6 +377,9 @@ PyObject *pyrna_struct_keyframe_insert(BPy_StructRNA *self, PyObject *args, PyOb
   int options = 0;
 
   PYRNA_STRUCT_CHECK_OBJ(self);
+  if (angelo_anim_refused(&self->ptr.value(), "keyframe_insert")) {
+    return nullptr;
+  }
 
   if (pyrna_struct_keyframe_parse(&self->ptr.value(),
                                   args,
@@ -513,6 +529,9 @@ PyObject *pyrna_struct_keyframe_delete(BPy_StructRNA *self, PyObject *args, PyOb
   const char *group_name = nullptr;
 
   PYRNA_STRUCT_CHECK_OBJ(self);
+  if (angelo_anim_refused(&self->ptr.value(), "keyframe_delete")) {
+    return nullptr;
+  }
 
   if (pyrna_struct_keyframe_parse(&self->ptr.value(),
                                   args,
@@ -632,6 +651,9 @@ PyObject *pyrna_struct_driver_add(BPy_StructRNA *self, PyObject *args)
   int index = -1;
 
   PYRNA_STRUCT_CHECK_OBJ(self);
+  if (angelo_anim_refused(&self->ptr.value(), "driver_add")) {
+    return nullptr;
+  }
 
   if (!PyArg_ParseTuple(args,
                         "s" /* `path` */
@@ -716,6 +738,9 @@ PyObject *pyrna_struct_driver_remove(BPy_StructRNA *self, PyObject *args)
   int index = -1;
 
   PYRNA_STRUCT_CHECK_OBJ(self);
+  if (angelo_anim_refused(&self->ptr.value(), "driver_remove")) {
+    return nullptr;
+  }
 
   if (!PyArg_ParseTuple(args,
                         "s" /* `path` */

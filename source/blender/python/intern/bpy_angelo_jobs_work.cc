@@ -153,6 +153,8 @@ JobClass classify(const eWM_JobType type)
       return {"USD_IMPORT", JobWork::Task};
     case WM_JOB_TYPE_QUADRIFLOW_REMESH:
       return {"QUADRIFLOW_REMESH", JobWork::Task};
+    case WM_JOB_TYPE_RETOPOLOGY:
+      return {"RETOPOLOGY", JobWork::Task};
     case WM_JOB_TYPE_TRACE_IMAGE:
       return {"TRACE_IMAGE", JobWork::Task};
     case WM_JOB_TYPE_CALCULATE_SIMULATION_NODES:
@@ -199,6 +201,10 @@ bool evaluates_document(const eWM_JobType type)
     /* Evaluates its own compositor depsgraph in its init callback, on the main thread; its thread
      * composites that evaluated copy (`node_compositor_job.cc`). */
     case WM_JOB_TYPE_COMPOSITE:
+      return false;
+    /* Remeshes a copy of the mesh made on the main thread before its thread starts; the result is
+     * written on the main thread when it ends (`object_retopology.cc`). */
+    case WM_JOB_TYPE_RETOPOLOGY:
       return false;
 
     /* Material and world previews render copies in their own Main, but scene and pose (action)

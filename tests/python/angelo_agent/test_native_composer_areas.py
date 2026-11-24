@@ -94,11 +94,11 @@ class Areas(composer_tests.ComposerCase):
             self.assertTrue(composer_input.takes_off_chat(event, platform), (event, platform))
         self.assertFalse(composer_input.takes_off_chat(key('TAB', ctrl=True), "mac"))
         live = (composer_tests.ADDON / "session_rail_input.py").read_text().split("def _live", 1)[1]
-        asked, held = live.index("composer_input.takes_off_chat(event)"), live.index("input_policy.edits_field(event)")
+        asked, held = live.index("keyboard_owner.chat_takes(window, event)"), live.index("input_policy.edits_field(event)")
         self.assertLess(asked, held, "the chat's keys are handed on before typing keys are held")
-        rail = (composer_tests.ADDON / "session_rail_input.py").read_text()
-        focus = rail.split("def _chat_focused", 1)[1].split("\ndef ", 1)[0]
-        self.assertNotIn("popover", focus, "R8-1: an open picker is not the chat's keyboard focus over a live view")
+        owner = (composer_tests.ADDON / "keyboard_owner.py").read_text()
+        self.assertIn("composer_input.takes_off_chat(event)", owner.split("def chat_takes", 1)[1])
+        self.assertNotIn("menus=True", live, "R8-1: an open picker is not the chat's keyboard focus over a live view")
 
     def test_a_key_another_module_binds_is_the_chats_off_its_area_too(self):
         from angelo_agent import composer_input, composer_keys

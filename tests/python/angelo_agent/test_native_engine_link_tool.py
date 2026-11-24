@@ -118,7 +118,7 @@ class FakeWriteBack:
     def __init__(self):
         self.requests, self.done = [], []
 
-    def request(self, *args, baked=(), stamp=None, saved=None):
+    def request(self, *args, baked=(), stamp=None, saved=None, engine=None):
         self.requests.append(args)
 
     def busy(self):

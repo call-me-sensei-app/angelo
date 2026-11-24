@@ -14,6 +14,7 @@ as the empty tile. The cache is released with Media Studio (``clear``).
 """
 
 from . import edit_tool_hold
+from .ui_text import n_
 import time
 from array import array
 from collections import OrderedDict, deque
@@ -24,7 +25,11 @@ TEXEL_BYTES = 8                 # RGBA16F.
 GPU_BYTES = 24 * 1024 * 1024    # Kept textures' GPU memory: about 40 full-size 16:9 tiles.
 BUDGET_S = 0.010                # Main-thread time a timer tick may spend preparing pictures.
 TICK_S = 0.05
-PIXEL_LIMIT = 8192 * 8192       # A file larger than this is not read at all.
+PIXEL_LIMIT = 8192 * 8192       # A file larger than this is not read at all: its header says so first (markup S1).
+# Why a picture can't be read: English for the log and the agent; the viewer shows it translated (markup S2).
+TOO_MANY_PIXELS = n_("This picture has more pixels than Angelo reads (8,192 \u00d7 8,192 at most)")
+NO_PIXELS = n_("This picture has no pixels Angelo can read")
+UNREADABLE = n_("Angelo can't read this picture")
 
 
 @dataclass
@@ -55,23 +60,67 @@ def bounded(pixels, width, height, side=SIDE):
     return grid.astype(np.float32).reshape(-1), cols, rows
 
 
-def decode(path):
-    """The picture (or a movie's first frame) at ``path`` as bounded stored pixels: ``(pixels, width, height)``.
-    Main thread only: it loads a private image and removes it before returning."""
+def decode(path, side=SIDE):
+    """The picture (or a movie's first frame) at ``path`` as bounded stored pixels, turned upright as a camera's EXIF
+    orientation says (``picture_size.orientation``): ``(pixels, width, height)``, at most ``side`` pixels a side (the
+    picture viewer, ``markup_overlay``, asks for larger ones). A PNG, JPEG or WebP over ``PIXEL_LIMIT`` pixels is
+    refused by its header before Blender decodes a pixel (re-review of markup 4e712847d3b, S1: a 0.8 MiB flat 16K
+    PNG cost 1 GiB and seconds on the main thread, at every open). Main thread only: it loads a private image and
+    removes it before returning."""
     import bpy
     import numpy as np
-    image = bpy.data.images.load(str(path), check_existing=False)
+    from . import picture_size
+    try:
+        stored = picture_size.header_size(path)
+    except OSError:   # Blender's own read says why.
+        stored = None
+    if stored is None and picture_size.signed(path):   # A header that can't be read fails closed (re-review S7).
+        raise ValueError(UNREADABLE)
+    if stored is not None and not all(stored):   # A zero side: no pixels, not too many (N6).
+        raise ValueError(NO_PIXELS)
+    if stored is not None and stored[0] * stored[1] > PIXEL_LIMIT:
+        raise ValueError(TOO_MANY_PIXELS)
+    try:
+        image = bpy.data.images.load(str(path), check_existing=False)
+    except RuntimeError:   # Its text names the file's full path: never shown (re-review of markup 4e712847d3b, S2).
+        raise ValueError(UNREADABLE) from None
     try:
         from . import color_spaces
         color_spaces.mark_stored(image.colorspace_settings)   # Stored values: what the screen shows, drawn with IMAGE.
         width, height = image.size
         if not 0 < width * height <= PIXEL_LIMIT:
-            raise ValueError("no usable pixels")
+            raise ValueError(TOO_MANY_PIXELS if width * height else NO_PIXELS)
+        step = -(-max(width, height) // side)   # ceil
+        if step > 1 and width // step and height // step:   # Scaled in Blender's own buffer first: never more than
+            image.scale(width // step, height // step)     # ``side`` a side expanded to floats (markup S4: an 8K
+            width, height = image.size                     # picture was 1 GiB of floats on the main thread).
         pixels = np.empty(width * height * 4, dtype=np.float32)
         image.pixels.foreach_get(pixels)
     finally:
         bpy.data.images.remove(image)
-    return bounded(pixels, width, height)
+    return upright(*bounded(pixels, width, height, side), picture_size.orientation(path))
+
+
+def upright(pixels, width, height, turn):
+    """``(pixels, width, height)`` of flat RGBA rows (bottom first) turned as EXIF orientation ``turn`` says: 2 to 4
+    mirror or half-turn, 5 to 8 swap the sides (transpose, quarter turns, transverse). 1 returns them as they are."""
+    if turn == 1:
+        return pixels, width, height
+    import numpy as np
+    top = np.asarray(pixels, dtype=np.float32).reshape(height, width, 4)[::-1]   # Rows top first, as EXIF counts.
+    if turn in (2, 3, 7):   # Mirrored left to right first (2, 3), or turned about the other diagonal (7).
+        top = top[:, ::-1]
+    if turn in (3, 4, 7):   # Upside down (3 with 2's mirror: a half turn).
+        top = top[::-1]
+    if turn in (5, 7):   # Transposed: rows become columns.
+        top = top.transpose(1, 0, 2)
+    elif turn == 6:
+        top = np.rot90(top, -1)   # A quarter turn clockwise.
+    elif turn == 8:
+        top = np.rot90(top, 1)   # A quarter turn anticlockwise.
+    seen = top   # Branches, never a callable taken from a table (test_native_guard_work).
+    seen = np.ascontiguousarray(seen[::-1])
+    return seen.reshape(-1), seen.shape[1], seen.shape[0]
 
 
 def upload(pixels, width, height):

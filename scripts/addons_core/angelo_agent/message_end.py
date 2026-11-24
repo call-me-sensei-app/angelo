@@ -9,6 +9,7 @@ is due), then a worker chat's turn is one sample (``worker_facts.turn_ended``). 
 
 def ended(controller, data):
     """``data``: the turn's end (``status``, ``not_sent``). Returns what ``worker_facts.turn_ended`` returns."""
-    from . import goal_loop, worker_facts
+    from . import crash_resume, goal_loop, worker_facts
+    crash_resume.closed(controller)   # Ended here: not cut off.
     goal_loop.turn_ended(controller, data)
     return worker_facts.turn_ended(controller, data.get("status"))

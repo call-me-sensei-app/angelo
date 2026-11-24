@@ -93,8 +93,14 @@ class CoverageDocTests(unittest.TestCase):
 
         self.assertEqual(current("Claude plan schema (core plus deferred names)"), encoded(native_plan_schema()))
         self.assertEqual(current("Codex dynamic tools"), encoded(dynamic_tools()))
-        from angelo_agent.providers import INSTRUCTIONS
+        from angelo_agent.providers import CLAUDE_INSTRUCTIONS, INSTRUCTIONS
         self.assertEqual(current("Codex instructions"), len(INSTRUCTIONS.encode()))
+        # What a Claude session appends to its system prompt, every tool allowed (test_native_per_model_text pins
+        # its digest): unchecked here before, it went stale at 15,606 from 1.0 on while the text shrank.
+        from angelo_agent.claude_plan_guidance import CLAUDE_PLAN_INSTRUCTIONS
+        from angelo_agent.claude_text import claude_tail
+        self.assertEqual(current("Claude appended instructions"),
+                         len((CLAUDE_INSTRUCTIONS + CLAUDE_PLAN_INSTRUCTIONS + claude_tail(None)).encode()))
         self.assertEqual(rows["Action kinds: core, deferred"][-1],
                          "%d, %d" % (len(PLAN_CORE_ACTIONS), len(DEFERRED_ACTIONS)))
 

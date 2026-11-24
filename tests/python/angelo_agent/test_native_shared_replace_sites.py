@@ -90,8 +90,9 @@ BARE = {
 READERS = {
     ("endpoint_catalog.py", "write"): "a custom endpoint's Codex model catalog (a running Codex may hold it open)",
     ("always_allow.py", "attach"): "always-allow-scripts.json",
+    ("strict_protection.py", "attach"): "strict-script-protection.json",
     ("session_page.py", "_read_stopped"): "external-live-pages.json (Stop sharing replaces it)",
-    ("session_page.py", "_build"): "a picture of the conversation's own (its reference store)",
+    ("reference_images.py", "opened"): "a picture of the conversation's own (its reference store)",
     ("cache_affinity_secret.py", "_read"): "cache-affinity-secret",
     ("chat_pending.py", "load"): "a chat's pending messages",
     ("codex_bases.py", "_read"): "codex_bases.json",
@@ -152,6 +153,7 @@ PLAIN = {
         "registration before anything that replaces them starts, and never while another Angelo is open "
         "(carry_over_processes).",
     ("always_allow.py", "_write"): _FOLDER_SYNC,
+    ("strict_protection.py", "_save"): _FOLDER_SYNC,
     ("checkpoint_filesystem.py", "_open_file"):
         "Snapshot files: on Windows a WindowsDirectory opens them sharing read, write and delete (windows_nt "
         "FILE_SHARE_ALL); the other branches are POSIX, where no reader refuses a replace.",

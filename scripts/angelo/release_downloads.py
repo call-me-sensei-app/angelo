@@ -8,12 +8,14 @@ custom domain, one folder per version whose files never change once written::
 
     https://downloads.angelo.studio/<version>/Angelo-<version>-macos-arm64.dmg
     https://downloads.angelo.studio/<version>/Angelo-<version>-windows-x64.msi
+    https://downloads.angelo.studio/<version>/Angelo-<version>-linux-x64.tar.xz            (Linux beta, from 2.1.0)
+    https://downloads.angelo.studio/<version>/Angelo-<version>-linux-x64.tar.xz.minisig    (its minisign signature)
     https://downloads.angelo.studio/<version>/SHA256SUMS
     https://downloads.angelo.studio/<version>/Angelo-<older version>-to-<version>-macos-arm64.delta.tar.xz   (optional)
     https://downloads.angelo.studio/<version>/<installer>.sha256
 
 ``SHA256SUMS`` covers the files of the version's first publish. Every installer also has ``<installer>.sha256``
-beside it, listing the installer and the deltas published with it, so a download's checksum is always at its own
+beside it, listing the installer and the deltas and signature published with it, so a download's checksum is always at its own
 address plus ``.sha256``; a platform published later gets only that file, so no published file, ``SHA256SUMS``
 included, is rewritten. (Versions published before 1.0.6 have it only for a platform added later, until
 ``publish_installers.py --add-checksum-files`` adds the rest.)
@@ -50,10 +52,16 @@ SUMS_CONTENT_TYPE = "text/plain"
 INSTALLERS = {
     "macos-arm64": (".dmg", "application/x-apple-diskimage"),
     "windows-x64": (".msi", "application/x-msi"),
+    "linux-x64": (".tar.xz", "application/x-xz"),
 }
 # Platforms whose app can be updated from a delta (update_delta.py, make_update_delta.py), and its suffix and type.
 DELTAS = {
     "macos-arm64": (".delta.tar.xz", "application/x-xz"),
+}
+# Platforms whose installer is published with a detached signature beside it (Linux has no operating-system code
+# signing: ``<installer>.minisig``, minisign's default form, made by sign_linux_release.py), and its suffix and type.
+SIGNATURES = {
+    "linux-x64": (".minisig", "text/plain"),
 }
 # The one spelling of a version anything here publishes: ASCII digits, no leading zero (app_version.parse alone
 # also takes "01.0.0" or Unicode digits, other spellings of the same version).
@@ -136,6 +144,18 @@ def is_delta_of(name, version, platform):
         return False
 
 
+def signature_name(version, platform):
+    """``<installer>.minisig``: the detached signature published beside a platform's installer."""
+    if platform not in SIGNATURES:
+        raise LayoutError("no signature is published for %r (only %s)" % (platform, ", ".join(SIGNATURES)))
+    return installer_name(version, platform) + SIGNATURES[platform][0]
+
+
+def is_signature_of(name, version, platform):
+    """True when ``name`` is exactly ``signature_name(version, platform)``."""
+    return platform in SIGNATURES and name == signature_name(version, platform)
+
+
 def object_key(version, name):
     """The object's key in the bucket: ``<version>/<name>``."""
     return "%s/%s" % (check_version(version), name)
@@ -157,7 +177,18 @@ def _payload_type(name):
 
 
 def _is_installer(name):
-    return any(name.endswith(suffix) for suffix, _ in INSTALLERS.values())
+    """An installer's suffix, and not a delta's (a delta's ``.delta.tar.xz`` also ends like the Linux ``.tar.xz``)."""
+    return (any(name.endswith(suffix) for suffix, _ in INSTALLERS.values())
+            and not any(name.endswith(suffix) for suffix, _ in DELTAS.values()))
+
+
+def _signature_type(name):
+    """The type of ``<installer><signature suffix>`` for a platform with signatures; None for any other name."""
+    for platform, (suffix, kind) in SIGNATURES.items():
+        base = name[:-len(suffix)] if name.endswith(suffix) else ""
+        if base.endswith(INSTALLERS[platform][0]) and _is_installer(base):
+            return kind
+    return None
 
 
 def checksum_name(name):
@@ -172,10 +203,12 @@ def headers(name):
     base = name[:-len(CHECKSUM_SUFFIX)] if name.endswith(CHECKSUM_SUFFIX) else None
     if name == SUMS or (base is not None and _is_installer(base)):
         content_type = SUMS_CONTENT_TYPE
+    elif _signature_type(name) is not None:
+        content_type = _signature_type(name)
     else:
         content_type = _payload_type(name)
         if content_type is None:
-            raise LayoutError("%s is neither an installer, a delta, %s nor a file's checksum" % (name, SUMS))
+            raise LayoutError("%s is neither an installer, a delta, a signature, %s nor a file's checksum" % (name, SUMS))
     return {"Content-Type": content_type, "Cache-Control": CACHE_CONTROL, "Content-Disposition": CONTENT_DISPOSITION}
 
 

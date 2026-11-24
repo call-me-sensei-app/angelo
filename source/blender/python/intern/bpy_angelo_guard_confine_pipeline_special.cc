@@ -245,6 +245,8 @@ int special_before(Gate &gate, PyObject **args, PyObject **kwargs)
       return refuse(NATIVE, gate.name);
     case Special::RefuseGlobal:
       return refuse(GUARD, gate.name);
+    case Special::RefuseProgram:
+      return refuse(PROGRAMS, gate.name);
     case Special::SearchName: {
       const std::vector<std::string> folders = folder_list(gate_argument(*args, *kwargs, shift, gate.args[1]));
       std::string name = path_text(gate_argument(*args, *kwargs, shift, gate.args[0]));

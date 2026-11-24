@@ -45,6 +45,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fake_provider_cli  # noqa: E402
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')  # The default Director startup, as a person gets it.
 fake_provider_cli.sign_in(os.environ["HOME"], "claude")  # An everyday sign-in that already exists.

@@ -1,6 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Angelo Contributors
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Owned native metadata fixtures: no frameworks, screenshot, browser, titles or authentication data."""
+"""Owned native metadata fixtures: no frameworks, screenshot, browser, titles or authentication data.
+
+Every fixture runs on a fake clock (fab_fake_clock): time moves only when the module sleeps or a test moves it, so
+which deadline fires (startup, foreground, scan) is the test's choice, never the machine's load."""
 import suite_isolation  # noqa: F401
 import sys,threading
 from contextlib import nullcontext
@@ -11,6 +14,7 @@ from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[3]/'scripts/addons_core'))
 from angelo_agent import fab_browser_manual_window as window
 from angelo_agent.fab_browser_process import BrowserProcess,BrowserUnavailable
+from fab_fake_clock import use_fake_clock
 
 class Number:
  def __init__(self,value):self.value=value
@@ -33,6 +37,7 @@ class FakeCG:
 
 class ManualWindowTests(unittest.TestCase):
  def fixture(self):
+  self.clock=use_fake_clock(self,window)  # A test with its own clock patches window.time inside.
   b=BrowserProcess.__new__(BrowserProcess);b._lock=threading.RLock();b._manual_login=True;b._manual_auth_active=False;b._closed=False;b._pid=41
   b._leader_identity=(41,'start','/Applications/Fixture.app/Contents/MacOS/Chrome')
   row=dict(pid=41,parent=40,group=41,start='start',program=b._leader_identity[2],zombie=False)
@@ -80,6 +85,7 @@ class ManualWindowTests(unittest.TestCase):
   with patch.object(window,'snapshot',return_value={41:row}),patch.object(window,'_frameworks',return_value=(cg,cf,keys)),patch.object(window,'_activation_api',return_value=nullcontext(lambda pid:True)),self.assertRaisesRegex(BrowserUnavailable,'MANUAL_FOREGROUND_UNPROVED'):
    window.foreground_manual_window(b,seconds=.001)
   self.assertFalse(b._manual_auth_active)
+  self.assertTrue(self.clock.sleeps,'refused by retrying until the foreground budget ran out, not by a scan timeout')
 
  def test_front_stack_reads_foreign_pid_and_layer_only_skipping_system_layer(self):
   b,row,keys,cg,cf=self.fixture()

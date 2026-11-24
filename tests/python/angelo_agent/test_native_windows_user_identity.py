@@ -61,6 +61,9 @@ POSIX_ONLY = {
                                  ("fab_browser_platform.py", "from .fab_browser_process_windows import")],
     "fab_browser_manual_close.py": [("fab_browser_process.py", "if sys.platform != 'darwin'"),
                                     ("fab_browser_platform.py", "from .fab_browser_process_windows import")],
+    # The Linux updater: reached only for an install whose feed platform is Linux (update_flow.Preparer).
+    "update_stage_linux.py": [("update_flow.py", 'if self.family == "linux":\n'
+                                                 '            reason, root = self.linux.support(self.binary, self.current)')],
 }
 HELPER = "file_owner.py"   # The one place that asks the POSIX question, after it answered Windows.
 

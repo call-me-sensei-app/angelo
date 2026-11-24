@@ -147,7 +147,7 @@ class StartTests(unittest.TestCase):
 
     def test_platform_families(self):
         self.assertEqual([update_install.family(k) for k in ("macos-arm64", "darwin", "windows-x64", "win32", "linux-x64")],
-                         ["macos", "macos", "windows", "windows", ""])
+                         ["macos", "macos", "windows", "windows", "linux"])
 
 
 class WindowsScriptContractTests(unittest.TestCase):

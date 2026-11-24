@@ -108,6 +108,10 @@ def fixtures(folder):
     scene()
     bpy.ops.mesh.primitive_uv_sphere_add(segments=32, ring_count=16)
     bpy.ops.object.shade_smooth()
+    bpy.ops.object.mode_set(mode='EDIT')   # UV seams split it in the file, as a morph file's are: no shape key.
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.uv.smart_project(angle_limit=math.radians(40))
+    bpy.ops.object.mode_set(mode='OBJECT')
     export(folder / "plain.glb", [bpy.context.object])
     files["plain"] = folder / "plain.glb"
     return files
@@ -147,6 +151,20 @@ def seam_break(objects, value):
     return vertices, len(new), round(max(new, default=0.0), 2)
 
 
+def corner_uvs(objects):
+    """Every face corner's (point, UV) of every mesh: welding may share a point, never move or drop a UV."""
+    found = set()
+    for ob in objects:
+        if ob.type != 'MESH' or not ob.data.uv_layers:
+            continue
+        uv = ob.data.uv_layers.active.uv
+        for index, loop in enumerate(ob.data.loops):
+            co = ob.data.vertices[loop.vertex_index].co
+            found.add((ob.name, round(co.x, 4), round(co.y, 4), round(co.z, 4),
+                       round(uv[index].vector.x, 4), round(uv[index].vector.y, 4)))
+    return found
+
+
 def imported(path, **options):
     """``(objects, console text)`` of one glTF import into an empty scene."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -165,6 +183,7 @@ def main():
             path = files[name]
             check(name + "_has_morph_targets", gltf_morph.has_morph_targets(path))
             objects, console = imported(path)
+            default_uvs = corner_uvs(objects)
             hard = sorted(point for point, spread in spreads(objects, 0.0).items() if spread > SEAM_DEGREES)
             default = seam_break(objects, 1.0)
             check(name + "_default_still_splits_and_shades_apart", default[1] > 0, default)
@@ -177,6 +196,13 @@ def main():
             check(name + "_welded_import_does_not_warn", warning not in console)
             welded_hard = sorted(point for point, spread in spreads(objects, 0.0).items() if spread > SEAM_DEGREES)
             check(name + "_welding_keeps_the_model_s_hard_edges", welded_hard == hard, [len(hard), len(welded_hard)])
+            # The person's import (File > Import, a drop): the option invoke turns on welds a morph file the same way.
+            objects, console = imported(path, merge_vertices_for_morph_targets=True)
+            persons = seam_break(objects, 1.0)
+            check(name + "_person_s_import_welds", persons[1] == 0 and persons[0] == welded[0], persons)
+            check(name + "_person_s_import_does_not_warn", warning not in console)
+            check(name + "_person_s_import_keeps_every_uv", corner_uvs(objects) == default_uvs,
+                  [len(corner_uvs(objects)), len(default_uvs)])
             bpy.ops.wm.read_factory_settings(use_empty=True)
             if path.suffix == ".gltf":
                 # Media Studio's models are downloads, imported only when self-contained (gltf_checks, 1.0.8's glTF
@@ -196,6 +222,17 @@ def main():
         check("plain_gets_no_option", gltf_morph.import_options(plain) == {})
         objects, console = imported(plain)
         check("plain_imports_without_a_warning", warning not in console and len(objects) == 1)
+        plain_vertices = len(objects[0].data.vertices)
+        objects, console = imported(plain, merge_vertices_for_morph_targets=True)
+        check("plain_person_s_import_is_blender_s_default", len(objects[0].data.vertices) == plain_vertices,
+              [plain_vertices, len(objects[0].data.vertices)])
+        # One import of a morph file and a plain one: the morph file's weld never reaches the plain file.
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+        bpy.ops.import_scene.gltf(directory=str(Path(folder)), files=[{"name": "sphere.glb"}, {"name": "plain.glb"}],
+                                  merge_vertices_for_morph_targets=True)
+        plain_now = [len(ob.data.vertices) for ob in bpy.context.scene.objects
+                     if ob.type == 'MESH' and not ob.data.shape_keys]
+        check("multi_file_import_decides_per_file", plain_now == [plain_vertices], [plain_now, plain_vertices])
         check("not_a_gltf_is_no_morph_file", not gltf_morph.has_morph_targets(Path(folder) / "missing.glb"))
 
     report = {"success": all(checks.values()), "checks": checks, "details": details}

@@ -70,6 +70,7 @@ _state = {"held": None, "left_off": [], "completion": None, "saved": False, "set
           "culprit": None,   # The left-off add-on the last start died loading (its record's ``loading``), or None.
           "active": False,   # A start or an enabling runs: add-ons that fail now are collected (angelo_addon_failures).
           "failures": [],    # Failure(module, cause) collected and not yet settled.
+          "failed_now": {},  # {module: cause} of the person's add-ons that failed as they loaded this session.
           "watched": None}   # (shipped(module), {module: the person's own add-on}) for this start or enabling.
 
 
@@ -139,6 +140,19 @@ def left_off():
 
 
 # Blender's side: the startup module calls ``start`` and ``stop``.
+
+def shipped_here(bpy):
+    """``shipped(module)`` for this running installation (``shipped_check``): the update card's add-on check
+    judges the same add-ons this module leaves off."""
+    return _shipped_here(bpy)
+
+
+def failed_now():
+    """``{module: cause}`` of the person's add-ons that failed as they loaded in this session and have not loaded
+    since (the update card names them with their cause)."""
+    import addon_utils
+    return {module: cause for module, cause in _state["failed_now"].items() if not addon_utils.check(module)[1]}
+
 
 def _shipped_here(bpy):
     import addon_utils
@@ -309,6 +323,8 @@ def _completed():
     import bpy
     _state["active"] = False
     failed = _settle_failures(bpy)
+    _state["failed_now"].update((failure.module, failure.cause) for failure in failed)
+    _record_loads(bpy)
     left_off = _state["left_off"] and not _state["settled_left_off"]   # Once: a later read's settling names none.
     if left_off:
         _state["settled_left_off"] = True
@@ -326,6 +342,31 @@ def _completed():
         except Exception as error:
             print("Angelo: start notice:", error, file=sys.stderr)
     stop()
+
+
+def _record_loads(bpy):
+    """Angelo's own load result: the person's add-ons loaded now, with their versions, on this Blender version
+    (``angelo_addon_loads``), read by a later version's update check. Never stops anything."""
+    if _state["folder"] is None:
+        return
+    try:
+        import addon_utils   # Reads bpy.context as it imports: a stand-in bpy (the host tests) may lack it.
+    except Exception:   # Not Blender's Python: no add-on loaded.
+        return
+    try:
+        import angelo_addon_loads
+        shipped = _shipped_here(bpy)
+        addon_utils.modules(refresh=False)
+        loaded = {}
+        for entry in bpy.context.preferences.addons:
+            module = entry.module
+            fake = addon_utils.addons_fake_modules.get(module)
+            if shipped(module) or fake is None or module in _state["failed_now"] or not addon_utils.check(module)[1]:
+                continue
+            loaded[module] = angelo_addon_loads.version_text(addon_utils.module_bl_info(fake).get("version"))
+        angelo_addon_loads.write(_state["folder"], tuple(bpy.app.version), loaded)
+    except Exception as error:
+        print("Angelo: could not record which add-ons loaded:", error, file=sys.stderr)
 
 
 def _settle_failures(bpy):

@@ -44,6 +44,7 @@ import fake_provider_cli  # noqa: E402
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 import qa_input  # noqa: E402
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')  # This suite needs the default Director startup.
 
@@ -126,8 +127,8 @@ def box_drag():
     points = [location_3d_to_region_2d(region, space.region_3d, obj.matrix_world @ Vector(corner))
               for obj in objects for corner in obj.bound_box]
     margin = 30 * bpy.context.preferences.system.ui_scale
-    start = (region.x + min(p.x for p in points) - margin, region.y + max(p.y for p in points) + margin)
-    end = (region.x + max(p.x for p in points) + margin, region.y + min(p.y for p in points) - margin)
+    start = qa_hit.xy(qa_hit.RAW, region, min(p.x for p in points) - margin, max(p.y for p in points) + margin)
+    end = qa_hit.xy(qa_hit.RAW, region, max(p.x for p in points) + margin, min(p.y for p in points) - margin)
     events = list(qa_input.drag_path(tuple(map(int, start)), tuple(map(int, end)),
                                      bpy.context.preferences.system.ui_scale))
 

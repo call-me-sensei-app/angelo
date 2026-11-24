@@ -47,6 +47,7 @@ from ps_stderr_lint import stderr_hazards  # noqa: E402
 
 SCRIPTS = HERE.parents[2] / "scripts/angelo"
 VM_SCRIPTS = ("windows_final_runs.ps1", "windows_bench_tools.ps1", "windows_bench_preboot.ps1", "windows_session_start.ps1",
+              "windows_bench_session_command.ps1",
               "windows_bootstrap_stages.ps1", "windows_gui_checks.ps1", "windows_cloud_bootstrap.ps1")
 # gcp_windows_validate.sh drives the VM from the macOS workstation; its runs against a stand-in gcloud are checked
 # there and in the Linux host suite, never on Windows.

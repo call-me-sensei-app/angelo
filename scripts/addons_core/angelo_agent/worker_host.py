@@ -29,6 +29,7 @@ import uuid
 
 from . import grant_guard  # noqa: E402  (only the person grants: grant_guard)
 from . import owned_paths, part_leases, private_roots
+from . import qa_environment  # The QA switches as this worker started (its probe child gets only those).
 from . import worker_refusals as refusals, worker_script, worker_values as values
 from .stale_binding import same as same_binding
 from .worker_pictures import carry as _carry, pictures_in as _references
@@ -274,7 +275,7 @@ class WorkerHost:
             while not answers and time.monotonic() < deadline:
                 shadow.pump_events()
                 pump_controller_tools([shadow], 0, executor, ui.document_key(), apply_mutation,
-                                      commit_mutation=commit_mutation)
+                                      commit_mutation=commit_mutation, raise_failures=True)   # Its answer: the error.
                 call = shadow.pending.get(key)
                 if (call is not None and call.approval and not approved_once and not call.executing
                         and not call.authorized and not call.recovery_review):
@@ -451,7 +452,7 @@ def offscreen_draw_usable(bpy, run=None):
         else:   # Windows: a Job Object ends the probe's whole tree (child_process).
             from .child_process import run as job_run
             done = (run or job_run)(command, capture_output=True, text=True, timeout=PROBE_SECONDS,
-                                    env=dict(os.environ))
+                                    env=_probe_environment())
     except Exception as error:  # noqa: BLE001 - the probe's own failure is a reason, never the worker's.
         return False, "the probe did not run: %s" % type(error).__name__
     if done.returncode == 0 and "ANGELO-OFFSCREEN-OK" in (done.stdout or ""):
@@ -459,12 +460,21 @@ def offscreen_draw_usable(bpy, run=None):
     return False, "a test draw ended with exit status %s" % done.returncode
 
 
+def _probe_environment():
+    """The probe child's environment: this worker's, with the QA switches only as the worker started with them
+    (qa_environment): a switch a script set in os.environ since (a refused GPU context, a probe crash) never reaches
+    the probe, so it cannot decide OFFSCREEN_VERDICTS for the worker (the review of the GPU gate, 7d33e8b7f6a)."""
+    environment = {name: value for name, value in os.environ.items() if not name.startswith("ANGELO_QA_")}
+    environment.update((name, value) for name, value in qa_environment.STARTED if name.startswith("ANGELO_QA_"))
+    return environment
+
+
 def _run_group(command, timeout):
     """macOS and Linux: the probe in a process group of its own, all of which a timeout ends (break-it L4-4)."""
     import signal
     import subprocess
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
-                               text=True, encoding="utf-8", errors="replace", env=dict(os.environ),
+                               text=True, encoding="utf-8", errors="replace", env=_probe_environment(),
                                start_new_session=True)
     try:
         stdout, _ = process.communicate(timeout=timeout)

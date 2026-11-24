@@ -50,16 +50,6 @@ def project_key(project):
         return os.path.normcase(project)
 
 
-def project_key(project):
-    """``project`` as ``engine_link_assets.serves`` compares it with an asset's project: resolved and case-folded as
-    the platform does. It reads the folder's path, which a slow or network drive can stall, so it runs on the
-    client's own thread when the editor authenticates, never on the main thread."""
-    try:
-        return os.path.normcase(os.path.realpath(project))
-    except (OSError, ValueError):   # Unresolvable (an embedded NUL): as said, so it matches no resolved project.
-        return os.path.normcase(project)
-
-
 def client_info(info):
     """What an editor said about itself when it authenticated, bounded: ``engine`` (default "godot", the first
     plugin, which names itself too), ``project`` (and ``project_key``, its ``project_key``), ``project_name``,

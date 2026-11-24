@@ -23,6 +23,10 @@ leave a 0-byte log and hang (contract: doc/angelo/updates_and_reports.rst, "The 
 * ``sigbus``: a read past the end of a mapped file (SIGBUS, not SIGSEGV);
 * ``stack_overflow``: unbounded recursion on the main thread (the handler needs its alternate stack).
 
+Every log file must be this user's alone (mode 0600 whatever the umask, the reader's ``crash_log.mine``), and in
+``main_gil`` a link planted at the log's path beforehand (as another user could in a shared ``/tmp``) must not be
+written through: the record is created afresh.
+
 Writes ``crash-handler.json`` (``success`` true only when every case passed) and prints ANGELO_CRASH_HANDLER_OK.
 """
 
@@ -167,6 +171,9 @@ def isolated_env(root):
             "PYTHONDONTWRITEBYTECODE": "1"}, tmp
 
 
+PLANTED_CASE = "main_gil"
+
+
 def run_case(binary, name, root):
     """Start the child, wait for its ABOUT_TO_CRASH line, then for its end; kill it if it outlives the bound."""
     environ, tmp = isolated_env(root)
@@ -180,6 +187,11 @@ def run_case(binary, name, root):
             hard = resource.getrlimit(resource.RLIMIT_STACK)[1]
             resource.setrlimit(resource.RLIMIT_STACK, (OVERFLOW_STACK_BYTES, hard))
 
+    decoy = None
+    if name == PLANTED_CASE:   # A link where the log will go, to a file that must stay untouched.
+        decoy = root / "decoy.txt"
+        decoy.write_text("decoy")
+        (tmp / "angelo.crash.txt").symlink_to(decoy)
     child = subprocess.Popen(command, env=environ, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                              preexec_fn=limit_stack, start_new_session=True)
     marked, out, err = threading.Event(), [], []
@@ -213,11 +225,12 @@ def run_case(binary, name, root):
     ended = time.monotonic()
     for reader in readers:
         reader.join(5)
-    logs = sorted(path for path in tmp.rglob("*.crash.txt") if path.is_file())
+    logs = sorted(path for path in tmp.rglob("*.crash.txt") if path.is_file() and not path.is_symlink())
     return {"returncode": child.returncode, "hung": hung, "marked": marked.is_set(),
             "end_seconds": round(ended - marked_at[0], 2) if marked_at[0] else None,
             "stdout": b"".join(out).decode("utf-8", "replace"), "stderr": b"".join(err).decode("utf-8", "replace"),
-            "logs": logs, "partials": sorted(str(path.name) for path in tmp.rglob("*.crash.txt.partial"))}
+            "logs": logs, "partials": sorted(str(path.name) for path in tmp.rglob("*.crash.txt.partial")),
+            "decoy": decoy.read_text() if decoy is not None else None, "planted": tmp / "angelo.crash.txt"}
 
 
 def handler_state(stdout):
@@ -253,6 +266,14 @@ def judge(name, result, crash_log):
         text = result["logs"][0].read_text(encoding="utf-8", errors="replace") if result["logs"] else ""
         checks.append(("one non-empty crash log", len(result["logs"]) == 1 and bool(text.strip()),
                        [str(p) for p in result["logs"]]))
+        modes = [(str(path), oct(os.stat(path).st_mode & 0o777)) for path in result["logs"]]
+        checks.append(("the log is this user's alone (0600)",
+                       all(os.stat(path).st_mode & 0o777 == 0o600 and crash_log.mine(os.stat(path))
+                           for path in result["logs"]), modes))
+        if name == PLANTED_CASE:
+            checks.append(("a link planted at the log path was not written through",
+                           result["decoy"] == "decoy" and result["logs"] == [result["planted"]],
+                           (result["decoy"], [str(p) for p in result["logs"]])))
     parsed = crash_log.parse(text)
     checks += [("header parsed", bool(parsed.build), text[:300]),
                ("signal line written", any("# Signal %d (" % number in text for number in expected), text[:600]),

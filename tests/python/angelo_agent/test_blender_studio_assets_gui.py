@@ -51,6 +51,7 @@ import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 from angelo_agent import studio_assets, studio_assets_host  # noqa: E402
 from angelo_agent.studio_state import StudioLibrary  # noqa: E402
 import qa_input  # noqa: E402
+import qa_hit
 
 REPORT = OUT / "studio-assets-gui.json"
 state = {"phase": "boot", "success": False, "checks": {}, "details": {}, "screenshots": []}
@@ -248,7 +249,7 @@ def run():
     view_region = region_of(view)
     rv3d = view.spaces.active.region_3d
     target = view3d_utils.location_3d_to_region_2d(view_region, rv3d, TARGET)
-    point = (view_region.x + target.x, view_region.y + target.y)
+    point = qa_hit.xy(qa_hit.RAW, view_region, target.x, target.y)
     objects = set(bpy.data.objects)
     yield from drag(found["model"], point)
     yield from wait(lambda: set(bpy.data.objects) - objects, 10)
@@ -288,7 +289,7 @@ def run():
         check("refresh_refused_during_drag", refused)   # False on a binary without the guard: never refresh then.
         if refused:
             check("angelo_refresh_waits_during_drag", studio_assets_host.refresh_asset_browsers() is False)
-    yield from drag(found["image"], (view_region.x + spot.x, view_region.y + spot.y), during=refresh_refused)
+    yield from drag(found["image"], qa_hit.xy(qa_hit.RAW, view_region, spot.x, spot.y), during=refresh_refused)
     yield from wait(lambda: floor.active_material is not None, 10)
     capture("image-dropped.png")
     material = floor.active_material
@@ -305,7 +306,7 @@ def run():
     yield
     spot = view3d_utils.location_3d_to_region_2d(view_region, rv3d, Vector((-1.5, -2.0, 0)))
     objects = set(bpy.data.objects)
-    yield from drag(found["model"], (view_region.x + spot.x, view_region.y + spot.y))
+    yield from drag(found["model"], qa_hit.xy(qa_hit.RAW, view_region, spot.x, spot.y))
     yield from wait(lambda: set(bpy.data.objects) - objects, 10)
     added = [o for o in bpy.data.objects if o not in objects and o.type == 'MESH']
     capture("model-linked-dropped.png")
@@ -346,7 +347,7 @@ def library_space(directory):
     if target is None:
         return
     region = region_of(area)
-    x, y = int(region.x + target[0] + target[2] / 2), int(region.y + target[1] + target[3] / 2)
+    x, y = qa_hit.ipoint(qa_hit.mirrored_about(studio.view(area).get("mirror")), region, target)
     created.event_simulate(type='MOUSEMOVE', value='NOTHING', x=x, y=y)
     created.event_simulate(type='LEFTMOUSE', value='PRESS', x=x, y=y)
     created.event_simulate(type='LEFTMOUSE', value='RELEASE', x=x, y=y)
@@ -368,9 +369,9 @@ def library_space(directory):
             # delete its copies" unticked; this suite frees them, so it ticks the box first, as a person would.
             box = next((rect for rect, action, _value in active.plan.hits if action == "free"), None)
             if box is not None:
-                qa_input.press(created, region.x + box[0] + box[2] / 2, region.y + box[1] + box[3] / 2)
+                qa_input.press(created, *qa_hit.point(qa_hit.PIXELS, region, box))
                 yield from wait(lambda: active.card.free, 5)
-        qa_input.press(created, region.x + confirm[0] + confirm[2] / 2, region.y + confirm[1] + confirm[3] / 2)
+        qa_input.press(created, *qa_hit.point(qa_hit.PIXELS, region, confirm))
     gone = yield from wait(lambda: not ops.active(), 10)
     freed = yield from wait(lambda: space.measure(directory) == 0, 10)
     check("confirmed_turn_off_frees_only_the_copies", gone and freed and not list(directory.rglob("*.blend"))

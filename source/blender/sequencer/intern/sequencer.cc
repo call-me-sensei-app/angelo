@@ -383,8 +383,9 @@ SequencerToolSettings *tool_settings_init()
   tool_settings->snap_flag = SEQ_SNAP_TO_ALL_CHANNEL_STRIPS;
   tool_settings->snap_distance = 15;
   tool_settings->overlap_mode = SEQ_OVERLAP_SHUFFLE;
-  tool_settings->ripple_flag = SEQ_RIPPLE_ALL_CHANNELS | SEQ_RIPPLE_MARKERS |
-                               SEQ_RIPPLE_CLEAR_RANGES;
+  /* Angelo: Clear Ranges starts off. On, Ripple Delete cuts unselected strips that overlap a deleted
+   * strip on other channels (Blender 5.3 launch feedback); other channels still ripple to keep sync. */
+  tool_settings->ripple_flag = SEQ_RIPPLE_ALL_CHANNELS | SEQ_RIPPLE_MARKERS;
   tool_settings->pivot_point = V3D_AROUND_CENTER_MEDIAN;
 
   return tool_settings;

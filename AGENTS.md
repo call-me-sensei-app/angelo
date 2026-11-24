@@ -132,6 +132,9 @@ new code, tests and documentation never introduce them.
 - [Native agent chat](doc/angelo/agent_chat.rst): the chat editor's composer, usage meter,
   model, effort and Fast controls, approval modes and cards, attachments,
   collaborators, web and file tools, request snapshots and opt-in voice.
+  [Goal mode](doc/angelo/goal_mode.rst): a goal held and measured across turns.
+  [Plan mode](doc/angelo/plan_mode.rst): plan first, read only, then the person's
+  Go on the plan card builds the chosen approach.
 - [Checkpoint policy](doc/angelo/checkpoint_policy.rst) and
   [task memory](doc/angelo/task_memory.rst): explicit snapshot boundaries,
   deduplicated storage, automatic retention, document binding, and evidence
@@ -146,6 +149,10 @@ new code, tests and documentation never introduce them.
   the measured estimate every voxel remesh is checked against, and its dialogs.
 - [Rigid body teardown](doc/angelo/rigid_body_teardown.rst): Bullet bodies,
   constraints and worlds freed in any order (Undo, file load, removed objects).
+- [Retopology](doc/angelo/retopology.rst): field-aligned quad retopology (the
+  self-contained core in `geometry/intern/retopology`, its intake of broken
+  meshes, features, symmetry and facts), Object > Retopology and the agent's
+  `RETOPOLOGY` job, and how it is measured against QuadriFlow and voxel remesh.
 - [Hand rigging](doc/angelo/hand_rigging.rst): the read-only hand tools (detection
   by bone layout, joint frames from the forearm, skin contact, the fold-to-limit
   fist as ``bone_set`` operations), their guidance and the glTF weld of agent imports.

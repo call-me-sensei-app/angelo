@@ -35,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))   # qa_frames
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 os.environ["ANGELO_ENABLE_CHAT_LAUNCHER"] = "1"
@@ -157,7 +158,7 @@ def chat_in_pixels(phase, shot):
     drawn = judge_drawn(held) if held is not None else None
     shown = 0
     if region and drawn:
-        picture = pixels(shot, [(region.x + int(region.width * fx), region.y + int(region.height * fy))
+        picture = pixels(shot, [qa_hit.xy(qa_hit.RAW, region, int(region.width * fx), int(region.height * fy))
                                 for fx, fy in GRID])
         shown = sum(close(p, d) for p, d in zip(picture, drawn["grid"]))
     if shown < 6 and tries[phase] < 10:

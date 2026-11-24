@@ -135,6 +135,55 @@ class Readiness(unittest.TestCase):
 
 
 
+class PolicyNotices(unittest.TestCase):
+    """AI Providers' attention notices say what the person's own policy file couldn't set with no managed policy at
+    all, as the file's (break-it re-read of a92ed1bae16, S2)."""
+
+    @staticmethod
+    def managed_title():
+        """team_account_ui.MANAGED as its source says it (the module itself needs Blender)."""
+        import ast
+        tree = ast.parse((SOURCES / "team_account_ui.py").read_text(encoding="utf-8"))
+        node = next(n for n in tree.body if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") == "MANAGED")
+        return node.value.args[0].value
+
+    def attention(self, policy):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from angelo_agent import providers_page_model
+        stubs = {"angelo_agent.saved_keys_ui": SimpleNamespace(notices=lambda: []),
+                 "angelo_agent.version_carry_over": SimpleNamespace(attention_notices=lambda: []),
+                 "angelo_agent.claude_managed": SimpleNamespace(env_overrides=lambda: []),
+                 "angelo_agent.connection_access": SimpleNamespace(
+                     _team=lambda: SimpleNamespace(signed_in=lambda: False)),
+                 "angelo_agent.agent_runtime": SimpleNamespace(override=lambda: None),
+                 "angelo_agent.team_account_ui": SimpleNamespace(MANAGED=self.managed_title())}   # It imports bpy.
+        import angelo_agent
+        with patch.dict(sys.modules, stubs), patch.multiple(angelo_agent, create=True, **{
+                name.split(".")[1]: module for name, module in stubs.items()}):
+            return providers_page_model._attention(SimpleNamespace(), policy)
+
+    def test_an_unmanaged_policy_shows_the_files_notice(self):
+        from angelo_agent import managed_policy
+        notices = self.attention(managed_policy.Policy(ignored=("ExtraCACertificates",)))
+        titles = [n["title"] for n in notices]
+        self.assertTrue(any("Your own policy file (ANGELO_POLICY_FILE)" in t and "ExtraCACertificates" in t
+                            for t in titles), titles)
+        self.assertFalse(any("managed by your organization" in t for t in titles), titles)
+
+    def test_a_managed_policy_keeps_the_organizations_notice_apart(self):
+        from angelo_agent import managed_policy
+        policy = managed_policy.with_person_file([(managed_policy.LINUX_FILE, {"ConsoleURL": "ftp://nope"})],
+                                                 "policy.json", {"AllowVoice": "maybe"})
+        notices = self.attention(policy)
+        managed = [n for n in notices if "managed by your organization" in n["title"]]
+        self.assertEqual(len(managed), 1)
+        self.assertTrue(any("Your organization's Angelo policy has unusable values" in line
+                            for line in managed[0]["lines"]))
+        self.assertTrue(any("Your own policy file (ANGELO_POLICY_FILE) has unusable values" in n["title"]
+                            for n in notices))
+
+
 class StaleMenuHits(unittest.TestCase):
     """A Remove hit acted on after its ⋯ menu has closed (a quick second click, a press on hits drawn a frame ago)
     does nothing: it never reads the closed menu (gcp-kit: TypeError 'NoneType' object is not subscriptable at
@@ -155,6 +204,7 @@ class StaleMenuHits(unittest.TestCase):
                  "preferences_ui": SimpleNamespace(redraw=lambda: None),
                  "MENU_OPERATORS": {}, "SIMPLE_OPERATORS": {},
                  "providers_page_external": SimpleNamespace(ACTIONS=()), "providers_page_rail": SimpleNamespace(ACTIONS=()),
+                 "providers_page_actions": SimpleNamespace(OWN=()),
                  "bpy": SimpleNamespace(ops=SimpleNamespace(angelo=ops),
                                         context=SimpleNamespace(temp_override=lambda **k: contextlib.nullcontext()))}
         exec(compile(ast.Module(body=[node], type_ignores=[]), str(path), "exec"), scope)

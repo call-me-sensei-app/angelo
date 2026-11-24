@@ -12,7 +12,7 @@ Esc cancels (``web_export.pending_export``); an export written without its World
 import bpy
 from bpy_extras.io_utils import ExportHelper
 
-from . import input_policy, web_export, web_export_wait, web_preview, edit_tool_hold
+from . import input_policy, web_export, web_export_spec, web_export_wait, web_preview, edit_tool_hold
 from .ui_text import iface_, n_, rpt_
 
 MESH_ITEMS = (("AUTO", n_("Automatic"), n_("Meshopt when this build has it, else Draco, else uncompressed")),
@@ -147,8 +147,7 @@ class ANGELO_OT_web_preview(bpy.types.Operator):
             web_preview.stop()
             self.report({'INFO'}, rpt_(STOPPED))
             return {'FINISHED'}
-        request = {"meshes": "AUTO", "textures": "AUTO", "merge": True, "selection_only": False}
-        web_preview.start(context.window, request)
+        web_preview.start(context.window, web_export_spec.PREVIEW_REQUEST)
         self.report({'INFO'}, rpt_(STARTED))
         return {'FINISHED'}
 

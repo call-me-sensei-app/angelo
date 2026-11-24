@@ -469,6 +469,16 @@ source, date}}}}``. Pass rates describe the model with Angelo's prompts, not
 an account, so one run serves every connection whose catalog offers the
 model.
 
+A tier can hold more than one model: Fable 5.2 ($8 / $40 per million tokens)
+is strong beside Opus 5.5 at half its rates, and GPT-6.2 Astra ($8 / $40) is
+strong beside GPT-6 Astra ($10 / $50). Inside a tier the cheaper published
+rates (input plus output) come first, whatever order a catalog lists them in,
+so a fallback without a default and an escalation reach Opus 5.5 before Fable
+5.2 and GPT-6.2 Astra before GPT-6 Astra (``_within_tier``); a model without
+rates comes last, and equal rates (GPT-6.2 Sol and GPT-6.1 Sol) keep the
+catalog's order. Auto only moves to a cheaper tier than the best measured
+model, so Fable 5.2 runs when the person picks it in the model picker.
+
 Tiers in ``MODELS``:
 
 .. list-table::
@@ -477,11 +487,11 @@ Tiers in ``MODELS``:
    * - Models
      - Tier
      - Caching
-   * - claude-opus-5-5 / claude-sonnet-5-5 / claude-haiku-5-5
-     - strong / balanced / fast
+   * - claude-fable-5-2 / claude-opus-5-5 / claude-sonnet-5-5 / claude-haiku-5-5
+     - strong / strong / balanced / fast
      - explicit, per model, 512-token minimum
-   * - gpt-6-astra / gpt-6.1-sol / gpt-6-luna
-     - strong / balanced / fast
+   * - gpt-6.2-astra / gpt-6.2-sol (shipped), gpt-6-astra / gpt-6.1-sol, gpt-6-luna
+     - strong / balanced, strong / balanced, fast
      - automatic, 1,024-token minimum, 30-minute retention
    * - grok-4.6
      - single
@@ -492,10 +502,35 @@ Tiers in ``MODELS``:
    * - kimi-k3
      - single
      - automatic; 5m, or 1h on request
-   * - gemini-4-carbon
-     - single
+   * - gemini-4-carbon / gemini-4-neon
+     - balanced / balanced
      - implicit only, from 4,096 tokens, no write charge; reuse stops up to
        about 2,048 tokens short of the previous request
+
+Price steps per request
+=======================
+
+A model with a ``price_step_tokens`` (GPT above 272K input tokens, Haiku 5.5
+above 100K, Grok 4.6 above 200K, MiniMax M3 above 512K) bills a *request*
+whose prompt is above the step at its higher rates for that whole request.
+A turn's, a request's or a chat's usage is a sum of model requests, so
+pricing the sum at one tier is wrong both ways. Each runtime reports every
+model request's own counts (Codex: the ``last`` usage of each
+``thread/tokenUsage/updated`` whose total grew; Claude Code: each API
+message), and ``request_tiers`` folds them into ``above_step``: for every
+step the model table knows, the tokens and count of the requests above it.
+The fold of a sum is the sum of the folds, so receipts, the usage meter, the
+goal budget, spend caps and the harness's list prices price any usage as
+(total - above) at base rates plus above at the higher rates, exactly.
+
+* Kept only when it adds up: a Codex turn whose responses do not sum to the
+  turn, a Claude round whose messages do not match its totals, or a request
+  with any turn that could not split its requests carries no ``above_step``.
+* Without it (usage recorded before 2.1.0): the usage meter estimates at the
+  mean prompt per request, the one estimate left; the harness says the price
+  is unknown (``list_prices``), and its cost cap uses the upper bound.
+* ``test_native_usage_pricing_sites.py`` fails on any new call into the rate
+  table, or new function that sums usage, until it is reviewed.
 
 Subscriptions and plan keys
 ===========================
@@ -591,9 +626,10 @@ Anthropic through Claude Code
 
 OpenAI through Codex
    Caching is automatic from 1,024 tokens. On GPT-5.6 and later, writes cost
-   1.25x input and reads 0.1x (0.05x on gpt-6.1-sol), so the cache-diet
-   arithmetic applies to Codex too. The catalog gives three tiers: luna, sol
-   and astra.
+   1.25x input and reads 0.1x (0.05x on gpt-6.1-sol and both 6.2 models), so
+   the cache-diet arithmetic applies to Codex too. A request above 272K input
+   tokens costs 2x input and cache and 1.5x output. The catalog gives three
+   tiers: luna, sol and astra.
 
 Grok (xAI)
    One admitted model, so routing is effort only. Caching is automatic and
@@ -603,12 +639,17 @@ MiniMax
    No cache-write charge and a low read rate, so long prefixes are cheap.
    Effort is on or off.
 
-Gemini 4 Carbon (agent runtime's Gemini wire)
-   One admitted model, so routing is effort only (medium by default). Caching
-   is implicit and prefix-based: Angelo's opening carries no time or per-chat
+Gemini 4 Carbon and Neon (agent runtime's Gemini wire)
+   Two admitted models, both balanced: Google places Neon ($3 / $15) below
+   Carbon ($4 / $20) for the hardest problems, but neither is a fast helper,
+   and one tier keeps routing from escalating between them. Carbon is the
+   connection's default (medium) and runs until a measurement says otherwise;
+   Neon runs when the person picks it (high by default). Caching is implicit
+   and prefix-based for both: Angelo's opening carries no time or per-chat
    path, so a new chat's first request can read it. Explicit cachedContents is
-   not supported for Gemini 4. Its time to first byte is Google's (measured
-   2026-11-12 at 4 to 54 s, the same with and without a harness).
+   not supported for Gemini 4. Carbon's time to first byte is Google's
+   (measured 2026-11-12 at 4 to 54 s, the same with and without a harness);
+   Neon's is not measured yet.
 
 Kimi
    A 5-minute write costs the input rate and a 1-hour write twice that. The

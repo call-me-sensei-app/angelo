@@ -169,7 +169,7 @@ class NativeSources(unittest.TestCase):
 
 class Controls(unittest.TestCase):
     def test_reached_from_the_menu_director_header_and_f3(self):
-        self.assertIn("uv_checker", chat_destinations.TOP_LEVEL)
+        self.assertIn("uv_checker", chat_destinations.SHIPPED)   # A row of its own or a group's (2.1.0: Inspect).
         module = (ADDON / "uv_checker.py").read_text()
         for term in ("chat_destinations.register(", "chat_destinations.unregister(\"uv_checker\")",
                      "bpy.types.VIEW3D_HT_header.append(_draw_header)", "bpy.types.VIEW3D_HT_header.remove(",

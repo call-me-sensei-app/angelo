@@ -358,13 +358,41 @@ def main():
              note="HKLM\\SOFTWARE\\Policies is a shared registry key: a 32-bit and a 64-bit program read the same values")
         clear()
 
-        os.environ["ANGELO_QA_PEM"] = pem
+        # A REG_EXPAND_SZ path (Group Policy's usual type for paths) expands from the machine alone (policy_windows):
+        # the documented %ProgramData%\Corp\roots.pem works through ProfileList's %SystemDrive%\ProgramData, and
+        # the process's own ProgramData (here pointed at another folder) is never read.
+        machine_folder = Path(os.environ["ProgramData"]) / ("AngeloQA-" + uuid.uuid4().hex[:8])
+        machine_folder.mkdir()
+        try:
+            machine_pem = machine_folder / "roots.pem"
+            machine_pem.write_text("-----BEGIN CERTIFICATE-----\n-----END CERTIFICATE-----\n")
+            put(winreg.HKEY_LOCAL_MACHINE, {"ExtraCACertificates": (
+                winreg.REG_EXPAND_SZ, "%ProgramData%\\" + machine_folder.name + "\\roots.pem")})
+            saved_programdata = os.environ["ProgramData"]
+            os.environ["ProgramData"] = folder   # What a person's or an agent's shell could set.
+            try:
+                expanded = managed_policy.load()
+            finally:
+                os.environ["ProgramData"] = saved_programdata
+            step("policy_expand_sz_machine_folder",
+                 os.path.normcase(expanded.extra_ca_certificates) == os.path.normcase(str(machine_pem))
+                 and "ExtraCACertificates" not in expanded.problems,
+                 accepted=expanded.extra_ca_certificates, problems=list(expanded.problems),
+                 note="%ProgramData% from the machine's ProfileList, with the process's ProgramData pointed elsewhere")
+            clear()
+        finally:
+            for leftover in machine_folder.glob("*"):
+                leftover.unlink()
+            machine_folder.rmdir()
+
+        os.environ["ANGELO_QA_PEM"] = pem   # A variable only the process has.
         put(winreg.HKEY_LOCAL_MACHINE, {"ExtraCACertificates": (winreg.REG_EXPAND_SZ, r"%ANGELO_QA_PEM%")})
         expanded = managed_policy.load()
-        step("policy_expand_sz_path", None if not expanded.extra_ca_certificates else True,
-             accepted=bool(expanded.extra_ca_certificates), problems=list(expanded.problems),
-             note="a REG_EXPAND_SZ path (Group Policy's usual type for paths) is read unexpanded: "
-                  + ("expanded" if expanded.extra_ca_certificates else "it counts as unusable and adds no roots"))
+        step("policy_expand_sz_process_variable_refused",
+             not expanded.extra_ca_certificates and "ExtraCACertificates" in expanded.problems,
+             accepted=expanded.extra_ca_certificates, problems=list(expanded.problems),
+             note="a variable the machine doesn't record stays as written: unusable, reported, no roots added")
+        os.environ.pop("ANGELO_QA_PEM", None)
         clear()
 
         # 7. Sign out: revoke, wipe, forget ---------------------------------------------------------------------

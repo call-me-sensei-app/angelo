@@ -301,8 +301,8 @@ def _act(action, value, window, area, region):
             providers_page_external.act(ops, action, value)
         elif action in providers_page_rail.ACTIONS:   # Where the Sessions panel stands, and every 3D view redrawn.
             providers_page_rail.act(action, value)
-        elif action == "enable":
-            bpy.ops.preferences.addon_enable(module="angelo_agent")
+        elif action in providers_page_actions.OWN:   # Enable the add-on; Always allow scripts' limits link.
+            providers_page_actions.act_own(action)
         elif action in ("toggle", "pref") and prefs is not None:   # A switch, or a choice: (preference, its value).
             name, new = (value, not getattr(prefs, value)) if action == "toggle" else value
             setattr(prefs, name, new)

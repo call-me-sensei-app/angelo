@@ -3211,6 +3211,9 @@ bool RNA_property_boolean_get(PointerRNA *ptr, PropertyRNA *prop)
  * in data"; the re-read of f9f24cc6ffd). No list of types: whatever a script set. */
 static void angelo_note_property_set(const PointerRNA *ptr, PropertyRNA *prop)
 {
+  if (!BLI_fileops_confine_possible()) {
+    return; /* No thread is confined: one load, before the gate's call (every set, every element). */
+  }
   const BLI_FileGate *gate = BLI_fileops_gate_get();
   if (gate != nullptr && gate->script_property_set != nullptr && ptr != nullptr && ptr->owner_id != nullptr &&
       prop != nullptr && gate->confined != nullptr && gate->confined())
@@ -4826,6 +4829,9 @@ int RNA_property_string_length(PointerRNA *ptr, PropertyRNA *prop)
  * "Output paths in data"). */
 static void angelo_note_string_set(const PointerRNA *ptr, const PropertyRNAOrID &prop_rna_or_id)
 {
+  if (!BLI_fileops_confine_possible()) {
+    return; /* As angelo_note_property_set. */
+  }
   const BLI_FileGate *gate = BLI_fileops_gate_get();
   if (gate != nullptr && gate->script_property_set != nullptr && ptr->owner_id != nullptr &&
       gate->confined != nullptr && gate->confined())

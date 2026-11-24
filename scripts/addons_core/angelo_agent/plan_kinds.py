@@ -33,6 +33,7 @@ from .app_feature_spec import APP_FEATURE_NAMES
 from .engine_link_tool_spec import ENGINE_LINK_NAMES
 from .download_spec import DOWNLOAD_NAMES
 from .goal_spec import GOAL_NAMES
+from .planning_spec import PLAN_NAMES
 
 
 # Exact in the plan: the kinds and checks of ordinary modeling, material,
@@ -88,6 +89,8 @@ DEFERRED_TOOLS = frozenset(SCULPT_NAMES | STUDIO_NAMES | FLOW_NAMES | TEAM_NAMES
                            | GAME_READY_NAMES
                            | RIG_NAMES | APP_FEATURE_NAMES | ENGINE_LINK_NAMES | DOWNLOAD_NAMES
                            | GOAL_NAMES   # A goal is held when the person asks for one (goal_mode.rst): looked up then.
+                           | PLAN_NAMES   # Plan mode, when the person asks to plan first (plan_mode.rst).
+                           | {"angelo_context_folder", "angelo_context_folder_write"}   # Only a chat with folders attached.
                            | (WORKER_NAMES if parallel_agents() else frozenset())   # Listed only when in the build.
                            | {"angelo_memory_update", "angelo_expand_recipe", "angelo_scene_settings", "angelo_script",
                               # A file's hygiene is asked for rarely; the data-path reader stays exact, because

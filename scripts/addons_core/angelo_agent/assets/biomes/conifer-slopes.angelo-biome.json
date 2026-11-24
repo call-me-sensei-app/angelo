@@ -1,0 +1,131 @@
+{
+ "schema": "angelo-biome/1",
+ "name": "Conifer slopes",
+ "description": "Pines and young pines on moderate slopes, rocks where it is steep, ferns in the understory.",
+ "layers": [
+  {
+   "name": "Pines",
+   "assets": [
+    {
+     "query": "pine tree",
+     "kind": "model"
+    }
+   ],
+   "density": 0.04,
+   "spacing": 1.0,
+   "transform": {
+    "scale": [
+     0.7,
+     1.3
+    ],
+    "align": 0.0,
+    "yaw": true,
+    "tilt": 0.0
+   },
+   "seed": 11,
+   "rules": {
+    "slope": {
+     "min": 0,
+     "max": 38,
+     "soft": 5
+    },
+    "noise": {
+     "scale": 40,
+     "amount": 0.4
+    }
+   }
+  },
+  {
+   "name": "Young pines",
+   "assets": [
+    {
+     "query": "small pine tree",
+     "kind": "model"
+    }
+   ],
+   "density": 0.03,
+   "spacing": 1.0,
+   "transform": {
+    "scale": [
+     0.4,
+     0.8
+    ],
+    "align": 0.0,
+    "yaw": true,
+    "tilt": 0.0
+   },
+   "seed": 12,
+   "rules": {
+    "slope": {
+     "min": 0,
+     "max": 40,
+     "soft": 5
+    },
+    "noise": {
+     "scale": 25,
+     "amount": 0.5
+    }
+   }
+  },
+  {
+   "name": "Rocks",
+   "assets": [
+    {
+     "query": "rock",
+     "kind": "model"
+    }
+   ],
+   "density": 0.03,
+   "spacing": 1.0,
+   "transform": {
+    "scale": [
+     0.5,
+     1.6
+    ],
+    "align": 1.0,
+    "yaw": true,
+    "tilt": 0.0
+   },
+   "seed": 13,
+   "rules": {
+    "slope": {
+     "min": 25,
+     "max": 70,
+     "soft": 8
+    }
+   }
+  },
+  {
+   "name": "Ferns",
+   "assets": [
+    {
+     "query": "fern",
+     "kind": "model"
+    }
+   ],
+   "density": 0.4,
+   "spacing": 1.0,
+   "transform": {
+    "scale": [
+     0.6,
+     1.2
+    ],
+    "align": 0.3,
+    "yaw": true,
+    "tilt": 0.0
+   },
+   "seed": 14,
+   "rules": {
+    "slope": {
+     "min": 0,
+     "max": 30,
+     "soft": 5
+    },
+    "noise": {
+     "scale": 8,
+     "amount": 0.6
+    }
+   }
+  }
+ ]
+}

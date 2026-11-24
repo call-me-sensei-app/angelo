@@ -30,6 +30,7 @@ from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-flow-start-qa"))
@@ -154,11 +155,8 @@ def check_start_page(code, where):
     region = next(r for r in area.regions if r.type == 'WINDOW')
     s = prefs.system.ui_scale
     status_w = min(region.width - drawn["text_x"], 200 * s)
-    x = drawn["text_x"]
-    if is_rtl():   # The canvas mirrors: the line ends where it starts in English.
-        x = region.width - drawn["text_x"] - status_w
-    bottom = region.height - flow_window.HEIGHT * s
-    band = (region.x + x, region.y + bottom + 6 * s, status_w, 9 * s)
+    # The canvas mirrors: in a right-to-left language the line ends where it starts in English.
+    band = qa_hit.rect(qa_hit.PIXELS, region, (drawn["text_x"], region.height - flow_window.HEIGHT * s + 6 * s, status_w, 9 * s))
     share = text_share(pixels(path), band, [round(c * 255) for c in card_kit.CARD[:3]])
     rows = [r["value"] for r in flow_menu.flow_rows() if r["kind"] == "row"]
     shown = drawn.get("start_rows") or []

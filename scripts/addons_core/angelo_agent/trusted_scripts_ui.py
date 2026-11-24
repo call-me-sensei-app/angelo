@@ -36,15 +36,21 @@ class ANGELO_OT_trusted_scripts(Operator):
         return context.window_manager.invoke_props_dialog(self, width=560)
 
     def draw(self, context):
+        from . import script_access
+        from .text_layout import label_rows
+        layout = self.layout
+        layout.label(text=iface_("Allow future scripts in this chat without individual code review?"), translate=False)
+        for line in label_rows(iface_(script_access.SENTENCE), 90):   # What every such offer says (script_access).
+            layout.label(text=line, translate=False)
         for text in (
-            n_("Allow future scripts in this chat without individual code review?"),
-            n_("Scripts have full Angelo privileges: files, network and programs."),
             n_("External effects are not guaranteed undoable; scene Undo is limited."),
             n_("Stop cannot interrupt an atomic Python script."),
             n_("Consent lasts only in this open chat/document; restart clears it."),
             n_("Disable it here at any time. Already queued scripts still ask."),
         ):
-            self.layout.label(text=iface_(text), translate=False)
+            layout.label(text=iface_(text), translate=False)
+        link = layout.operator("wm.url_open", text=iface_(script_access.LINK), translate=False, icon='URL')
+        link.url = script_access.LIMITS_URL
 
     def cancel(self, context):
         self._consent_owner = None
@@ -108,7 +114,9 @@ class ANGELO_MT_approval(Menu):
         self.layout.operator_context = 'INVOKE_DEFAULT'   # Its dialog first: the confirm runs it (a menu would exec).
         self.layout.operator("angelo.trusted_scripts", text="Disable trusted scripts" if controller.trusted_scripts
                              else "Trust scripts for this chat…", icon='CHECKMARK' if controller.trusted_scripts else 'NONE')
-        self.layout.label(text="Trusted scripts run unrestricted Blender Python.")
+        from . import script_access   # Its dialog says the sentence before any grant; the menu offers the limits.
+        link = self.layout.operator("wm.url_open", text=iface_(script_access.LINK), translate=False, icon='URL')
+        link.url = script_access.LIMITS_URL
 
 
 class ANGELO_OT_approval_policy(Operator):
@@ -180,7 +188,10 @@ def draw_always_allow(layout, prefs):
         row.label(text="Always allow scripts")
         row.label(text=shown(Text(managed_policy.AUTO_APPROVAL_OFF)), icon='LOCKED', translate=False)
     elif prefs is not None:
+        from . import script_access   # The toggle's description holds SENTENCE; the link sits under it.
         layout.prop(prefs, "always_allow_scripts")
+        link = layout.operator("wm.url_open", text=iface_(script_access.LINK), translate=False, icon='URL')
+        link.url = script_access.LIMITS_URL
 
 
 def always_allow_from_card(context, controller, call_id):
@@ -215,6 +226,20 @@ def session_allow_from_card(context, controller, call_id):
         return controller.session_allow_script(call)
     except RuntimeError as error:
         print("Angelo: scripts could not be allowed for this session:", error)
+        return False
+
+
+def remember_script_from_card(context, controller, call_id):
+    """The script card's Always run this exact script in this project: remember these bytes for this project
+    (``reviewed_scripts``) and let that cover this run too. Offered only once the person opened the exact text
+    (``offers_remember_script``); never while an agent script is running, so a script can't approve itself."""
+    call = controller.pending.get(call_id)
+    if call is None or not controller.offers_remember_script(call) or agent_script_running():
+        return False
+    try:
+        return controller.remember_script(call)
+    except (OSError, ValueError) as error:
+        print("Angelo: the script approval could not be saved:", error)   # i18n: a log line
         return False
 
 

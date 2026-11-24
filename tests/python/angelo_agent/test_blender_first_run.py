@@ -57,6 +57,7 @@ import splash_frames  # noqa: E402
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')  # This suite needs the default Director startup.
 # --python runs before Blender builds its startup splash: count every draw of its splash menus from here.
@@ -116,7 +117,7 @@ def click_welcome(action, value=None):
     area = next(a for a in window().screen.areas if a.as_pointer() == intro._open["area"])
     region = next(r for r in area.regions if r.type == 'WINDOW')
     rect = next(r for r, a, v in intro._open["plan"]["hits"] if a == action and (value is None or v == value))
-    x, y = int(region.x + rect[0] + rect[2] / 2), int(region.y + rect[1] + rect[3] / 2)
+    x, y = qa_hit.ipoint(qa_hit.PIXELS, region, rect)
     import qa_input
     if action in qa_input.GRANT_ACTIONS:   # It reaches a grant: only a person's click (move, then press).
         return qa_input.press(window(), x, y)
@@ -140,14 +141,12 @@ def shown(action, value=None):
 
 def click_card(action, value=None):
     """Click the visible card's own control, in window coordinates."""
-    from angelo_agent import card_host, canvas_rtl
+    from angelo_agent import card_host
     active = card_host._active
     area = next(a for a in window().screen.areas if a.as_pointer() == active.area)
     region = next(r for r in area.regions if r.type == 'WINDOW')
     rect = next(r for r, a, v in reversed(active.plan.hits) if a == action and (value is None or v == value))
-    x = rect[0] + rect[2] / 2
-    x = canvas_rtl.pointer_x(x, region.width)  # Mirrored back in a right-to-left language.
-    x, y = int(region.x + x), int(region.y + rect[1] + rect[3] / 2)
+    x, y = qa_hit.ipoint(qa_hit.PIXELS, region, rect)  # Mirrored back in a right-to-left language.
     import qa_input
     if action in qa_input.GRANT_ACTIONS:   # It reaches a grant: only a person's click (move, then press).
         return qa_input.press(window(), x, y)
@@ -183,7 +182,7 @@ def menu_pixels(path):
     k = rgb.shape[1] / window().width   # Screenshot pixels per window pixel.
 
     def to_image(rect):
-        return ((region.x + rect[0]) * k, (region.y + rect[1]) * k, rect[2] * k, rect[3] * k)
+        return tuple(v * k for v in qa_hit.rect(qa_hit.PIXELS, region, rect))
 
     def painter(op):
         return getattr(op[3].get("painter"), "__name__", "") if op[0] == "kit" and op[1] == "firstlaunch" else ""

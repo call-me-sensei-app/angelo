@@ -203,6 +203,7 @@ class SourceOrder(unittest.TestCase):
         # ``cache_key``'s fresh key per call in the clock's tick (test_native_change_keys).
         for module, function, argument in (
                 ("web_link_users.py", "file_stamp", "info"), ("web_shader.py", "signature", "info"),
+                ("web_shader.py", "_stats", "info"),
                 ("web_world_key.py", "_file", "stat"), ("export_baked_reads.py", "_file", "status"),
                 ("export_baked_images.py", "_file", "status")):
             with self.subTest(module=module, function=function):

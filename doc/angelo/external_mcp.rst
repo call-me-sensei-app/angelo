@@ -208,7 +208,7 @@ At most ``ROWS_PER_READ`` (40) rows per answer (``more`` when cut), oldest first
 * ``system``: Angelo's notices (a snapshot, the verified account of edits, a goal round, a settings change, a move).
 * ``error``.
 
-Never in a row: a thinking row, a row only the person sees (``document_offer.person_only``), absolute paths (rows are
+Never in a row: a thinking row, a row only the person sees (``document_offer.person_only``: an offer, or any row marked ``person_only`` such as a refused network share), absolute paths (rows are
 redacted at the source, as the CLI projects them), keys or account identifiers. The cursor is ``<conversation>:<first
 row that could still change>:<the chat's version>``: a tool call that finished or a reply that grew is sent again,
 and a change between two reads is never missed.
@@ -579,6 +579,31 @@ plan's name or window, which are the account's), and the result once the turn en
   only when the conversation's change counter or the scene's export moved, and at most twice a second
   (``session_page.INTERVAL``); its event stream says when, and the page then reads ``state.json``. Nothing is built
   while nobody looks.
+* **Every wait is bounded** (``session_page_pending``). A picture is listed only once the page can serve it whole.
+  One that can never be served while it stays listed (an id the page refuses, not a UUID, no regular file, a file
+  over the size limit) is dropped at once: never read again and never shown. One that isn't ready (no file yet,
+  ``ImageMissing``; a capture still being written; any failed look at the disk or read) is read again after a wait
+  that starts at 0.5 s and doubles to 8 s, however often the conversation changes, and is given up 60 s after its
+  first failed read: the page then draws it as an unavailable tile, titled and labelled "Unavailable" in the
+  person's language, and never asks for it. While it stays listed and a page is open its file is looked at (opened,
+  its descriptor's ``fstat``, never its bytes) when the page is built for a change in the chat and otherwise at most
+  every 8 s, so a picture finished in an idle chat is shown too (at most six listed items, one look each per 8 s,
+  none while nobody views). It is read again when its size or modification time changed; once more for every new
+  size and time 8 s after it was first seen (local elapsed time, past any step a file system stamps in, so a
+  same-size rewrite inside one stamp's step is read whatever a share's clock says), sooner once
+  ``change_clock.settled`` vouches for a mark last read unsettled; and after a read that failed (it raised, as a
+  sharing violation or a share's reconnect does, or its bytes were no whole picture and their count differed from
+  the file's size: it vouches for nothing) again at the first look at or after 8 s from that read, doubling to 60 s
+  while the same file keeps failing, whatever the chat does (idle, up to one 8 s look later), or at the next build
+  when the file changed since. Bytes that are a whole picture are shown whatever size the file reports. Never more for an unchanged file, and a failed look forgets nothing. Each look
+  and read is blocking I/O on the main thread; on a hung network volume it waits for the client's timeout (known
+  limit, as for the rest of Angelo's state there). Every look and read goes through ``reference_images``: the checks made
+  again on the one descriptor that is read (``O_NOFOLLOW | O_NONBLOCK`` on POSIX, a regular file, the size limit,
+  read to at most one byte past it), opened through ``shared_replace``; an app's pictures (``external_look``,
+  ``external_visibility``) read the same way. A listed picture never read yet is always due, so a page closing
+  between two looks can't skip its first read. A tick where only a wait is running publishes nothing; the page is
+  published again only when what it shows changed. A defect in a wait ends that page, as a build's does. Any other
+  item a page comes to wait on goes through the same ``Pending``.
 * **The link lives exactly as long as the session:** ``session_page.session_on`` (apps' access on, the app still
   connected with the key it had when the page was made and not revoked, the mark of ``external_access.revoke``, the
   one path that ends an app's access, the conversation its current one, the chat there, not closing and valid for

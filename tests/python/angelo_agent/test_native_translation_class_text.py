@@ -102,6 +102,15 @@ size: FloatProperty(name="Size outside a class")
             "A note for developers.", "Not registered: it has no bl_idname or bl_label.",
             "Shown as the menu's tooltip."})
 
+    def test_a_docstring_over_several_lines_is_known_as_the_dump_writes_it(self):
+        """The dump takes a docstring with its indentation removed (2.1.0: a two-line note for developers reached the
+        template, so its every language, because only the indented form was known)."""
+        source = 'class ANGELO_OT_two(Operator):\n    """First line for developers.\n    Second line, indented."""\n' \
+                 '    bl_idname = "angelo.two"\n    bl_description = "The real tooltip"\n'
+        docstrings, tooltips = class_text.docstrings(source), class_text.tooltips({"angelo_agent/two.py": source})
+        self.assertTrue(class_text.dump_artifact("First line for developers.\nSecond line, indented.",
+                                                 {"bpy.types.ANGELO_OT_two"}, docstrings, tooltips))
+
     def test_the_extraction_takes_tooltips_from_the_sources_and_drops_a_docstring_the_dump_took(self):
         tooltips = class_text.tooltips({"angelo_agent/sample.py": self.SOURCE})
         self.assertEqual(tooltips, {"A tooltip written over two lines": {"angelo_agent/sample.py"}})

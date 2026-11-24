@@ -8,6 +8,7 @@ Never infer a billing route from a model-name prefix or an inherited API key.
 """
 
 from . import byteplus_models, fal_3d, fal_models
+from .model_profiles import MODELS as _PROFILES
 from .ui_text import n_
 
 CODING = "CODING"
@@ -53,24 +54,29 @@ SPECS = {
                  "docs": "https://platform.kimi.ai/docs/guide/codex-kimi", "web_search": True,
                  "models": [_model("kimi-k3", "Kimi K3", efforts=("low", "high", "max"),
                                    images=True, context=1048576, default=True)]},
-    # Gemini 4 Carbon through the agent runtime's native Gemini wire (doc/angelo/ai_providers.rst, "Gemini 4
-    # Carbon"): Carbon is the only Gemini coding model Angelo offers (maintainer ruling 2026-11-12), at medium by
-    # default (chat_settings.DEFAULT_EFFORT_EXCEPTIONS). Listed only when the pinned runtime declares the wire
-    # (``runtime_wire``, ``available``) and run only by that runtime, never the person's own Codex
-    # (``runtime_launch.codex_command``). Facts read 2026-11-12:
-    # aistudio.google.com/docs/whats-new-gemini-4-carbon (1,048,576-token window shared by input, thinking and
-    # output; thinking low, medium or high, not off; images in).
+    # Gemini 4 Carbon and Gemini 4 Neon through the agent runtime's native Gemini wire (doc/angelo/ai_providers.rst,
+    # "Gemini 4 Carbon", "Gemini 4 Neon"): they are the Gemini coding models Angelo offers (maintainer 2026-11-23; Argon stays
+    # out). Carbon stays the connection's default, at medium (chat_settings.DEFAULT_EFFORT_EXCEPTIONS); Neon runs at
+    # the common default, high. Listed only when the pinned runtime declares the wire (``runtime_wire``,
+    # ``available``) and run only by that runtime, never the person's own Codex (``runtime_launch.codex_command``).
+    # Facts read 2026-11-12: aistudio.google.com/docs/whats-new-gemini-4-carbon (1,048,576-token window shared by
+    # input, thinking and output; thinking low, medium or high, not off; images in). Read 2026-11-23:
+    # aistudio.google.com/docs/whats-new-gemini-4-neon (the same Gemini 4 API, no request schema changes; the same
+    # shared 1,048,576-token window; thinking low, medium, high (its default) or xhigh, not minimal; images in) and
+    # aistudio.google.com/docs/models. Neon's xhigh is not offered: the bundled runtime's Gemini wire sends xhigh
+    # and above as "high" (codex-api gemini/request.rs thinking_level), so the choice would silently run at high
+    # (next release: the runtime's mapping first).
     "gemini_api": {"group": CODING, "provider": "GOOGLE", "method": "API_KEY", "runtime": "codex", "name": "Gemini API",
                    "base_url": "https://generativelanguage.googleapis.com/v1beta", "probe": "/models?pageSize=1000",
                    "auth_header": "x-goog-api-key", "env_key": "ANGELO_GEMINI_API_KEY", "wire_api": "gemini",
                    "key_family": "google_ai_studio",
-                   # Carbon can think for minutes before its first byte (Google: client timeouts of at least 15
-                   # minutes); Codex's default stream idle limit would cut such a request and re-send it.
-                   "provider_settings": {"stream_idle_timeout_ms": 900000},
+                   # The wire's stream rules (a silent stream's limit and re-send) are STREAM_SETTINGS["gemini"].
                    "key_url": "https://aistudio.google.com/app/api-keys",
                    "docs": "https://aistudio.google.com/docs/whats-new-gemini-4-carbon",
                    "models": [_model("gemini-4-carbon", "Gemini 4 Carbon", efforts=("low", "medium", "high"),
-                                     images=True, context=1048576, default=True)]},
+                                     images=True, context=1048576, default=True),
+                              _model("gemini-4-neon", "Gemini 4 Neon", efforts=("low", "medium", "high"),
+                                     images=True, context=1048576)]},
     "openai_images_api": {"group": GENAI, "provider": "OPENAI", "method": "API_KEY", "runtime": None, "name": "OpenAI Images",
                           "base_url": "https://api.openai.com/v1", "probe": "/models", "kind": "IMAGE",
                           "docs": "https://developers.openai.com/api/docs/guides/image-generation",
@@ -115,6 +121,28 @@ SPECS = {
                                   for identity, entry in fal_models.MODELS.items()), key=lambda m: not m["default"])
                 + [_model(identity, entry["name"], kind="3D") for identity, entry in fal_3d.MODELS.items()]},
 }
+# Coding models the pinned agent runtime's own catalog for their wire does not list, each with the listed model it runs
+# like (``endpoint_catalog.entry``): the launch gives Codex that model's entry under this one's name, efforts and
+# default, so it never runs on Codex's generic fallback (10 KB of tool output, generic shell and patch tools). Gemini 4
+# Neon: the same Gemini 4 API as Carbon, "no request schema changes" (Google, 2026-11-23); the pinned runtime's
+# Gemini wire lists Carbon alone (fork 6077550be47, model-provider/src/gemini/models.json).
+RUNTIME_ENTRY_LIKE = {"gemini-4-neon": "gemini-4-carbon"}
+
+
+def registry_model(identity):
+    """The coding registry's entry for model ``identity``, or None."""
+    return next((model for spec in SPECS.values() if spec["group"] == CODING
+                 for model in spec.get("models", ()) if model["id"] == identity), None)
+
+
+def registry_wire(identity):
+    """The model-provider wire of the coding connection whose registry entry lists model ``identity`` (``gemini``),
+    or None: Codex's own Responses wire, for every other model (the catalog-driven GPT connections among them)."""
+    spec = next((spec for spec in SPECS.values() if spec["group"] == CODING
+                 and any(model["id"] == identity for model in spec.get("models", ()))), None)
+    return spec.get("wire_api") if spec else None
+
+
 # Interactions image controls each Gemini model documents (image-generation
 # guide, "Aspect ratios and image size" tables, checked 2026-10-07). A request
 # never sends a value outside its model's list; Studio offers a subset of them.
@@ -153,10 +181,22 @@ _TEAM_ROUTES = (
 )
 # The personal OpenAI coding mode lists models from Codex's own account
 # catalog; a team connection has no such catalog, so its models are pinned:
-# the launch models (doc/angelo/gpt_launch.rst) with a conservative effort set.
+# the launch models (doc/angelo/gpt_launch.rst) with a conservative effort set. The first is the connection's own
+# model, and its context window becomes the process's model_context_window (runtime_launch.codex_command): each
+# model's input budget from model_profiles (922,000 for every GPT-6 model). Codex caps it at its catalog's
+# max_context_window (872,000 for every GPT-6 model in codex-cli 0.171.0's models-manager/models.json, as in
+# 0.169.1), so it compacts before the API's input limit.
+# A Codex without the model in its bundled catalog runs it on the generic fallback (no code mode): the team
+# route needs a runtime whose bundled catalog lists the model (gpt-6.2-*: codex-cli 0.169.1 and later).
 _CODEX_TEAM_MODELS = (
-    _model("gpt-6.1-sol", "GPT-6.1 Sol", efforts=("low", "medium", "high"), images=True, context=1050000, default=True),
-    _model("gpt-6-astra", "GPT-6 Astra", efforts=("low", "medium", "high"), images=True),
+    _model("gpt-6.2-sol", "GPT-6.2 Sol", efforts=("low", "medium", "high"), images=True,
+           context=_PROFILES["gpt-6.2-sol"]["context_window"], default=True),
+    _model("gpt-6.2-astra", "GPT-6.2 Astra", efforts=("low", "medium", "high"), images=True,
+           context=_PROFILES["gpt-6.2-astra"]["context_window"]),
+    _model("gpt-6.1-sol", "GPT-6.1 Sol", efforts=("low", "medium", "high"), images=True,
+           context=_PROFILES["gpt-6.1-sol"]["context_window"]),
+    _model("gpt-6-astra", "GPT-6 Astra", efforts=("low", "medium", "high"), images=True,
+           context=_PROFILES["gpt-6-astra"]["context_window"]),
 )
 
 
@@ -187,6 +227,48 @@ TEAM_PROVIDERS = frozenset(s["team_provider"] for s in SPECS.values() if s["meth
 # key is in the child's environment (no OpenAI login): personal third-party
 # APIs and every team Codex mode.
 CUSTOM_PROVIDER_MODES = EXTERNAL_CODEX_MODES | frozenset(m for m in TEAM_MODES if SPECS[m]["runtime"] == "codex")
+
+# How the agent runtime treats a failed or silent model request, per model-provider wire (``wire_api``): a request with
+# nothing for ``stream_idle_timeout_ms`` has failed, whether its response never started (no headers: the fork bounds
+# that wait too since the 2.1.0 pin, on every HTTP streaming wire) or its stream went quiet, and a failed request (silent, broken partway, a dropped
+# connection, a 5xx, a 429 or 503 with a retry delay) is re-sent up to ``stream_max_retries`` times. A re-send repeats
+# the turn's recorded history, a finished tool call and its output included, so no tool runs twice. The runtime tells
+# the host (``error`` with ``willRetry``), which keeps the host waiting and rules out its own resend (codex_retry). Every provider entry Angelo writes carries its
+# wire's rules (``team_runtime.model_provider_entry``, ``endpoint_connections.provider_entry``), so no entry falls back
+# to a runtime default the host cannot see. Each limit stays under the host's own give-up (turn_activity.IDLE_SECONDS,
+# 600 s), or the runtime would re-send only after the host had ended the turn (tests: test_native_stream_silence). It
+# bounds each window on its own: a response that starts just before the limit and then goes silent can pass the host's
+# limit in all, and then the host gives up first, with its own message.
+# doc/angelo/ai_providers.rst, "Silent model streams".
+STREAM_SETTINGS = {
+    # The runtime's own Responses rules, written out: no change for these providers.
+    "responses": {"stream_idle_timeout_ms": 300000, "stream_max_retries": 5},
+    # Gemini thinks without streaming anything for long stretches. The longest quiet stretch of a healthy turn in the
+    # 2.0.0 and 2.1.0 gate records was 168 s (697 completed Gemini turns, p99 102 s); its longest healthy wait for a
+    # response to start (its headers come with its first output) was 179.8 s (688 requests, p99 83.5 s). It is time with nothing visible in
+    # the chat; a runtime event the chat does not show ends a stream's silence but not the stretch, so no healthy
+    # stream was silent longer. 360 s is about twice that and stays 240 s under the host's limit. One re-send: each
+    # repeats the whole prompt (mostly cached) and its thinking. Before this the wire waited 900 s with no re-send,
+    # longer than the host, so a request that went silent after a tool was never re-sent (9 of 742 gate turns).
+    "gemini": {"stream_idle_timeout_ms": 360000, "stream_max_retries": 1},
+}
+
+
+# An organization's own model server (a custom endpoint: often self-hosted, llama.cpp, vLLM or Ollama, or behind a
+# buffering proxy) may hold its response headers through a prompt prefill whose length Angelo cannot know, on any wire.
+# Before the fork's 2.1.0 pin only the host's 600 s bounded that wait. Its limit therefore stays just under the host's
+# (570 s: 30 s for the runtime's error to reach the host), so no wait the host would have waited out is cut sooner
+# by more than that, and it is re-sent once: a re-send repeats the whole prefill, so more cannot help a slow server
+# and would only multiply its cost. The limit outlasts every hosted wire's.
+ENDPOINT_STREAM_SETTINGS = {"stream_idle_timeout_ms": 570000, "stream_max_retries": 1}
+
+
+def stream_settings(wire, endpoint=False):
+    """The provider entry fields of ``wire``'s silent-stream rules (``STREAM_SETTINGS``), or an organization's own
+    server's (``ENDPOINT_STREAM_SETTINGS``) with ``endpoint``. A wire without rules raises ``KeyError``: a provider on
+    it would otherwise run on a limit the host never checked."""
+    rules = dict(STREAM_SETTINGS[wire])
+    return dict(ENDPOINT_STREAM_SETTINGS) if endpoint else rules
 
 
 # Custom model endpoints (method ENDPOINT, doc/angelo/ai_providers.rst "Custom model endpoints"): an organization's

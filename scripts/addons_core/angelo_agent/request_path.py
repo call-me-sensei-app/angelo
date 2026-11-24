@@ -70,7 +70,7 @@ SCRIPT, CAPABILITIES, API_LOOKUP, VIEW = "angelo_execute_python", "angelo_agent_
 SCULPT_VIEWS = frozenset({"angelo_sculpt_view", "angelo_sculpt_review"})
 # Calls that are no alternative to a script: notes, layout, consultations and files.
 NOT_TYPED = frozenset({"angelo_memory_update", "angelo_discard_preview", "angelo_set_workspace_mode", "angelo_delegate",
-                       "angelo_write_file", "angelo_delete_file"})
+                       "angelo_write_file", "angelo_delete_file", "angelo_context_folder_write"})
 # Typed calls that leave the scene as it is: a job runs outside the turn.
 NOT_SCENE = NOT_TYPED | {"angelo_job_start", "angelo_job_cancel"}
 SCENE_MEDIA = frozenset({"angelo_studio_import_3d", "angelo_team_library_import"})

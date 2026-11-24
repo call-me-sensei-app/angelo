@@ -28,11 +28,14 @@ shipped shelf and a plain Python shelf alike; the same drag paced this way lande
 import time
 
 AIM_CAP = 30.0   # Seconds an aimed click waits for its control at most (a hang, never a slow machine).
+HOLD_CAP = AIM_CAP + 5.0   # Seconds ``after_clicks`` holds a tick for a press: past AIM_CAP and the aim's last poll
+                           # (its focus wait included), so the two caps never race (test_blender_agent_workspace_ui
+                           # on 96fc02ef7a6: the hold gave up first and the tick read a click not yet sent).
 DELAY = 0.5    # Seconds between the pointer's arrival and the press: past C's ARM_SECONDS (0.3) since the control
                # was drawn, so the person's real move onto it at the press arms it (grant_operators.rst).
 sent = []      # (x, y) of each press actually sent (a suite's timeout can say whether its click went out).
 sent_at = []   # time.monotonic() of each press actually sent (a suite times what the click started from it).
-_on_the_way = [0]   # Presses registered and not yet sent.
+_on_the_way = [0]   # Presses registered and not yet sent (never below 0: ``_sent_one``).
 _waiting_since = [None]   # When ``after_clicks`` began holding a tick for a press (a cap, never forever).
 lost = []      # Why a held tick stopped waiting: a press never sent within AIM_CAP (a suite reads it for its miss).
 NUDGE = 3      # Pixels per move past the drag threshold, all inside the pressed button.
@@ -53,7 +56,7 @@ def press(window, x, y=None, delay=DELAY):
     window.event_simulate(type='MOUSEMOVE', value='NOTHING', x=x - 1, y=y)   # Arriving; the press moves the last pixel.
 
     def click():
-        _on_the_way[0] -= 1
+        _sent_one()
         target = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == pointer), None)
         if target is None:
             return None
@@ -90,7 +93,7 @@ def aim(window, rect, delay=None, ready=None):
     def click():
         target = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == pointer), None)
         if target is None:
-            _on_the_way[0] -= 1
+            _sent_one()
             return None
         patient = time.monotonic() - started < AIM_CAP
         try:
@@ -98,7 +101,7 @@ def aim(window, rect, delay=None, ready=None):
         except Exception:   # noqa: BLE001 - not shown yet (a card opening): look again shortly.
             if patient:
                 return 0.1
-            _on_the_way[0] -= 1
+            _sent_one()
             raise
         if approval_arming.window_state(pointer)[1]:   # Lost focus: bring the window forward first, beside it.
             for kind, value in (('MOUSEMOVE', 'NOTHING'), ('LEFTMOUSE', 'PRESS'), ('LEFTMOUSE', 'RELEASE')):
@@ -107,7 +110,7 @@ def aim(window, rect, delay=None, ready=None):
         if ready is not None and patient and not ready():
             target.event_simulate(type='MOUSEMOVE', value='NOTHING', x=ox, y=oy)   # Waits below it, as a person.
             return 0.1
-        _on_the_way[0] -= 1
+        _sent_one()
         target.event_simulate(type='MOUSEMOVE', value='NOTHING', x=ox, y=oy)
         target.event_simulate(type='MOUSEMOVE', value='NOTHING', x=x, y=y)
         target.event_simulate(type='LEFTMOUSE', value='PRESS', x=x, y=y)
@@ -151,6 +154,53 @@ def region_button(window, operator, text=None):
                  and w > 0 and h > 0), None)
 
 
+def blank_header_point(window):
+    """A point of ``window``'s largest editor's header where a click does nothing: no button drawn there or one pixel
+    left of it (``press`` arrives from there), nearest the header's middle. None when the header has no such point."""
+    from _bpy import _angelo_jobs
+    area = max(window.screen.areas, key=lambda a: a.width * a.height)
+    header = next((r for r in area.regions if r.type == 'HEADER' and r.width > 0 and r.height > 0), None)
+    if header is None:
+        return None
+    buttons = [(x, y, w, h) for pointer, _block, _label, _idname, x, y, w, h in _angelo_jobs.region_buttons()
+               if pointer == window.as_pointer() and w > 0 and h > 0]
+    y = header.y + header.height // 2
+    middle, margin = header.x + header.width // 2, 8
+
+    def free(x):
+        return all(not (bx - 2 <= px <= bx + bw + 2 and by - 2 <= y <= by + bh + 2)
+                   for bx, by, bw, bh in buttons for px in (x - 1, x))
+    for offset in range(0, header.width // 2 - margin, 4):
+        for x in (middle - offset, middle + offset):
+            if header.x + margin <= x < header.x + header.width - margin and free(x):
+                return x, y
+    return None
+
+
+def forward(window):
+    """A person's first click in ``window`` after it lost focus, when C's record says its next press would be that
+    click (``approval_arming.window_state``: returning). That press only brings the window forward and never grants
+    (grant_operators.rst), so a person makes it where a click does nothing (``blank_header_point``) and their next
+    press is an ordinary one. A window another one leaves behind need not come forward by itself: Windows left the
+    main window in the background when Preferences closed (test_blender_strict_person_click, build2 on 1e19738), so the
+    press on a popup's checkbox only brought the window forward. True when the click was registered; the suite waits
+    until C took it (returning clears) before it opens what it clicks next. Never inside a popup: a click outside an
+    open menu closes it."""
+    from angelo_agent import approval_arming
+    if not approval_arming.window_state(window.as_pointer())[1]:
+        return False
+    point = blank_header_point(window)
+    assert point is not None, "no blank spot in the largest editor's header to bring the window forward"
+    press(window, *point)
+    return True
+
+
+def _sent_one():
+    """A registered press went out, or its timer ended: one fewer on the way. Never below 0: a press sent after
+    ``after_clicks`` gave up on it (and set the count to 0) must not leave later presses unheld."""
+    _on_the_way[0] = max(0, _on_the_way[0] - 1)
+
+
 def pending():
     """Presses ``press`` registered that have not been sent yet."""
     return _on_the_way[0]
@@ -162,9 +212,9 @@ def after_clicks(callback):
     def tick():
         if _on_the_way[0] > 0:
             started = _waiting_since[0] = _waiting_since[0] or time.monotonic()
-            if time.monotonic() - started < AIM_CAP:
+            if time.monotonic() - started < HOLD_CAP:
                 return 0.02
-            reason = "a press registered %.0f s ago was never sent (its timer is gone)" % AIM_CAP
+            reason = "a press registered %.0f s ago was never sent (its timer is gone)" % HOLD_CAP
             lost.append(reason)
             print("qa_input:", reason, flush=True)
             _on_the_way[0] = 0   # Stop holding: the suite's next check fails on the missing click, now.
@@ -195,6 +245,20 @@ def drag_path(start, end, scale=1.0, button='LEFTMOUSE', release=True, linger=Fa
     if release:
         events.append(release_at(end, button))
     return events
+
+
+def stroke_path(points, scale=1.0, button='LEFTMOUSE'):
+    """The events of one drag through ``points`` in order (a pen stroke, a bent line): ``drag_path`` to the second
+    point with the button held, then moves of at most ``STEP`` x ``scale`` pixels through each later point, released
+    at the last. One point is a click there, arrived at as ``drag_path`` arrives."""
+    if len(points) == 1:
+        (x, y), = points
+        return [('MOUSEMOVE', 'NOTHING', (x - 2 * scale, y)), ('MOUSEMOVE', 'NOTHING', (x, y)), (button, 'PRESS', (x, y)),
+                release_at((x, y), button)]
+    events = drag_path(points[0], points[1], scale, button, release=False)
+    for point in points[2:]:
+        events += _travel(events[-1][2], point, scale)
+    return events + [release_at(points[-1], button)]
 
 
 def drag_across_path(start, end, scale=1.0, approach=200):
@@ -228,27 +292,46 @@ def _travel(start, end, scale):
 # Chat canvas actions whose dispatch reaches a guarded operator: since the grant authority moved into C
 # (doc/angelo/grant_operators.rst, "Authority in C"), only a press the window manager receives mints the ticket, so a
 # suite clicks them through the window (``window_click``), never by calling the canvas's handler itself.
-GRANT_ACTIONS = frozenset({"approve", "review", "script_session_allow", "script_always_allow", "popup_select_model",
+GRANT_ACTIONS = frozenset({"approve", "review", "script_session_allow", "script_always_allow", "script_remember", "popup_select_model",
                            "popup_custom_model", "popup_effort", "popup_reset", "popup_fast", "popup_enable_fast",
                            "popup_approval", "accept_native_preview",
                            # Read from the add-on's dispatch (test_native_qa_input; 02bfa33's Mac round): the
                            # welcome's Connect and Reconnect, the + menu's opener, Voice, and Media Studio's and the
                            # flows' Generate, Enhance, Run, Check and Fit.
                            "welcome_connect", "welcome_reconnect", "popup_add_open", "voice", "generate", "enhance",
-                           "run", "wf_check", "wf_fit"})
-AIMED = frozenset({"approve", "review", "script_session_allow", "script_always_allow"})   # SHIELDED chat controls
+                           "run", "wf_check", "wf_fit",
+                           # Plan mode (plan_mode.rst): a plan card's Go, the planning chip's Stop planning and the
+                           # plan chip's Revise plan.
+                           "plan_go", "plan_chip_stop", "plan_chip_revise",
+                           # A reference folder's card makes it the chat's working folder (agent_chat.rst).
+                           "notice_context_folder_working",
+                           # Reached one call deeper (the reader follows the add-on's calls; 2.1.0's final evidence
+                           # slot: team_chat clicked the team row in one pass and its sign-in never started): the
+                           # welcome's team row (its sign-in), the composer's Fast and model pills (the Fast card
+                           # turns Fast on; the model pill shares that branch), and the character flow's runs.
+                           "welcome_team", "fast", "model", "wf_start", "wf_redo", "wf_parts", "wf_retry"})
+AIMED = frozenset({"approve", "review", "script_session_allow", "script_always_allow", "script_remember", "plan_go",
+                   "plan_chip_stop", "plan_chip_revise"})   # SHIELDED chat controls
 
 
-def window_click(window, region, rect, action, ready=None, scale=1.0):
+def window_click(window, region, rect, action, ready=None, scale=None):
     """A click on the canvas control at ``rect`` through the window: aimed for an approval's own control (``aim``:
     below it while its shield passes, then into it), else a plain ``press``. ``rect`` is in region pixels, or in the
     chat canvas's points with ``scale`` its ``chat_view.ui_scale()`` (the interface scale with the pixel size: a
-    click that skips it misses when that is not 1, as under Xvfb's 1.04)."""
-    x, y, width, height = (value * scale for value in rect)
-    if action in AIMED:
-        aim(window, (region.x + x, region.y + y, width, height), ready=ready)
+    click that skips it misses when that is not 1, as under Xvfb's 1.04), mirrored like the chat right to left."""
+    import qa_hit   # The one mapping: the chat's points (a scale given) or region pixels, unmirrored without one.
+    if scale is None:
+        box = qa_hit.rect(qa_hit.RAW, region, rect)
     else:
-        press(window, region.x + x + width / 2, region.y + y + height / 2)
+        box = qa_hit.rect(qa_hit.LAYOUT, region, rect, scale=scale)
+    if action in AIMED:
+        # ``ready`` is approval_arming's signal, which only its own grants ever reach: a control C shields but that
+        # arming never tracks (Review: Details) would wait AIM_CAP on it every run (test_blender_agent_workspace_ui,
+        # 57.6 s), so it waits the shield as ``aim`` does without one.
+        from angelo_agent.approval_arming import GRANTS
+        aim(window, box, ready=ready if action in GRANTS else None)
+    else:
+        press(window, box[0] + box[2] / 2, box[1] + box[3] / 2)
 
 
 def chat_rect(target, rect, scale=None, rtl=None):
@@ -259,16 +342,8 @@ def chat_rect(target, rect, scale=None, rtl=None):
     0.78) or the language reads right to left (test_native_chat_click_scale)."""
     region = target if getattr(target, "type", None) == "WINDOW" else next(
         r for r in target.regions if r.type == "WINDOW")
-    if scale is None:
-        from angelo_agent import chat_view
-        scale = chat_view.ui_scale()
-    if rtl is None:
-        from angelo_agent import ui_text
-        rtl = ui_text.is_rtl()
-    x, y, width, height = (value * scale for value in rect)
-    if rtl:   # canvas_rtl.pointer_x mirrors about the region's width: the rect's right edge is its left on screen.
-        x = region.width - (x + width)
-    return region.x + x, region.y + y, width, height
+    import qa_hit   # The one mapping (2.1.0): the chat canvas is qa_hit.LAYOUT; canvas_rtl mirrors about the region.
+    return qa_hit.rect(qa_hit.LAYOUT, region, rect, scale=scale, rtl=rtl)
 
 
 def chat_point(target, rect, scale=None, rtl=None):

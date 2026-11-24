@@ -75,7 +75,12 @@ Blender data changes, so an export causes no depsgraph update and no Undo step.
   (the glTF add-on's *Path to gltfpack* preference, or ``gltfpack`` on PATH),
   else WebP. Blender ships no KTX2 encoder of its own, so KTX2 always needs
   gltfpack; if gltfpack fails, the export is written again with WebP and a
-  finding says so. ``KEEP`` writes the images' own PNG and JPEG.
+  finding says so (``ktx2_failed``). When Angelo refuses to start gltfpack
+  (``owned_paths.require_runnable``), the finding says that and why instead,
+  each with its fix: an agent script wrote or named it
+  (``ktx2_refused_script``), it changed on disk after Angelo recorded it
+  (``ktx2_refused_changed``), or it is no program Angelo starts
+  (``ktx2_refused``). ``KEEP`` writes the images' own PNG and JPEG.
 * **Lights** use the exporter's unitless mode (``COMPAT``), the convention
   Three.js scenes use. Physical units would give Three.js a 3 W/m² sun as
   about 2,000 lux, which its renderer shows blown out.
@@ -353,6 +358,40 @@ the size budget, what doesn't carry over and the settings used (the tone
 mapping and how the World travels among them), and keeps the person's orbit
 view across reloads; it starts from the scene camera when the file has one.
 
+Every entry point (the File menu, the chat bar's + menu, ``angelo_web_preview``)
+exports with one request, ``web_export_spec.PREVIEW_REQUEST`` (Angelo 2.1.0):
+meshes ``AUTO`` and textures ``KEEP``, so the page shows the artist's own PNG
+and JPEG textures. A lossy re-encode made a painted atlas look soft in the
+page, and a page on this computer has no download to save. Its budget is
+therefore the size with textures as authored; ``angelo_web_check`` and the
+export give the shipping size (textures ``AUTO``).
+
+**Framing** (``web_preview/framing.js``, Angelo 2.1.0). The toolbar's
+**Camera**, **Selection** and **All** frame the scene camera, Angelo's
+selection or everything; **Follow Angelo's selection** re-frames whenever the
+selection changes in Angelo (the choice stays in the page's storage). Angelo
+sends its focus on the preview's poll: the selection (at most 256 names, the
+active object first), the active object and the scene camera, by object name
+only (``web_preview.focus_of``; the server's ``publish_focus`` refuses anything
+else and ignores an unchanged focus). A focus change wakes the page's event
+stream (``focus``) and ``focus.json`` without exporting the scene again. The
+first scene with something in it is framed: the camera, else the selection,
+else everything (the selection first while Follow is on); later reloads keep
+the person's orbit. Framing keeps the person's direction of view and moves in or
+out until the bounding sphere fits. A selection the page can't find (hidden,
+merged or not exported) leaves Selection disabled with a tooltip that says so.
+Earlier the page always framed the whole scene, so reviewing a face or a hand
+meant orbiting in again after every reload.
+
+The page reports what it frames back to Angelo whenever that changes (a POST
+of ``frame`` from its own page only, checked by ``web_preview_frame``): the
+mode (``camera``, ``selection``, ``all``, or none yet), Follow, the objects or
+the camera framed, the focus version it used, and its view's position and
+target in Three.js coordinates. Anything else, a foreign origin or more than
+4 KiB is refused whole. ``angelo_view`` with ``image: "WEB"`` lists it in its
+facts as ``framing``, so the agent knows what the person's browser looks at,
+and ``gui_web_preview`` asserts each mode against it in the running app.
+
 **The look toolbar** (bottom left) lights the scene with the World or with a
 neutral studio (the preview's light before 1.0.9, and the only light for a file
 without extras), and shows or hides the World behind it. The choice stays in
@@ -511,6 +550,18 @@ Live Web Preview one click away. The nodes are never changed.
   sets a range, ``= <value>`` a default) and colours. A ``#pragma angelo
   vertex`` line starts an optional vertex shader that replaces Angelo's. Read
   Uniforms re-reads the file and keeps the values of names it already had.
+  **Includes** (Angelo 2.1.0, ``web_shader_spec.expand_includes``): a line
+  ``#include "path.glsl"`` is replaced by that file's text, recursively, so a
+  shader can share lighting, ramp or noise files with others. The path is
+  relative to the including file and must stay inside the project folder (the
+  .blend's folder when the shader is inside it, else the shader's own folder),
+  after links are resolved; it must be a GLSL file. A file is pasted once
+  however often it is included. A cycle, more than 16 nested files, a missing
+  file or an expansion over 256 KB is an unusable file (the finding names the
+  reason; the detail names the file and line, never a path outside the
+  project). Uniforms declared in included files are editable like the main
+  file's. The live reload watches every file of the expansion, and on each poll
+  only stats them; it re-reads when one changes.
   Three.js TSL shaders need its WebGPU renderer, which the preview does not use
   yet: a TSL file is a finding ("TSL web shaders arrive in 1.1"), never a
   broken look, and the web shows the nodes. TSL comes in 1.1 with a WebGPU

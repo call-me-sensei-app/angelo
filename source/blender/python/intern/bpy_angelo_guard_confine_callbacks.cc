@@ -299,6 +299,7 @@ void install_loop_slots()
     return;
   }
   loop_slots_installed = true; /* Once, whatever follows. */
+  note_install_site("asyncio.base_events"); /* Python source: listed as a site, never noted. */
   PyObject *slot_type = PyType_FromSpec(&loop_slot_spec);
   PyObject *names = ((PyTypeObject *)loop_type)->tp_dict;
   for (int i = 0; slot_type != nullptr && i < 2; i++) {

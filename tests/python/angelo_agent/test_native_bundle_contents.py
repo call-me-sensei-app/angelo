@@ -240,7 +240,8 @@ class AgentRuntimeCheckTests(unittest.TestCase):
         self.root = Path(folder.name)
 
     def runner(self, version=PIN["version"], features=tuple(PIN["features"]), notifications=tuple(PIN["notifications"]),
-               request_fields=None, wires=tuple(PIN.get("wire_apis", ())), read=None):
+               request_fields=None, wires=tuple(PIN.get("wire_apis", ())), read=None,
+               app_server_flags=tuple(PIN.get("app_server_flags", ()))):
         calls = []   # read: {capability: values} the build reads (test_native_runtime_capabilities), the pin's by default
         if request_fields is None:
             request_fields = {name: fields for name, fields in PIN.get("request_fields", {}).items()
@@ -250,6 +251,10 @@ class AgentRuntimeCheckTests(unittest.TestCase):
             calls.append((argv, env))
             if argv[1] == "--version":
                 return SimpleNamespace(returncode=0, stdout="codex-cli %s\n" % version, stderr="")
+            if argv[1:3] == ["app-server", "--help"]:   # The flags the subcommand lists (app_server_flags).
+                lines = ["      %s\n          What it does" % flag for flag in app_server_flags]
+                return SimpleNamespace(returncode=0, stdout="Usage: codex app-server [OPTIONS]\n" + "".join(lines),
+                                       stderr="")
             if argv[-2:] == ["debug", "models"]:   # The wire check: a build without the wire refuses the setting.
                 wire = argv[-3].split("=", 1)[1].strip('"')
                 if wire not in wires:
@@ -277,13 +282,63 @@ class AgentRuntimeCheckTests(unittest.TestCase):
                 self.assertEqual(release_checks.agent_runtime_problems(folder, platform, run), [])
                 (version, env), (schema, _env), *probes = run.calls
                 wires = [call for call in probes if call[0][-2:] == ["debug", "models"]]
-                self.assertEqual(len(probes) - len(wires), sum(len(v) + 1 for v in capability_pin(PIN).values()))
+                helps = [call for call in probes if call[0][1:3] == ["app-server", "--help"]]
+                self.assertEqual(len(helps), 1 if PIN.get("app_server_flags") else 0)
+                self.assertEqual(len(probes) - len(wires) - len(helps),
+                                 sum(len(v) + 1 for v in capability_pin(PIN).values()))
                 self.assertEqual(version[1:], ["--version"])
                 self.assertEqual(schema[1:4], ["app-server", "generate-json-schema", "--experimental"])
                 self.assertEqual([argv for argv, _ in wires], [release_checks.wire_check_argv(Path(version[0]), wire)
                                                               for wire in PIN.get("wire_apis", ())])
                 self.assertTrue(all(probe_env is env for _, probe_env in probes), "the same temporary CODEX_HOME")
                 self.assertNotEqual(Path(env["CODEX_HOME"]), Path.home() / ".codex", "never the person's profile")
+
+    def test_the_shipped_pin_lists_every_required_app_server_flag(self):
+        """Re-review of ffa4cb56717, MUST-1: the runtime starts only with --ignore-user-config, so a pin without it
+        ships an agent that refuses every chat. Fails until the pin names a build with the flag (gpt62's re-pin):
+        this lane cannot merge without it."""
+        sys.path.insert(0, str(ROOT / "scripts/addons_core"))
+        from angelo_agent import agent_runtime
+        self.assertEqual(release_checks.REQUIRED_APP_SERVER_FLAGS, (agent_runtime.IGNORE_USER_CONFIG,))
+        self.assertEqual(release_checks.pin_problems(PIN), [])
+
+    def test_a_pin_without_a_required_flag_is_refused_where_releases_check(self):
+        flagged = dict(PIN, app_server_flags=["--ignore-user-config"])
+        bare = {key: value for key, value in PIN.items() if key != "app_server_flags"}
+        self.assertEqual(release_checks.pin_problems(flagged), [])
+        self.assertIn("does not list --ignore-user-config", "\n".join(release_checks.pin_problems(bare)))
+        folder = runtime_folder(self.root, "windows")
+        for pin, verdict in ((bare, 1), (flagged, 0)):
+            errors = io.StringIO()
+            with unittest.mock.patch.object(release_checks, "agent_runtime_pin", return_value=pin), \
+                    unittest.mock.patch("sys.stderr", errors), unittest.mock.patch("sys.stdout", io.StringIO()):
+                self.assertEqual(release_checks.main(["agent-runtime", str(folder), "--platform", "windows",
+                                                      "--no-run"]), verdict)
+            self.assertEqual("does not list --ignore-user-config" in errors.getvalue(), verdict == 1)
+        with unittest.mock.patch.object(release_checks, "agent_runtime_pin", return_value=bare):
+            self.assertEqual(release_checks.agent_runtime_problems(folder, "windows"), [],
+                             "the folder's own check reads its files; the gates add the pin")
+
+    def test_the_windows_release_build_refuses_a_pin_without_a_required_flag(self):
+        """Re-read of 0b6b952594, SHOULD-3: the macOS gates ran pin_problems; the Windows build did not."""
+        script = (TOOLS / "build_release_windows.ps1").read_text(encoding="utf-8")
+        listed = re.search(r'\$requiredAppServerFlags = @\(([^)]*)\)', script)
+        self.assertIsNotNone(listed, "build_release_windows.ps1 checks the pin's app_server_flags")
+        self.assertEqual(tuple(re.findall(r'"([^"]+)"', listed.group(1))), release_checks.REQUIRED_APP_SERVER_FLAGS)
+        check = script.index("$requiredAppServerFlags = @(")
+        self.assertLess(check, script.index("-DANGELO_AGENT_RUNTIME_DIR"), "refused before it configures the build")
+        self.assertIn("@($runtimePin.app_server_flags) -notcontains $flag", script)
+
+    def test_each_pinned_app_server_flag_is_asked_of_the_subcommand(self):
+        """The agent runtime starts only with --ignore-user-config (agent_runtime.check_start): a pin listing it
+        names a build whose ``codex app-server --help`` lists it (the text is in the binary anyway: codex exec)."""
+        pin = dict(PIN, app_server_flags=["--ignore-user-config"])
+        folder = runtime_folder(self.root, "macos")
+        with unittest.mock.patch.object(release_checks, "agent_runtime_pin", return_value=pin):
+            self.assertEqual(release_checks.agent_runtime_problems(
+                folder, "macos", self.runner(app_server_flags=("--ignore-user-config",))), [])
+            self.assertEqual(release_checks.agent_runtime_problems(folder, "macos", self.runner(app_server_flags=())),
+                             ["codex app-server has no --ignore-user-config: this is not the build the pin names"])
 
     def test_missing_wrong_or_joined_files_are_refused(self):
         self.assertIn("is missing: a release bundles", release_checks.agent_runtime_problems(self.root / "none", "macos")[0])

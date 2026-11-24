@@ -98,7 +98,8 @@ class BackfillTests(AddCase):
         self.assertEqual(code, 0, self.errors)
         self.assertEqual(self.r2.log, [])
         self.assertEqual([item["key"] for item in json.loads(out)["objects"]],
-                         [key(DMG + ".sha256"), key(MSI + ".sha256")])
+                         [key(DMG + ".sha256"), key(MSI + ".sha256"),
+                          key("Angelo-%s-linux-x64.tar.xz.sha256" % VERSION)])
         for extra in (["--dmg", str(self.dmg)], ["--add-to-version"], ["--verify-only"], ["--msi-signing", "signed"]):
             with self.subTest(extra=extra), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
                 tool.main(["--version", VERSION, "--add-checksum-files", *extra], target=self.r2.target,

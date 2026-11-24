@@ -1,0 +1,4 @@
+{
+  "_about": "Public Ed25519 keys that may sign a Linux release's file manifest and its downloads (release_manifest.py; the minisign form of each is doc/angelo/linux_release_keys/<id>.pub). The private key is the EC_SIGN_ED25519 key linux-release in Google Cloud KMS (key ring angelo-release, project <project>), separate from the update feed's, and never leaves it; add its public key with scripts/angelo/sign_linux_release.py add-key --key-id <id> --pem <exported public key> (doc/angelo/updates_and_reports.rst, 'Linux release signing'). Mark a retired key \"revoked\", never delete it. Empty: this build trusts no Linux release, so it never installs one by itself, and a release build fails its release-ready check.",
+  "keys": []
+}

@@ -1210,8 +1210,32 @@ only its own side's faces, so every seam shades as its own patch; three.js,
 which uses the file's morph normals, shows none. A person importing kit GLBs on
 1.0.2 reported it, and stock Blender 5.2 does the same.
 
-Maintainer decision (2026-10-23): Blender's import default stays as it is, so
-people's scripts and pipelines get the meshes they always got.
+Maintainer decisions: Blender's import default for scripts stays as it is, so
+people's scripts and pipelines get the meshes they always got (2026-10-23); a
+person's own import welds files with morph targets ("Menu import merges; scripts
+keep old default", 2026-11-15, Angelo 2.1.0).
+
+* **A person's import welds.** File > Import > glTF 2.0, the file browser and a
+  ``.glb``/``.gltf`` dropped on Angelo invoke the importer, which turns on
+  **Weld Shape Key Seams** (``merge_vertices_for_morph_targets``, shown under
+  Merge Vertices in the Mesh panel). For each file of the import that has morph
+  targets it imports with Merge Vertices; a file without them imports exactly as
+  Blender's default does, so one morph file never welds the next plain file of a
+  multi-file import (each file decides on its own copy of the settings). The
+  person can untick it for one import; the choice is not remembered.
+* **Scripts keep Blender's default.** ``bpy.ops.import_scene.gltf(...)`` leaves
+  the option off, as every Blender script expects. A script opts in with
+  ``merge_vertices_for_morph_targets=True`` (only files with morph targets) or
+  ``merge_vertices=True`` (every file); the importer's warning below says how.
+* **What welding keeps and what it changes.** Merge Vertices joins only vertices
+  with the same position, normal (to five decimal places), joints, weights and
+  every shape-key position, so the file's hard edges (split normals) stay split,
+  and UVs and colours stay exactly as the file has them (they belong to face
+  corners in Blender). The vertex count and order change, and a per-vertex custom
+  attribute that differs between joined copies keeps one value.
+* **Morph normals cannot be kept.** Blender's shape keys store positions only, so
+  the file's morph normals are dropped on any import (a Blender data-model limit,
+  upstream work). Welded, Blender's own normals are smooth across the seams.
 
 * **The importer warns.** ``io_scene_gltf2`` reports a warning when a file with
   morph targets is imported with Merge Vertices off: on the console, which a
@@ -1227,17 +1251,17 @@ people's scripts and pipelines get the meshes they always got.
   asset library's models, the agent's ``angelo_studio_import_3d`` and Flow's
   Place in Scene (``studio_host``), the Library, and the team library.
   ``test_native_gltf_morph.py`` fails if a new call skips it.
-* Merge Vertices keeps a model's own hard edges: the importer merges only
-  co-located vertices with the same normal.
-
-Keeping the morph normals themselves needs per-shape-key normals in Blender's
-data model, which is upstream work. ``test_blender_gltf_morph_weld.py`` writes
+``test_blender_gltf_morph_weld.py`` writes
 fixtures (a UV sphere, and held out from the fix's development a twisted torus,
 a bent cylinder, and a file with a morph mesh beside a flat-shaded one). For
 each, it checks that the default still splits the seams and warns, that seams
 shade apart only after the shape key moves, that the options and the model path
 weld them so none does, and that hard edges stay. A plain file gets no option
-and no warning.
+and no warning. The person's import (``merge_vertices_for_morph_targets``) welds
+each morph file the same way, keeps every face corner's UV and does not warn; a
+plain file (with UV seams) keeps Blender's default vertices, alone and in one
+import with a morph file. ``test_native_gltf_morph.py`` pins the option's script
+default, invoke, the panel row, the per-file copy and the catalogue entries.
 
 Provider errors
 ---------------

@@ -27,6 +27,7 @@ from .controller import Controller
 
 UNWIND_SECONDS = 2.0   # D3: how long a message waits for a turn that already ended to return (a few ms in practice).
 STOPPED = "This call's turn was stopped before the call started; nothing ran."   # A Stop arrived (worker_chat_arrival).
+UNANNOUNCED = "The lead could not be told about this call before it started; nothing ran."   # observe raised.
 
 
 def hosted_class(controller_type=Controller):
@@ -129,7 +130,22 @@ def hosted_class(controller_type=Controller):
                 if self.pending.get(call.id) is call and not self.expire_tool(call):
                     self.finish_tool(call, {"error": STOPPED, "error_code": "CANCELLED"})
                 return False
-            return super()._tool_available(call, document)
+            if not super()._tool_available(call, document):
+                return False
+            if self.chat_host is None:
+                return True
+            try:   # The lead hears it pending before it starts, one the provider thread admitted after the pump's
+                if getattr(getattr(self.chat_host, "outbox", None), "broken", False):   # look included
+                    raise ConnectionError("The lead's connection to this worker ended")   # (worker_chat_host.observe).
+                self.chat_host.observe(self, call)
+            except Exception as error:   # noqa: BLE001 - never a call started unannounced, nor one left dequeued.
+                from .pump_guard import report_defect
+                report_defect("HostedController._tool_available", error, self.redact)
+                if self.pending.get(call.id) is call:
+                    self.finish_tool(call, {"error_code": "INTERNAL_ERROR", "scene_changed": False,
+                                            "error": UNANNOUNCED})
+                return False
+            return True
 
         def save(self, **kwargs):
             super().save(**kwargs)

@@ -96,6 +96,8 @@ def notice_rows(value, measure, width, max_rows=NOTICE_ROWS):
     rest = logical[0]
     for row in logical[1:]:   # Rows cut at a space get it back; a cut inside a word (CJK, long words) does not.
         rest += row if rest + row in text else " " + row
+    if rtl_text.is_visual(str(value)) and text.endswith(rest):   # Filled-in units stay whole in the elided row.
+        rest = rtl_text.isolated_tail(rtl_text.to_logical(str(value), isolates=True), len(rest))
     return rows[:max_rows - 1] + [canvas_rtl.elide(rest, measure, width)]
 
 

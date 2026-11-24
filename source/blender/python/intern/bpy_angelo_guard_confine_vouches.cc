@@ -38,6 +38,7 @@
 #include "BLI_file_time.hh"
 
 #include "bpy_angelo_guard_confine_vouches.hh"
+#include "bpy_angelo_guard_confine_remote.hh"
 
 namespace blender::angelo_guard::vouches {
 
@@ -193,14 +194,11 @@ Facts facts_of(const std::string &path)
 {
   Facts facts;
 #ifdef _WIN32
-  const int size = MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, nullptr, 0);
-  if (size <= 0) {
+  std::wstring wide;
+  if (!utf8_to_wide(path, wide)) {
     return facts;
   }
-  std::wstring wide(size, L'\0');
-  MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, wide.data(), size);
-  HANDLE handle = CreateFileW(wide.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
-                              OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+  HANDLE handle = HANDLE(open_for_lookup(wide, false));
   if (handle == INVALID_HANDLE_VALUE) {
     return facts;
   }

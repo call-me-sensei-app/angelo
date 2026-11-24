@@ -152,9 +152,12 @@ class MacFlowTests(FlowCase):
         with self.assertRaises(update_flow.PrepareError) as caught:
             self.preparer(FakeMac(self.folder, reason="permission")).prepare(release(), download())
         self.assertEqual(caught.exception.code, "unsupported:permission")
-        with self.assertRaises(update_flow.PrepareError) as caught:
-            self.preparer(platform="linux-x64").prepare(release(), download())
+        with self.assertRaises(update_flow.PrepareError) as caught:   # A platform the feed has no builds for.
+            self.preparer(platform="").prepare(release(), download())
         self.assertEqual(caught.exception.code, "unsupported:platform")
+        with self.assertRaises(update_flow.PrepareError) as caught:   # Linux, not from a signed release folder.
+            self.preparer(platform="linux-x64").prepare(release(), download())
+        self.assertEqual(caught.exception.code, "unsupported:location")
         self.assertEqual(self.fetched, [])
 
     def test_a_ready_update_survives_a_restart_until_its_stage_changes(self):

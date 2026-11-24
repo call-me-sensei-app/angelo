@@ -65,7 +65,7 @@ STATIC_OBSERVATION_KEYS = ("revision_note", "order", "rich_queries")
 # Fields describing this message's event, always sent whole when present; every
 # other top-level field except ``objects`` is state, sent in a delta only when
 # its value changed.
-EVENT_OBSERVATION_KEYS = ("changes_since_last_turn", "mentions", "recently_changed", "hands", "engines", "preflight")
+EVENT_OBSERVATION_KEYS = ("changes_since_last_turn", "mentions", "mentioned_items", "recently_changed", "hands", "engines", "preflight")
 MAX_OBSERVATION_FIELDS = 64
 # Fields per object entry whose digests a ledger keeps, so a delta can send an
 # entry's handle with only its changed fields.
@@ -104,7 +104,7 @@ def clean(value):
     if type(native) is not str or not 1 <= len(native) <= 256:
         return None
     output = {"version": LEDGER_VERSION, "native_id": native}
-    for key in ("observation", "observation_notes", "workspace", "collaborators", "approval"):
+    for key in ("observation", "observation_notes", "workspace", "collaborators", "approval", "rules"):
         if _hex(value.get(key)):
             output[key] = value[key]
     fields = value.get("observation_fields")
@@ -420,16 +420,17 @@ class TurnBlocks:
 
     def collaborators(self, collaborators):
         listed = COLLABORATORS_HEADER + json.dumps(collaborators, ensure_ascii=False, separators=(",", ":")) if collaborators else ""
-        self.after["collaborators"] = digest(listed)
-        if self.full:
-            return self._record("collaborators", listed)
-        previous = self.received.get("collaborators")
-        if previous == self.after["collaborators"]:
-            return self._record("collaborators", "")
-        if not collaborators:
-            # The earlier list is in this context's history: retract it.
-            return self._record("collaborators", NO_COLLABORATORS if previous not in (None, digest("")) else "")
-        return self._record("collaborators", listed)
+        return self.standing("collaborators", listed, NO_COLLABORATORS)
+
+    def standing(self, name, listed, retraction):
+        """Whole to a new context, then only when changed; ``retraction`` once it empties (collaborators, rules)."""
+        self.after[name] = digest(listed)
+        previous = None if self.full else self.received.get(name)
+        if previous == self.after[name]:
+            return self._record(name, "")
+        if not listed:
+            return self._record(name, retraction if previous not in (None, digest("")) else "")
+        return self._record(name, listed)
 
     def memory(self, state, document, *, handoff_ids=frozenset(), known_ids=frozenset(), receipts=True):
         """Task memory: complete (receipts in the handoff counted) or as a delta.

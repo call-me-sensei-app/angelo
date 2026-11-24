@@ -178,12 +178,12 @@ class AgentVisibility:
     def _pictures(self, controller, identities):
         """The views' pictures as image content, while they fit one reply; the rest by id (``angelo_image``)."""
         import base64
+        from . import reference_images
         from .external_look import IMAGE_TYPES
         pictures, room = [], MAX_IMAGE_BYTES
         for identity in identities:
-            try:
-                path = controller.references.attached_image(identity)
-                data = path.read_bytes()
+            try:   # Checked and read on one descriptor, sharing delete on Windows.
+                data, path = reference_images.read_image(controller.references, identity)
             except (OSError, ValueError):
                 continue
             if len(data) > room:

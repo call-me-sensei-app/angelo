@@ -47,6 +47,7 @@ prefs = bpy.context.preferences
 prefs.view.show_splash = False
 prefs.use_preferences_save = False
 from angelo_agent import asset_browser_entry as entry, asset_browser_states as states  # noqa: E402
+import qa_hit
 
 REPORT = OUT / "asset-browser-states.json"
 TEAL = (43, 196, 191)          # card_kit.TEAL as drawn.
@@ -332,8 +333,7 @@ def tick():
                 return .2
             r = region()
             hits = dict((action, rect) for rect, action in entry._hits.get((area().as_pointer(), 'WINDOW'), ()))
-            x, y, w, h = hits["clear_search"]
-            press(r.x + x + w / 2, r.y + y + h / 2)
+            press(*qa_hit.point(qa_hit.RAW, r, hits["clear_search"]))
             state["phase"] = "cleared"
             return .6
         if phase == "cleared":
@@ -356,10 +356,9 @@ def tick():
                 return .2
             r = region()
             hits = dict((action, rect) for rect, action in entry._hits.get((area().as_pointer(), 'WINDOW'), ()))
-            x, y, w, h = hits["studio"]
             windows_before = len(bpy.context.window_manager.windows)
             ctx["workspace"] = window().workspace.name
-            press(r.x + x + w / 2, r.y + y + h / 2)
+            press(*qa_hit.point(qa_hit.RAW, r, hits["studio"]))
             ctx["windows_before"] = windows_before
             state["phase"] = "generated"
             return .8

@@ -30,6 +30,7 @@ LINK_WRAPPED = 24          # A footer row's height when its links take more than
                            # language): two rows then cost 48, which still fits every language at 1280 x 800.
 ATTACH_PAD = 42            # The Attach button: its + and padding beside its label.
 SEARCH_SIZE, SEARCH_PAD = 12.5, 44   # The search field's text size and its icon and padding (chat_add_draw).
+SEARCH_LEAST = 60   # The search field's least width when the bar's buttons take the rest.
 PAGE_HEADER, RESULT, PAGE_ROW = 36, 38, 46   # PAGE_ROW: a page's row (chat_add_menu.HEIGHTS["row"]).
 MIN_HEIGHT = 160
 
@@ -52,7 +53,8 @@ def joined(first, second):
     joined in reading order and turned visual again (else the second would read first)."""
     if not (rtl_text.is_visual(first) or rtl_text.is_visual(second)):
         return "%s · %s" % (first, second)
-    logical = [rtl_text.to_logical(part) if rtl_text.is_visual(part) else part for part in (first, second)]
+    logical = [rtl_text.to_logical(part, isolates=True) if rtl_text.is_visual(part) else part
+               for part in (first, second)]
     return rtl_text.to_visual("%s · %s" % tuple(logical))
 
 
@@ -121,17 +123,19 @@ def place(items, measure, wrap, width, height, bottom, hint="", scroll=0, notes=
     scroll = max(0, min(max_scroll, scroll))
     # The bar: Attach buttons at its end, the search field taking the rest. When their labels would leave the field
     # too narrow for its own placeholder (a one-column chat, a large interface scale, a long translation), the buttons
-    # are their icons alone (``attach_compact``), so the field's label is never cut.
+    # are their icons alone (``attach_compact``), so the field's label is never cut. With no placeholder measured, the
+    # field keeps its own least width: labels never push a button off the bar (plan-first, 2.1.0: three bar buttons in
+    # Vietnamese at 1280 x 800 started Plan first 11 px left of the popup).
     bar_y, bar = y + h - PAD - BAR, [index for index, item in enumerate(items) if item.get("placement") == "bar"]
     labelled = sum(measure(items[index]["title"], TITLE) + ATTACH_PAD + 6 for index in bar)
-    compact = bool(search_label) and full - labelled < measure(search_label, SEARCH_SIZE) + SEARCH_PAD
+    compact = full - labelled < max(measure(search_label, SEARCH_SIZE) + SEARCH_PAD if search_label else 0, SEARCH_LEAST)
     end, attach = x + w - PAD, []
     for index in bar:
         bw = BAR if compact else measure(items[index]["title"], TITLE) + ATTACH_PAD
         end -= bw
         attach.append((index, (end, bar_y, bw, BAR)))
         end -= 6
-    search = (x + PAD, bar_y, max(60, end - x - PAD), BAR)
+    search = (x + PAD, bar_y, max(SEARCH_LEAST, end - x - PAD), BAR)
     headings, cells, top = [], [], list_rect[1] + list_rect[3] + scroll
     for heading, row_cells, rh in rows:
         top -= rh

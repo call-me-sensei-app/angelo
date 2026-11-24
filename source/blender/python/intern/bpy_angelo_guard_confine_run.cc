@@ -160,13 +160,17 @@ PyObject *guard_run_confined(PyObject * /*self*/, PyObject *args, PyObject *kwar
       return nullptr;
     }
   }
+  /* What runs here is the agent's, whatever file name it and its constants were compiled under; if its whole tree
+   * can't be made agent code, nothing runs. */
+  if (!taint(code)) {
+    Py_DECREF(code);
+    PyErr_NoMemory();
+    return nullptr;
+  }
   armed.store(true);
   journal_watch_loaded(); /* Modules loaded since: their namespaces are journaled too. */
   PyObject *snapshots = run_sweeps_begin(); /* As Angelo, before the script starts. */
   const size_t mark = journal_mark();
-  if (!name_is(((PyCodeObject *)code)->co_filename, MARK)) {
-    taint(code); /* What runs here is the agent's, whatever file name it was compiled under. */
-  }
   (void)mark;
   /* As `exec` does: C code that imports lazily (`time.strptime`, a pybind module importing numpy) reads the
    * globals' `__builtins__` through PyImport_Import, and a namespace without one raises KeyError. */

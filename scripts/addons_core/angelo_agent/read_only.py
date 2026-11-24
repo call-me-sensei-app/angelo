@@ -45,3 +45,27 @@ def thawed(value):
     if isinstance(value, tuple):
         return [thawed(item) for item in value]
     return value
+
+
+class FixedDict(dict):
+    """A dict fixed as it is built (tool_specs: a tool's annotations as it registered), read, serialized and copied as
+    a dict. Its own methods refuse a change, so a mistaken edit fails loudly; ``dict``'s methods still change it
+    (2026-11-17 review), so no decision reads it."""
+
+    def __init__(self, *args, **kwargs):
+        if self:   # Built once, when the tool registers.
+            self._refuse()
+        super().__init__(*args, **kwargs)
+
+    def _refuse(self, *_args, **_kwargs):
+        raise TypeError("a tool's annotations are fixed as it registers")
+    __setitem__ = __delitem__ = __ior__ = clear = pop = popitem = setdefault = update = _refuse
+
+    def __copy__(self):
+        return dict(self)
+
+    def __deepcopy__(self, memo):
+        return {key: value for key, value in self.items()}   # Plain values (bools): a copy needs no recursion.
+
+    def __reduce__(self):
+        return (dict, (dict(self),))

@@ -18,6 +18,8 @@ https://learn.chatgpt.com/docs/config-file/config-reference.
 Update this list when either runtime documents a new variable of these kinds.
 """
 
+import os
+import sys
 import uuid
 
 from .protocol import RpcError
@@ -124,6 +126,44 @@ NETWORK = ("HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY", "http_proxy", "
 
 PROMPT_CACHE_TTLS = ("5m", "1h")
 
+# What the dynamic loader and the C library read to load or change code (glibc's ld.so, macOS's dyld). Angelo's own
+# runtime links only the system's libraries (agent_runtime.json system_libraries), so it needs none of these, and an
+# injected one would run code inside it: ``without_loader`` drops them for that runtime. macOS's hardened runtime
+# already ignores DYLD_*; Linux has no such guard.
+LOADER_PREFIXES = ("LD_", "DYLD_")
+LOADER = frozenset({"GCONV_PATH", "GLIBC_TUNABLES", "LOCPATH", "NLSPATH", "HOSTALIASES", "RESOLV_HOST_CONF",
+                    "MALLOC_CHECK_", "MALLOC_TRACE"})
+
+
+# The PATH Angelo's own runtime gets on Linux: root-owned system folders only. The bundled Codex starts programs by
+# PATH lookup before any sandbox exists (a bubblewrap capability probe at every app-server start, measured on Ubuntu
+# 24.04: ``bwrap --unshare-user ... /bin/true``), and its own rule skips only folders the sandbox policy lets it
+# write; under Angelo's read-only policy a user-writable folder early in PATH (``~/.local/bin``) would still be used.
+# Angelo's runtime runs no shell and no MCP server, so it needs nothing outside the system folders.
+SYSTEM_PATH = "/usr/sbin:/usr/bin:/sbin:/bin"
+
+
+def without_loader(environment):
+    """``environment`` without dynamic-loader and C-library variables (changed in place, and returned)."""
+    for name in [name for name in environment if name.upper().startswith(LOADER_PREFIXES) or name.upper() in LOADER]:
+        del environment[name]
+    return environment
+
+
+def for_agent_runtime(environment, executable, keep_path=False, platform=None):
+    """The launch rules for Angelo's own runtime, applied wherever it is started (test_native_runtime_launch_sites
+    lists every place): no loader variables on any platform, and on Linux ``SYSTEM_PATH``. ``keep_path``: the
+    person's PATH stays (``codex login`` hands the sign-in page to their browser opener, ``xdg-open``, and the
+    browser it starts may live in ``/snap/bin`` or a Nix profile). Another Codex (the person's own) keeps its
+    environment. Changes ``environment`` in place and returns it."""
+    from .agent_runtime import is_agent_runtime
+    if not is_agent_runtime(executable):
+        return environment
+    without_loader(environment)
+    if not keep_path and (platform or sys.platform).startswith("linux"):
+        environment["PATH"] = SYSTEM_PATH
+    return environment
+
 
 def dropped(name):
     """Whether an inherited variable is withheld from native children (case-insensitive, as on Windows)."""
@@ -213,3 +253,18 @@ def apply_prompt_cache_ttl(environment, ttl):
         raise ValueError("Prompt cache TTL must be 5m or 1h")
     environment["CLAUDE_CODE_PROMPT_CACHE_TTL"] = ttl
     return environment
+
+
+def own_runtime_rules(args, kwargs, keep_path):
+    """Angelo's own runtime is started under its launch rules by child_process, the one place every Angelo child
+    starts (``for_agent_runtime``: no loader variables; on Linux the system's program folders unless ``keep_path``,
+    the browser sign-in), and only with a command line Angelo builds, decided on the program the OS will run
+    (``agent_runtime.check_start``: its app-server only with ``--ignore-user-config``; wrappers, shells and strings
+    that name it are refused). Any other program is left as its caller built it. test_native_runtime_launch_sites
+    lists every start that bypasses child_process."""
+    from . import agent_runtime
+    program = agent_runtime.check_start(args, kwargs)
+    if program is None:
+        return
+    env = kwargs.get("env")
+    kwargs["env"] = for_agent_runtime(dict(os.environ) if env is None else env, program, keep_path=keep_path)

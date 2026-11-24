@@ -20,6 +20,8 @@ import sys
 
 import bpy
 
+import child_blender   # A child Angelo runs the suite's code from its own file.
+
 STEER = ("import sched, importlib.util, functools, json, os\n"
          "spec = importlib.util.spec_from_file_location('angelo_review2_' + NAME, sched.__file__)\n"
          "module = importlib.util.module_from_spec(spec)\n"
@@ -59,8 +61,7 @@ def definitions(run, check):
 
 
 def _child(code):
-    done = subprocess.run([bpy.app.binary_path, "--background", "--factory-startup", "--python-expr", code],
-                          capture_output=True, text=True, timeout=600)
+    done = child_blender.run(code, capture_output=True, text=True, timeout=600)
     for line in done.stdout.splitlines():
         if line.startswith("CHILD "):
             return json.loads(line[6:])
@@ -144,7 +145,12 @@ def installed_import_environ(run, check):
                   "except Exception as error:\n    HELD['error'] = str(error)\n", NAME="environ", HELD=holder)
     child = subprocess.run([sys.executable, "-I", "-c", "import os; print(os.environ.get('ANGELO_REVIEW2_ENV'))"],
                            capture_output=True, text=True, timeout=60).stdout.strip()
-    check("installed_import_environ_refused", "developer tool" in holder.get("error", "") and
+    # A body the script steered itself (`exec_module` under a name it chose, not the import system) is the script's
+    # own code since code is the agent's by birth (break-it-confine-depth-5dc512c07e1 MUST-A): it runs confined and the
+    # write is refused as any script's environment change; only an installed import the import system runs gets the
+    # "a library as it loads" text. Either refusal holds; the variable must reach neither Angelo nor a child.
+    error = holder.get("error", "")
+    check("installed_import_environ_refused", ("developer tool" in error or "the environment (Angelo's" in error) and
           "ANGELO_REVIEW2_ENV" not in os.environ and child == "None", (outcome, holder, child))
 
 

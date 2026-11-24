@@ -59,8 +59,8 @@ class FinderLaunch(unittest.TestCase):
                       patch.object(cli_runtime, "login_shell_path", return_value="")):
             value.start()
             self.addCleanup(value.stop)
-        for variable in ("NPM_CONFIG_PREFIX", "npm_config_prefix", "VOLTA_HOME", "ASDF_DATA_DIR", "PNPM_HOME",
-                         "BUN_INSTALL", "N_PREFIX"):
+        for variable in ("NPM_CONFIG_PREFIX", "npm_config_prefix", "HOMEBREW_PREFIX", "VOLTA_HOME", "ASDF_DATA_DIR",
+                         "PNPM_HOME", "BUN_INSTALL", "N_PREFIX"):
             os.environ.pop(variable, None)
 
 
@@ -133,7 +133,7 @@ class DiscoveryTests(FinderLaunch):
         with patch.object(cli_runtime.subprocess, "Popen", side_effect=AssertionError("spawned")):
             executable(self.system / "claude")
             self.assertEqual(providers.find_executable("claude"), str(self.system / "claude"))
-        limit = (7 + len(cli_runtime.HOME_DIRECTORIES) + len(cli_runtime.SYSTEM_DIRECTORIES)
+        limit = (8 + len(cli_runtime.HOME_DIRECTORIES) + len(cli_runtime.SYSTEM_DIRECTORIES)
                  + cli_runtime.VERSION_DIRECTORIES * len(cli_runtime.VERSION_HOMES))
         self.assertLessEqual(len(cli_runtime.known_directories()), limit)
 

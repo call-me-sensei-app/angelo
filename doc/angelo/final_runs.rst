@@ -343,6 +343,17 @@ campaigns and commits only, never a path::
    python3 tests/python/angelo_agent/cache_floor.py check STEP_OR_RECEIPT...
    python3 tests/python/angelo_agent/cache_floor.py show STEP_OR_RECEIPT...   # per-chat shares
 
+**A model with no floors yet** (rule set 2026-11-18, before any of its gates
+ran; the same for every model, first GPT-6.2 Astra and GPT-6.2 Sol in
+2.1.0): its first gate campaign of record on each platform that passes every
+gate task is that platform's floor-setting campaign. Its cells are unfloored
+while it runs, so no cache SEV can fail it; afterwards ``regenerate`` is run
+with the existing campaigns plus that one, under the rule above, unchanged.
+Nothing is chosen after seeing the shares: no campaign is left out for its
+cache numbers, and no margin or cell is changed for one model. Every later
+campaign is checked against those floors. Its first-call warnings still
+apply, as on every campaign.
+
 The checked-in floors are per platform (maintainer, 2026-11-04, "Skip first
 turn + per-platform floors") and come from every passing gate of record on
 disk: 63 campaigns (32 macOS, 31 Windows) of 1.0.0-1.0.9. Dry runs,
@@ -500,7 +511,7 @@ sent). ``run`` sends model messages on those connections, so it refuses
 without ``--authorize-billed-runs``; every other action sends nothing.
 
 A pay-per-token API-key account (``final_runs_plan.API_KEY_ACCOUNTS``: ``gemini``,
-for Gemini 4 Carbon's gate) has no subscription to sign in. Its one connection
+for the Gemini 4 Carbon and Gemini 4 Neon gates, Windows only) has no subscription to sign in. Its one connection
 runs in place from a folder that holds only it, where its owner saved the key in
 Angelo's AI Providers (``ANGELO_CONNECTIONS_DIR`` set to that folder), so the key
 stays in that folder's key-store item and is never copied or read by the harness:
@@ -510,7 +521,7 @@ stays in that folder's key-store item and is never copied or read by the harness
 loads is the trial's own check, which sends nothing without it). Its steps pass
 ``--allow-api-key-connection`` (``--angelo-allow-api-key-connection`` through the
 bench) and never the ChatGPT ``--codex-home``; ``init`` asks only for the accounts
-the selected steps bill, so a machine running Carbon's steps alone needs no
+the selected steps bill, so a machine running only Gemini steps needs no
 subscription. The live harness accepts every coding API-key mode of the provider
 registry (``eval_live_agent.API_KEY_MODES``).
 

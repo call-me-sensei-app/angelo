@@ -22,6 +22,7 @@
 
 #include "bpy_angelo_guard_confine_intern.hh"
 #include "bpy_angelo_guard_confine_pipeline.hh"
+#include "bpy_angelo_guard_confine_remote.hh"
 
 namespace blender::angelo_guard {
 
@@ -43,7 +44,7 @@ static PyObject *proxy_lut(PyObject * /*self*/, PyObject *path_object)
   if (confined_now() && judge_text(path, false, "an OpenColorIO LUT") != 0) {
     return nullptr;
   }
-  FILE *file = fopen(path.c_str(), "rb");
+  FILE *file = lookup_fopen_read(path);
   if (file == nullptr) {
     return PyErr_Format(PyExc_FileNotFoundError, "The LUT '%s' could not be read.", path.c_str());
   }
@@ -63,8 +64,8 @@ static PyObject *proxy_hash(PyObject * /*self*/, PyObject *path_object)
   if (confined_now() && judge_text(path, false, "an OpenColorIO LUT") != 0) {
     return nullptr;
   }
-  struct stat info;
-  if (path.empty() || stat(path.c_str(), &info) != 0) {
+  BLI_stat_t info;
+  if (path.empty() || lookup_stat(path, &info) != 0) {
     return PyUnicode_FromString(""); /* Not there: OpenColorIO tries its next search folder. */
   }
   return PyUnicode_FromFormat("%s:%lld:%lld", path.c_str(), (long long)info.st_size, (long long)info.st_mtime);

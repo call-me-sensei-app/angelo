@@ -30,8 +30,9 @@ at https://downloads.angelo.studio/<version>/) is ``release_downloads.py``'s. Fr
     # The one-time setup check: write, read and delete a probe object, and ask the custom domain for it:
     scripts/angelo/publish_installers.sh --check
 
-Publishing refuses, before anything is sent: a file not named ``Angelo-<version>-<platform>.<dmg|msi>``, a Git LFS
-pointer, a disk image that is not signed, stapled and accepted by Gatekeeper as notarized Developer ID (on macOS
+Publishing refuses, before anything is sent: a file not named ``Angelo-<version>-<platform>.<dmg|msi|tar.xz>``, a Git
+LFS pointer, a Linux tarball whose ``.minisig`` or inner signed manifest does not verify against the shipped Linux
+release keys (``sign_linux_release.verify_tarball``) or that lacks a clean builder-path receipt, a disk image that is not signed, stapled and accepted by Gatekeeper as notarized Developer ID (on macOS
 only; ``sign_notarize_macos.check_notarized_image``), an MSI that is not what the release declares
 (``--msi-signing unsigned|signed`` must match the build's signing record and the MSI's own signature;
 msi_signing.py), an installer that embeds a builder path or credential (``builder_paths.py``: the disk
@@ -83,7 +84,7 @@ ACCOUNT_ID = re.compile(r"[0-9a-f]{32}")
 MAX_UPLOAD = 5_000_000_000
 CHECK_PREFIX = "_check/"
 # The website's names for the platforms (angelo-website src/data/release.ts, RELEASE.sha256).
-WEBSITE_KEYS = {"macos-arm64": "macos", "windows-x64": "windows"}
+WEBSITE_KEYS = {"macos-arm64": "macos", "windows-x64": "windows", "linux-x64": "linux"}
 # Compound File Binary (MS-CFB), the container of an MSI, and the stream Authenticode adds when it signs one.
 CFB_MAGIC = bytes.fromhex("d0cf11e0a1b11ae1")
 CFB_END, CFB_FREE = 0xFFFFFFFE, 0xFFFFFFFF
@@ -193,6 +194,10 @@ def check_installer(version, platform, path, runner=None, host_platform=sys.plat
         if report["hits"]:
             raise PublishError("%s embeds builder paths or credentials:\n%s" % (
                 path.name, "\n".join(builder_paths.summary(report)[1:])))
+    elif signatures and platform == "linux-x64":
+        problem = builder_paths.receipt_problem(path) or linux_signature_problem(version, path)
+        if problem:
+            raise PublishError(problem)
     elif signatures:
         signed = MSI_SIGNATURE_STREAM in msi_entries(path)   # first: refuses what is not an MSI at all
         problem = builder_paths.receipt_problem(path)
@@ -209,6 +214,29 @@ def check_installer(version, platform, path, runner=None, host_platform=sys.plat
     if not 0 < size <= MAX_UPLOAD:
         raise PublishError("%s is %d bytes; one upload carries 1 byte to %d" % (path.name, size, MAX_UPLOAD))
     return Item(version, name, path, size, digest, platform)
+
+
+def linux_signature_problem(version, path):
+    """None when the tarball's ``.minisig`` and the signed manifest inside it verify against the Linux release keys
+    this checkout ships (sign_linux_release.py); otherwise the reason."""
+    import sign_linux_release   # Imported here: it loads the add-on's verifier.
+    try:
+        sign_linux_release.verify_tarball(path, version, sign_linux_release.release_manifest.KEYS_FILE)
+    except (sign_linux_release.ReleaseToolError, sign_linux_release.release_manifest.ManifestError, OSError,
+            tarfile.TarError) as error:
+        return "%s is not a signed Linux release: %s" % (path.name, error)
+    return None
+
+
+def signature_item(version, installer):
+    """The checked ``Item`` for the detached signature published beside ``installer`` (a Linux tarball's .minisig,
+    already verified by ``check_installer``)."""
+    name = layout.signature_name(version, installer.platform)
+    path = Path(installer.path).with_name(name)
+    digest, size = sha256_of(path)
+    item = Item(version, name, path, size, digest, installer.platform)
+    item.signs = installer.name
+    return item
 
 
 def check_delta(version, path, platforms):
@@ -240,14 +268,16 @@ def check_delta(version, path, platforms):
 
 
 def plan(version, dmg=None, msi=None, runner=None, host_platform=sys.platform, msi_signing=None,
-         signatures=True, deltas=()):
-    """The checked installers (then deltas) and ``SHA256SUMS`` (bytes) for a version."""
+         signatures=True, deltas=(), tarball=None):
+    """The checked installers (with their signatures, then deltas) and ``SHA256SUMS`` (bytes) for a version."""
     layout.check_version(version)
-    given = [(platform, path) for platform, path in (("macos-arm64", dmg), ("windows-x64", msi)) if path]
+    given = [(platform, path) for platform, path in (("macos-arm64", dmg), ("windows-x64", msi),
+                                                      ("linux-x64", tarball)) if path]
     if not given:
-        raise PublishError("give the disk image (--dmg), the MSI (--msi) or both")
+        raise PublishError("give the disk image (--dmg), the MSI (--msi), the Linux tarball (--tarball) or several")
     items = [check_installer(version, platform, path, runner, host_platform, msi_signing, signatures)
              for platform, path in given]
+    items += [signature_item(version, item) for item in list(items) if item.platform in layout.SIGNATURES]
     items += [check_delta(version, path, {platform for platform, _ in given}) for path in deltas]
     sums = layout.sums_text({item.name: item.sha256 for item in items}).encode("ascii")
     return items, sums
@@ -276,9 +306,9 @@ def checksum_files(version, items, sums, add):
     address. A first publish writes them after its files and ``SHA256SUMS`` last (once it exists the version is
     complete); ``--add-to-version`` writes them before its files and never ``SHA256SUMS`` (every object an addition
     writes is named by a checksum file before it exists, so a cut-off is always found)."""
-    own = [checksum_item(item, [delta for delta in items if delta.source is not None
-                                and delta.platform == item.platform])
-           for item in items if item.source is None]
+    own = [checksum_item(item, [other for other in items if (other.source is not None or other.signs is not None)
+                                and other.platform == item.platform])
+           for item in items if item.source is None and item.signs is None]
     return own if add else own + [(sums_item(version, sums), sums)]
 
 
@@ -337,7 +367,8 @@ def summary(version, items, verified, installers, published):
         "sums": layout.url(version, layout.SUMS),
         "checksum_files": [record["url"] for record in verified if record["url"].endswith(layout.CHECKSUM_SUFFIX)],
         "website_sha256": {WEBSITE_KEYS.get(platform, platform): digest for platform, digest in installers.items()},
-        "feed_downloads": ["%s=%s" % (item.platform, item.path) for item in items if item.source is None],
+        "feed_downloads": ["%s=%s" % (item.platform, item.path) for item in items
+                           if item.source is None and item.signs is None],
         "feed_deltas": ["%s=%s=%s" % (item.platform, item.source, item.path) for item in items if item.source is not None],
     }
 
@@ -352,7 +383,7 @@ def publish(arguments, target=None, runner=None, environ=os.environ, host_platfo
                            % (layout.checkout_version(), arguments.version))
     items, sums = plan(arguments.version, arguments.dmg, arguments.msi, runner, host_platform,
                        arguments.msi_signing, signatures=not arguments.verify_only,
-                       deltas=getattr(arguments, "delta", None) or ())
+                       deltas=getattr(arguments, "delta", None) or (), tarball=getattr(arguments, "tarball", None))
     checksums = checksum_files(arguments.version, items, sums, add)
     if arguments.dry_run:
         result = {"dry_run": True, "bucket": layout.BUCKET,
@@ -505,6 +536,8 @@ def main(argv=None, target=None, runner=None, environ=None, host_platform=None):
     parser.add_argument("--version", help="MAJOR.MINOR.PATCH, the version the installers carry")
     parser.add_argument("--dmg", help="the stapled disk image, Angelo-<version>-macos-arm64.dmg")
     parser.add_argument("--msi", help="the signed Windows installer, Angelo-<version>-windows-x64.msi")
+    parser.add_argument("--tarball", help="the signed Linux release, Angelo-<version>-linux-x64.tar.xz, with its .minisig "
+                                          "and builder-path receipt beside it (sign_linux_release.py)")
     parser.add_argument("--delta", action="append", default=[],
                         help="an update delta for this version (make_update_delta.py), published with its installer")
     parser.add_argument("--add-to-version", action="store_true",
@@ -528,7 +561,8 @@ def main(argv=None, target=None, runner=None, environ=None, host_platform=None):
     environ = os.environ if environ is None else environ
     try:
         if arguments.check:
-            if (arguments.version or arguments.dmg or arguments.msi or arguments.dry_run or arguments.verify_only
+            if (arguments.version or arguments.dmg or arguments.msi or arguments.tarball or arguments.dry_run
+                    or arguments.verify_only
                     or arguments.add_to_version or arguments.add_checksum_files):
                 parser.error("--check takes no other option")
             return 0 if check(target, environ) else 1
@@ -537,7 +571,8 @@ def main(argv=None, target=None, runner=None, environ=None, host_platform=None):
         if arguments.dry_run and arguments.verify_only:
             parser.error("--dry-run and --verify-only exclude each other")
         if arguments.add_checksum_files:
-            if (arguments.dmg or arguments.msi or arguments.delta or arguments.verify_only or arguments.add_to_version
+            if (arguments.dmg or arguments.msi or arguments.tarball or arguments.delta or arguments.verify_only
+                    or arguments.add_to_version
                     or arguments.msi_signing):
                 parser.error("--add-checksum-files takes only --version and --dry-run")
             result = add_checksum_files(arguments, target, environ)

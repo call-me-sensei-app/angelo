@@ -25,6 +25,7 @@ import addon_utils
 import bpy
 import qa_boot
 import qa_input
+import qa_hit
 
 assert '--factory-startup' in __import__('sys').argv
 assert not bpy.app.background
@@ -49,7 +50,7 @@ os.environ.update(ANGELO_AGENT_RUNTIME='off', ANGELO_DISABLE_KEYCHAIN='1',
                   ANGELO_DISABLE_DEFAULT_CHAT='1')
 
 
-# ui.register asks these three read-only questions even with the agent runtime off.
+# The add-on's start-up checks (ui.start_native_checks) ask these three read-only questions even with the agent runtime off.
 # They are DENIED like every other process request; only their closed attribution differs.
 _STATUS_ARGV = {
     (str(BIN / 'codex'), 'login', 'status'): 'codex_subscription',

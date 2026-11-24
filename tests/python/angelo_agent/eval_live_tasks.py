@@ -17,6 +17,7 @@ and, for a question, by its answer against ground truth the harness computes
 import copy
 
 import eval_agent_tasks as graded
+import eval_firsthour_tasks
 import eval_gate
 import eval_node_tasks as node_tasks, eval_rig_tasks  # noqa: E401
 import scenario_specs
@@ -125,7 +126,8 @@ MAX_LONG_SESSION_TASKS = 120
 # Scenario sets (scenario-<id>, scenario_specs) are multi-turn builds against reference images.
 TASK_SETS = (("default", "long", "delegation", "coverage", "survey", "survey-questions", "rig",
               "engine-link-compare", "steering") + scenario_specs.TASK_SETS
-             + scenario_specs.ONESHOT_TASK_SETS)   # oneshot-<id>: one message, one turn (doc/angelo/oneshot_tests.rst).
+             + scenario_specs.ONESHOT_TASK_SETS   # oneshot-<id>: one message, one turn (doc/angelo/oneshot_tests.rst).
+             + eval_firsthour_tasks.TASK_SETS)   # firsthour-<case>: a beginner's problem (eval_firsthour_tasks).
 # The objects of the delegation set, by check alias: four 1 m cubes on the X axis.
 AUDIT_OBJECTS = {"$a": "Audit A", "$b": "Audit B", "$c": "Audit C", "$d": "Audit D"}
 AUDIT_X = {"$a": 0.0, "$b": 2.0, "$c": 4.0, "$d": 6.0}
@@ -403,6 +405,8 @@ def tasks_for(task_set="default", count=LONG_SESSION_TASKS, version=None):
             import eval_quality_loop
             return eval_quality_loop.apply(tasks)
         return tasks
+    if task_set in eval_firsthour_tasks.TASK_SETS:
+        return eval_firsthour_tasks.tasks(task_set)
     if task_set == "steering":   # A second message while the agent works (eval_steer).
         import eval_steer
         return eval_steer.tasks()

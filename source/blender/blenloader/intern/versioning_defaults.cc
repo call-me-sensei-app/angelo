@@ -478,6 +478,12 @@ static void blo_update_defaults_scene(Main *bmain, Scene *scene)
     view_layer.eevee.ambient_occlusion_distance = 10.0f;
   }
 
+  /* Angelo: the startup file's scenes start with Ripple Delete's Clear Ranges off, as new scenes do
+   * (`seq::tool_settings_init`). */
+  if (ts->sequencer_tool_settings) {
+    ts->sequencer_tool_settings->ripple_flag &= ~SEQ_RIPPLE_CLEAR_RANGES;
+  }
+
   if (scene->ed) {
     /* Display missing media by default. */
     scene->ed->show_missing_media_flag |= SEQ_EDIT_SHOW_MISSING_MEDIA;

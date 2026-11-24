@@ -31,6 +31,7 @@ from mathutils import Euler, Vector
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import qa_input  # noqa: E402  (the dragged boxes)
+import qa_hit
 
 # ANGELO_QA_REHEARSAL=1: the background rehearsal a new GUI suite gets before its first windowed slot. It runs the
 # same setup and every selection, statistics and keymap call in background Blender (GPU initialised); only
@@ -409,7 +410,8 @@ def tick():
             with override():
                 bpy.ops.mesh.select_all(action='DESELECT')
             xmin, xmax, ymin, ymax = screen_rect(region, space, [bpy.data.objects["A"], bpy.data.objects["B"]])
-            qa_input.send(window, qa_input.drag_path((region.x + xmin, region.y + ymax), (region.x + xmax, region.y + ymin),
+            qa_input.send(window, qa_input.drag_path(qa_hit.xy(qa_hit.RAW, region, xmin, ymax),
+                                                     qa_hit.xy(qa_hit.RAW, region, xmax, ymin),
                                                      bpy.context.preferences.system.ui_scale))
             state["phase"] = "drag_read"
             return .5

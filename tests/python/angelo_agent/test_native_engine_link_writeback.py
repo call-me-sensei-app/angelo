@@ -78,7 +78,7 @@ class WriteBackTests(unittest.TestCase):
         self.assertEqual(call["spec"], {"stamp": None, "target": "/p/a.glb", "exporter": "gltf",
                                         "options": {"export_apply": True}, "baked": [], "saved": None,
                                         "superseded": engine_link_writeback.SUPERSEDED,
-                                        "blend": "/p/.angelo/a.glb.blend"})
+                                        "blend": "/p/.angelo/a.glb.blend", "engine": None})
 
     def test_the_child_is_told_which_exporter_writes_the_target(self):
         self.writer.request("/p/a.fbx", "/p/.angelo/a.fbx.blend", "/p/a.fbx", "fbx", {"object_types": ["MESH"]})

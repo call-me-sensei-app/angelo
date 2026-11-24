@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "bpy_angelo_guard_confine_changes.hh"
+#include "bpy_angelo_guard_confine_remote.hh" /* `names_a_remote_file`: the judge refuses a remote name by its text. */
 
 namespace blender::angelo_guard {
 
@@ -33,8 +34,14 @@ using Identity = std::pair<uint64_t, uint64_t>;
 /** The real path `path` names, or nothing when it cannot be resolved (refuse it). `dir_fd` >= 0: a relative path is
  * relative to that descriptor's folder. `path` is UTF-8. */
 std::optional<std::string> resolve(const std::string &path, int dir_fd = -1);
+/** Set when the last `resolve` on this thread failed because a link led under the automounter of every host
+ * (`/net`, POSIX): the judge refuses that as the network, not as private. */
+extern thread_local bool resolve_reached_network;
 /** The path of the file a descriptor has open, or nothing (a pipe, a socket, an unknown descriptor). */
 std::optional<std::string> descriptor_path(int descriptor);
+/** Windows: the path of the file a raw handle has open (empty when a file's name can't be told), or nothing (not a
+ * file's handle). Elsewhere: nothing. */
+std::optional<std::string> handle_path(intptr_t handle);
 /** The resolved path's key: lower case on macOS and Windows. */
 std::string key(const std::string &resolved);
 /** The identities of every existing folder from `resolved` up to the root, nearest first. */
@@ -51,7 +58,13 @@ bool replace_ungated(const std::string &from, const std::string &to);
 /** A set of folders, add-only. Thread-safe. */
 class Roots {
  public:
-  void add(const std::string &folder);
+  /** Adds `folder`, resolved. `refusing` (a private, startup or tool-output root: one that refuses what it holds):
+   * a folder that can't be resolved because it is on a share nobody connected (named after the first region) is
+   * still held, by its full text, never dropped (dropping it would refuse less: review-confine-fixes-7a1bcdb652d
+   * SHOULD-2), by the same spelling only (its text folded as a resolved key is: another spelling of that share, such
+   * as its full domain name or an address, is not matched; looking the folder up to learn them would be the
+   * connection the region rule forbids). Trusted and open roots drop such a folder, which refuses more. */
+  void add(const std::string &folder, bool refusing = false);
   /** Whether `resolved` is one of these folders or inside one (`chain`: its `ancestors`). */
   bool holds(const std::string &resolved, const std::vector<Identity> &chain) const;
   /** Whether `resolved` is a folder that holds one of these (a link to it reaches them). */
@@ -95,9 +108,10 @@ class Families {
   std::vector<std::pair<std::string, std::string>> pairs_;
 };
 
-/** Why a confined thread is refused `path`: none, a private root (any access), a startup root (a change), or a
- * tool-output root (a change: files Angelo's own tools wrote there for scripts to read, such as downloads). */
-enum class Refusal { None, Private, Startup, ToolOutput };
+/** Why a confined thread is refused `path`: none, a private root (any access), a startup root (a change), a
+ * tool-output root (a change: files Angelo's own tools wrote there for scripts to read, such as downloads), or a
+ * remote name (any access, by its text: `names_a_remote_file`). */
+enum class Refusal { None, Private, Startup, ToolOutput, Network };
 
 /** The confinement's folders: private (never read or written), startup (never changed), tool output (never
  * changed; never trusted), open (inside a private folder, yet used freely: the chat's default workspace, as the file
@@ -134,7 +148,21 @@ struct Folders {
 };
 
 Folders &folders();
+
+/** Whether a lookup of `path` (a stat, exists, folder or file test, readlink; `follow_last`: its last component
+ * followed; `dir_fd` >= 0: relative to that folder, POSIX) would reach the network: Network for a remote name, a link
+ * to a share nobody connected (Windows) or a step into a folder of the automounter's maps of any host (POSIX);
+ * Private where the link walk can't tell (Windows); None otherwise. No private folder is judged
+ * (bpy_angelo_guard_confine_wrap_lookup.cc). */
+Refusal network_lookup(const std::string &path, int dir_fd, bool follow_last);
+/** Forget the folders `network_lookup` resolved on POSIX (a region's start, and every change that can put a link
+ * where a folder was: a judged move, removal or link, or Blender's own move). */
+void lookup_cache_forget();
 /** Set by the last `judge` on this thread when it refused a change only because it couldn't be recorded. */
 extern thread_local bool judged_unrecorded;
+/** Set when the last judge or lookup on this thread was refused because where the path leads can't be told (a link
+ * it can't read, or a target it won't follow): `refuse` says so, not "private" (break-it-confine-reparse-b7d499c
+ * re-read NIT). */
+extern thread_local bool judged_unreadable;
 
 }  // namespace blender::angelo_guard

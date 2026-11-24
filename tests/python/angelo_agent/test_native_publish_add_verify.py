@@ -145,8 +145,8 @@ class CachedNotFoundTests(AddCase):
         self.assertEqual(self.run_platforms(["macos-arm64"])[0], 0, self.errors)
         self.assertEqual(self.cached, set(), "a first publish asks for nothing the bucket showed absent")
         self.assertEqual(self.verify_only(["macos-arm64"]), 0, self.errors)
-        self.assertEqual(self.cached, {key(MSI + ".sha256")},
-                         "only the absent platform's checksum file, never an installer")
+        self.assertEqual(self.cached, {key(MSI + ".sha256"), key("Angelo-%s-linux-x64.tar.xz.sha256" % VERSION)},
+                         "only the absent platforms' checksum files, never an installer")
         self.assertEqual(self.run_platforms(["windows-x64"], "--add-to-version")[0], 1)
         self.assertIn("%s answered 404, but it is the checksum file this run wrote: a 404 the custom domain's "
                       "cache kept? Purge that URL" % self.served(MSI + ".sha256"), self.errors)

@@ -39,6 +39,7 @@ from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 import qa_input  # noqa: E402  (synthetic clicks; after_clicks)
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-top-bar-permanence-qa"))
@@ -274,8 +275,9 @@ def ab_rects(area):
     are test_blender_asset_browser_states'."""
     from angelo_agent import asset_browser_entry as entry
     region = ab_region(area, 'HEADER')
-    return {action: (region.x + x, region.y + y, region.x + x + w, region.y + y + h)
-            for (x, y, w, h), action in entry._hits.get((area.as_pointer(), 'HEADER'), ())}
+    corners = {action: qa_hit.rect(qa_hit.RAW, region, rect)   # The entry reads its header's region pixels.
+               for rect, action in entry._hits.get((area.as_pointer(), 'HEADER'), ())}
+    return {action: (x, y, x + w, y + h) for action, (x, y, w, h) in corners.items()}
 
 
 def menu_moment():

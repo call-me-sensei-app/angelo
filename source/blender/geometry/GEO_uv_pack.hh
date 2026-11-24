@@ -109,6 +109,12 @@ class UVPackIsland_Params {
   float target_aspect_y;
   /** Which shape to use when packing. */
   eUVPackIsland_ShapeMethod shape_method;
+  /**
+   * Extra layouts to try beside the standard one (0: the standard layout only). Trial `t` packs the
+   * islands in an order changed by a hash of `t`; trials run in parallel and the tightest layout wins,
+   * ties going to the lower trial, so the result never depends on threads, timing or machine.
+   */
+  int search_trials;
 
   /** Abandon packing early when set by the job system. */
   bool *stop;

@@ -29,6 +29,7 @@ import qa_operator  # noqa: E402
 from angelo_agent.sessions import SessionCollection
 from angelo_agent.blender_tools import BlenderExecutor
 from angelo_agent.chat_settings import normalize_models
+import qa_hit
 
 state = {"phase": "boot", "started": time.monotonic(), "checks": {}}
 main_window = None

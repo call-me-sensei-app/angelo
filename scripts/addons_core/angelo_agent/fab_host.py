@@ -10,7 +10,7 @@ from functools import partial
 import threading
 import uuid
 
-from . import fab_failure_report, fab_host_state as records, fab_login_transition as login, grant_gestures
+from . import fab_failure_report, fab_host_state as records, fab_login_transition as login, grant_gestures, grant_guard
 from .fab_catalog import FabError
 from .fab_host_jobs import Job, Stop, Worker
 
@@ -135,8 +135,7 @@ class Driver:
         try:
             service(Stop(self.lifetime, seconds=1), seconds=0.25)
         except (Exception, SystemExit, KeyboardInterrupt) as failure:
-            # The tainted exact connection cannot serve another job. Revoke the
-            # observed transport even if Main has not bound its Session yet.
+            # The tainted connection serves no other job: revoke its transport even before Main binds a Session.
             try:
                 if self.transport is not None:
                     self.transport.revoke()
@@ -440,7 +439,7 @@ def register():
     _main()
     if _host is None:
         try:
-            from .fab_browser_connection import create_owned_connection
+            create_owned_connection = records.browser_owner()   # ImportError where Fab's browser is not built.
         except ImportError:
             return False  # No producer installed: the cached initial state stays honestly unavailable.
         from . import fab_preferences, fab_provider, ui  # noqa: F401 - preload before any draw/pump can need them.
@@ -488,6 +487,7 @@ def unregister():
         _host = None
 
 
+@grant_guard.entry   # A person's action only: refused while agent code runs, so a script never drives the Fab worker.
 def human(method, *args, **kwargs):
     """Main-thread action boundary: only closed reason codes reach cached public UI."""
     _main()

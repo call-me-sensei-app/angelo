@@ -37,7 +37,7 @@ from .agent_guidance import NO_WEB_SEARCH, lead_guidance
 from .claude_text import CLAUDE_BASE_INSTRUCTIONS as CLAUDE_INSTRUCTIONS, CLAUDE_PLAN_INSTRUCTIONS  # noqa: F401 (re-exported)
 from .self_checks import SelfChecks
 from .turn_endings import TurnEndings
-from .claude_stream import answering
+from .claude_stream import answering, retry_kind
 from .claude_outcomes import present_program_checks, present_plan_checks
 from .plan_recovery import (PREVIEW_IMAGE_TOOLS as _PREVIEW_IMAGE_TOOLS, PROGRAM_RESULT_TOOLS as _PROGRAM_RESULT_TOOLS,  # noqa: F401
                             CLAUDE_PLAN_REJECTIONS, CONTINUED, PLAN_ROUNDS, PlanRun, correction, counts_again,
@@ -260,6 +260,9 @@ class CodexProvider:
                 self.controller.state["native_id"] = None
                 self.controller.state["toolset_version"] = TOOLSET_VERSION
                 self.controller.emit("message", {"role": "system", **notice("Angelo capabilities upgraded. Starting a fresh native context; your previous chat history is preserved.")})
+            own_codex = agent_runtime.own_codex_row(self._runtime_kind, self.controller.state)   # Once per chat.
+            if own_codex:
+                self.controller.emit("message", own_codex)
             result = codex_connect.open_thread(self, parameters, tools, fork=not voice)   # Lost: TransportClosed below.
             self.thread_id = result["thread"]["id"]
             self._scope.begin(self.controller, self.thread_id, starting=False,
@@ -438,7 +441,7 @@ class CodexProvider:
         if not self._scope.matches(context, params, allow_cancelled=method == "turn/completed",
                                    allow_completed=method == "turn/completed"):
             return
-        self._activity.touch()
+        self._activity.touch(answered=method != "error")   # An error notice (a retry, a network wait) is not an answer.
         steering_delivery.codex_event(context, method, params, self._plan)   # A steer the model read: its row, before its output.
         codex_retry.note(self, context, method, params)  # What the turn did; an ``error``'s text.
         if (method in {"item/agentMessage/delta", "item/reasoning/summaryTextDelta"}
@@ -853,13 +856,17 @@ class ClaudeProvider:
                 self._close_transport(transport, owner=owner, interrupt=True)
                 return None
             # Direct calls run inside the turn: while the host works for one, the turn's clocks rest (turn_activity).
-            overdue = turn_activity.wait(turn.done, turn.activity, busy=direct.busy if direct is not None else None)
+            overdue = turn_activity.wait(turn.done, turn.activity, busy=direct.busy if direct is not None else None,
+                                         waiting=None if getattr(context, "voice", None)
+                                         else lambda status: context.emit("status", {"text": status}),
+                                         stopped=lambda: bool(getattr(context, "cancelled", False)))
             if overdue or not self._current(owner) or not transport.owner.same_request(owner) or transport.interrupted:
                 self._close_transport(transport, owner=owner, interrupt=True)
                 # A round the host cut short (a timeout, Stop) still used tokens.
                 record_interrupted(context, turn.stream.observed_usage()[0])
-                if overdue:
-                    raise RpcError(turn_activity.problem("Claude", overdue, "Nothing from this round ran; inspect before retrying"))
+                if overdue and overdue != turn_activity.STOPPED:   # STOPPED: Stop's own end, the turn interrupted.
+                    raise RpcError(turn_activity.problem("Claude", overdue, "Nothing from this round ran; inspect before "
+                                                         "retrying", turn.activity))
                 return None
             # Error results also carry the running totals of the work they consumed.
             record = getattr(context, "record_provider_usage", None)
@@ -1200,6 +1207,7 @@ class ClaudeProvider:
                 turn.done.set()
                 return
             (turn.activity.touch if answering(event) else turn.activity.hear)()  # A notice or ping: alive, not answering.
+            waited = retry_kind(event) and codex_retry.announce(turn.activity, event.get("retry_delay_ms"))
             if not turn.accepted and (
                     event.get("type") == "stream_event" and (event.get("event") or {}).get("type") == "message_start"
                     or event.get("type") == "assistant" and not event.get("isApiErrorMessage")
@@ -1210,6 +1218,8 @@ class ClaudeProvider:
             # Text, thinking, plan calls and the API's token counts (claude_stream).
             for kind, data in turn.stream.events(event, turn.structured_outputs):
                 turn.controller.emit(kind, data)
+            if waited and not getattr(turn.controller, "cancelled", False):   # A wait Claude Code named: counted down.
+                turn.controller.emit("status", {"text": codex_retry.retry_status(event.get("retry_delay_ms"))})
             usage_windows.observe_claude_event(turn.controller, event)  # The plan's windows, for the usage meter.
             turn.searches.observe(event)   # An organization that turned web search off (web_search_access).
             if event.get("type") == "result":

@@ -10,8 +10,10 @@ are test_native_update_flow and test_native_update_install). The real thing: the
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
+import hashlib
 import os
 import io
+import json
 import sys
 import tempfile
 import time
@@ -364,6 +366,73 @@ class RestartCase(ReadyCase):
 
 
 class RestartTests(RestartCase):
+    def test_a_linux_hand_over_passes_and_records_the_translated_recovery_names(self):
+        import dataclasses
+        root = self.folder / "Apps" / "Angelo-1.0.0-linux-x64"
+        root.mkdir(parents=True)
+        linux = dataclasses.replace(self.prepared, family="linux", install_root=str(root))
+        Path(linux.work).mkdir(parents=True, exist_ok=True)   # The update's folder, which preparation made.
+        expected = self.restart.update_card.linux_recovery(root, linux.version)
+        with mock.patch.object(self.restart, "_launcher", lambda ready: "angelo"), \
+                mock.patch.object(self.restart, "_program", lambda ready: "blender"):
+            self.restart.begin(self.offer_, linux, self.host)
+            self.settle()
+        request = self.started[0]
+        self.assertEqual((request.family, request.kept, request.note, request.note_text), ("linux",) + expected)
+        record = json.loads((Path(linux.work) / self.restart.update_flow.RECOVERY_FILE).read_text())
+        self.assertEqual((record["kept"], record["note"]), expected[:2])
+        # What cleanup matches later: this install folder (a rename keeps its device and inode), the running
+        # version, and the note's exact bytes.
+        status = os.lstat(root)
+        self.assertEqual((record["root"], record["device"], record["inode"], record["version"]),
+                         (str(root), status.st_dev, status.st_ino, self.n.update_restart.app_version.current()))
+        self.assertEqual(record["note_sha256"], hashlib.sha256(os.fsencode(expected[2])).hexdigest())
+
+    def test_the_scripts_fallback_from_its_own_inputs_leaves_what_cleanup_removes(self):
+        """Every OS: the two-rename fallback of install_update_linux.sh, done from the exact environment the real
+        hand-over gives the script, then the next launch's cleanup. The script itself needs Linux (/proc, GNU mv -T,
+        stat -c), so its Linux test alone once hid that this path never matched the record (VM CI on 369d14b9f47)."""
+        import dataclasses
+        from angelo_agent import release_manifest
+        script = (Path(update_flow.__file__).parent / "update_helpers/install_update_linux.sh").read_text()
+        for line in ('previous=${ANGELO_UPDATE_KEPT:-', 'note=${ANGELO_UPDATE_NOTE:-',
+                     'printf \'%s\' "$ANGELO_UPDATE_NOTE_TEXT" | create_note "$note"',
+                     'printf \'%s\\n\' "$previous" > "$dir/previous.txt"', 'mv -T "$root" "$previous"',
+                     'mv -T "$new" "$root"'):
+            self.assertIn(line, script, "the moves below are the script's")
+        current = self.n.update_restart.app_version.current()
+        apps = self.folder / "Apps"
+        root = apps / "Angelo-1.0.0-linux-x64"
+        root.mkdir(parents=True)
+        (root / release_manifest.MANIFEST_NAME).write_text(json.dumps({"version": current}))
+        linux = dataclasses.replace(self.prepared, family="linux", install_root=str(root))
+        Path(linux.work).mkdir(parents=True, exist_ok=True)
+        with mock.patch.object(self.restart, "_launcher", lambda ready: "angelo"), \
+                mock.patch.object(self.restart, "_program", lambda ready: "blender"):
+            self.restart.begin(self.offer_, linux, self.host)
+            self.settle()
+        env = self.restart.update_install.helper_environment(self.started[0], {"PATH": "/usr/bin"})
+        parent, previous, note = (os.path.dirname(env["ANGELO_UPDATE_ROOT"]), env["ANGELO_UPDATE_KEPT"],
+                                  env["ANGELO_UPDATE_NOTE"])
+        self.assertEqual((os.path.dirname(previous), os.path.dirname(note)), (parent, parent))
+        # A stop before anything moved: the note written, the app still runs, so the note is stale.
+        Path(note).write_bytes(os.fsencode(env["ANGELO_UPDATE_NOTE_TEXT"]))
+        self.assertTrue(update_flow.forget_note(linux.work, root))
+        self.assertFalse(Path(note).exists())
+        # The whole fallback: note, previous.txt, old folder kept, new one in place, note removed.
+        Path(note).write_bytes(os.fsencode(env["ANGELO_UPDATE_NOTE_TEXT"]))
+        (Path(env["ANGELO_UPDATE_DIR"]) / "previous.txt").write_text(previous + "\n")
+        os.rename(env["ANGELO_UPDATE_ROOT"], previous)
+        new = apps / "new"
+        new.mkdir()
+        (new / release_manifest.MANIFEST_NAME).write_text(json.dumps({"version": linux.version}))
+        os.rename(new, env["ANGELO_UPDATE_ROOT"])
+        os.unlink(note)
+        with mock.patch.object(update_flow.app_version, "current", lambda: "99.0.0"):   # The installed version.
+            self.assertTrue(update_flow.remove_previous(linux.work, root))
+        self.assertFalse(Path(previous).exists(), "the kept folder Angelo recorded is removed")
+        self.assertTrue(root.is_dir())
+
     def test_nothing_happens_while_work_runs(self):
         self.reasons = ["agent"]
         self.press()
@@ -612,6 +681,63 @@ class NextLaunchTests(ReadyCase):
         removed.assert_called_once()
         self.assertEqual(self.queued(), [])
         self.assertEqual(update_state.load(self.folder).install_failures, 0)
+
+    def test_a_stop_after_the_new_version_was_in_place_counts_as_installed(self):
+        """The Linux fallback records "interrupted" before its renames; when this running version is the one it was
+        installing, the swap finished: it is cleaned up as an install, never counted as a failure."""
+        current = self.n.update_restart.app_version.current()
+        self.preparer.result_list = [(current, {"status": "failed", "step": "interrupted"})]
+        (self.preparer.root / current).mkdir(parents=True)
+        with mock.patch.object(self.restart.update_flow, "remove_previous") as removed:
+            self.restart.handle_results(self.preparer, str(self.folder))
+        removed.assert_called_once()
+        self.assertEqual(self.queued(), [])
+        self.assertEqual(update_state.load(self.folder).install_failures, 0)
+
+    def test_a_stop_before_the_swap_drops_the_recorded_note_at_the_next_launch(self):
+        """A failed or interrupted attempt at a newer version left this app running: its recovery note is removed."""
+        from angelo_agent import release_manifest
+        root = self.folder / "Apps" / "Angelo-1.0.0-linux-x64"
+        root.mkdir(parents=True)
+        (root / release_manifest.MANIFEST_NAME).write_text("{}")
+        note = root.parent / "note.txt"
+        text = "Your previous Angelo is in: %s\nRename it back to: %s\n" % (root.parent / "kept", root)
+        for step in ("interrupted", "move_old"):
+            with self.subTest(step=step):
+                work = self.preparer.root / "9.0.0"
+                work.mkdir(parents=True, exist_ok=True)
+                self.restart.update_flow.record_recovery(work, root, "1.0.0", root.parent / "kept", note, text)
+                note.write_bytes(os.fsencode(text))   # Exact bytes: write_text gives \r\n on Windows.
+                self.preparer.result_list = [("9.0.0", {"status": "failed", "step": step})]
+                with mock.patch.object(self.preparer, "support", lambda: ("", str(root))):
+                    self.restart.handle_results(self.preparer, str(self.folder))
+                self.assertFalse(note.exists())
+
+    def test_an_exception_from_cleanup_never_ends_the_update_timer(self):
+        """Blender unregisters a timer whose callback raises (bpy_app_timers.cc): updates would stop for the
+        session. update_ui._ready_tick logs it and keeps its pace."""
+        ui = self.n.update_ui
+        with mock.patch.object(ui, "enabled", lambda: True), \
+                mock.patch.object(ui.update_ready, "tick", mock.Mock(side_effect=IsADirectoryError(21, "a folder"))), \
+                mock.patch("traceback.print_exc"):
+            self.assertIsInstance(ui._ready_tick(), float)
+
+    def test_launch_cleanup_never_raises_into_any_caller(self):
+        """update_ready._handle_results_once is the one way in, from the ready timer, update_ui.tick via consider()
+        and the operators: an exception from cleanup is logged there and never ends a timer or an operator."""
+        broken = SimpleNamespace(handle_results=mock.Mock(side_effect=PermissionError(1, "sticky folder")))
+        with mock.patch.object(self.ready, "_restart_module", lambda: broken), \
+                mock.patch.object(self.ready, "_results_handled", False), mock.patch("traceback.print_exc") as logged:
+            self.ready._handle_results_once()
+            self.ready._handle_results_once()   # Once: the flag is set before the call.
+        broken.handle_results.assert_called_once()
+        logged.assert_called_once()
+
+    def test_the_updates_folder_is_normal_once_whatever_the_cache_path(self):
+        cache = str(self.folder / "xdg" / ".." / "cache")
+        with mock.patch.object(self.ready.bpy, "app", SimpleNamespace(cachedir=cache, tempdir="")), \
+                mock.patch("angelo_agent.owned_paths.register_writable"):
+            self.assertEqual(str(self.ready.directory()), os.path.normpath(str(self.folder / "cache" / "updates")))
 
     def test_a_failed_install_is_told_once_and_counted(self):
         self.preparer.result_list = [("9.0.0", {"status": "failed", "step": "move_new"})]

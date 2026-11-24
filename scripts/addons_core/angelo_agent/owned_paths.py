@@ -172,27 +172,34 @@ def program_changed(path):
         return False
 
 
+RUN_AGENT_CHANGE, RUN_CHANGED, RUN_UNKNOWN = "agent_change", "changed", "unknown"   # Why a start was refused.
+
+
 def require_runnable(path):
     """``path`` when ``may_run`` says so; otherwise ``PermissionError`` (nothing is started), coded READ_ONLY as
     ``require_writable``'s, saying why: an agent script wrote or named it (the person checks it, then forgets the
     folder's agent changes in Preferences: C's record outlives a restart and a reinstall), a recorded program
     changed on disk since (an update in place: restart Angelo), or one Angelo starts by none of its rules (the
-    re-review of 4be92cfb84f, S-2)."""
+    re-review of 4be92cfb84f, S-2). The error's ``run_refusal`` names the cause (``RUN_*``) for a caller that says
+    it in its own words."""
     if not may_run(path):
         if script_made(path) or script_made(os.path.realpath(path)):
+            cause = RUN_AGENT_CHANGE
             # C's change record (kept across sessions): a path a script wrote, moved, linked or only named (a path
             # property), held as the script's until the person forgets it; a reinstall in place keeps the path.
             message = ("Angelo starts only installed programs, programs on PATH or ones you chose: an agent script "
                        "wrote or named %s, so Angelo won't start it. Check the file (reinstall it if in doubt), then "
                        "choose its folder in Preferences > Forget Agent Changes in a Folder…")
         elif program_changed(path):
+            cause = RUN_CHANGED
             message = ("Angelo starts only installed programs, programs on PATH or ones you chose: %s changed on disk "
                        "after Angelo recorded it (an update, for example). Restart Angelo to use it.")
         else:
+            cause = RUN_UNKNOWN
             message = ("Angelo starts only installed programs, programs on PATH or ones you chose: %s. Choose the "
                        "program in the connection's settings, or reinstall it with its official installer.")
         error = PermissionError(message % _shown(path))
-        error.refusal_code = "READ_ONLY"
+        error.refusal_code, error.run_refusal = "READ_ONLY", cause
         raise error
     return path
 

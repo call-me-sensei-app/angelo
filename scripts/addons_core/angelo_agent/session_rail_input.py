@@ -26,7 +26,7 @@ import bpy
 from bpy.app.handlers import persistent
 from bpy.types import Operator
 
-from . import input_policy, live_windows, scroll_input, session_rail_controls as rail_controls
+from . import input_policy, keyboard_owner, live_windows, scroll_input, session_rail_controls as rail_controls
 from .session_rail import GAP as _GAP, TEXT_BLOCK as _TEXT_BLOCK
 from .session_rail_guard import ends_presses as _ends_presses, fail_closed as _fail_closed
 
@@ -169,23 +169,6 @@ def _on_edge(window, area, x, y):
                                                            and area.y + area.height - y <= band))
 
 
-def _chat_focused(window):
-    from . import chat_view, console
-    return any(console.is_chat(area) and chat_view._views.get(area.as_pointer(), {}).get("focused")
-               for area in live_windows.areas(window))
-
-
-def _blur_chat(window):
-    """The chat's field gives up keyboard focus, as a click elsewhere takes it (the chat's own handler, behind this
-    one, never sees pointer use a live view takes; it drops its focused area at its next event)."""
-    from . import chat_view, console
-    for area in live_windows.areas(window):
-        state = chat_view._views.get(area.as_pointer())
-        if console.is_chat(area) and state is not None and state.get("focused"):
-            state["focused"], state["blur_request"] = False, True
-            area.tag_redraw()
-
-
 class ANGELO_OT_session_rail_input(Operator):
     bl_idname = "angelo.session_rail_input"   # IDENTITY: a literal, as every Angelo operator.
     bl_label = "Sessions"
@@ -323,8 +306,8 @@ class ANGELO_OT_session_rail_input(Operator):
         if not drag.mode and event.type in BUTTONS | MOVES and _on_edge(window, area, event.mouse_x, event.mouse_y):
             return {'PASS_THROUGH'}   # Resizing, splitting or joining areas: Blender's own, never the view's.
         keyboard = not _pointer(event)
-        typing = keyboard and _chat_focused(window) and not input_policy.follows_pointer(event.type)
-        if typing and composer_input.takes_off_chat(event):
+        typing = keyboard and keyboard_owner.chat_has_it(window) and not input_policy.follows_pointer(event.type)
+        if keyboard and keyboard_owner.chat_takes(window, event):
             return {'PASS_THROUGH'}   # The chat acts on it with the pointer resting over the view.
         if typing and input_policy.edits_field(event):
             return {'RUNNING_MODAL'}   # It would type, but the chat does nothing with it off its own area: nobody's.
@@ -343,7 +326,7 @@ class ANGELO_OT_session_rail_input(Operator):
             if found is not None:
                 live_nav.frame(view, found, max(1, main.width) / max(1, main.height), settings.lens)
         if not keyboard and event.value == 'PRESS':
-            _blur_chat(window)   # Pointer use over the view takes keyboard focus there (P1-3 L2).
+            keyboard_owner.take(window)   # Pointer use over the view takes keyboard focus there (P1-3 L2).
         if region.type == 'WINDOW' and live_nav.handle(event, view, drag, settings, (region.width, region.height),
                                                        frame_part):
             area.tag_redraw()

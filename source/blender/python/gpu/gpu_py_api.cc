@@ -51,19 +51,11 @@ static PyObject *pygpu_init(PyObject * /*self*/)
     Py_RETURN_NONE;
   }
 
-  WM_init_gpu_backend();
-
-  if (!GPU_backend_supported()) {
-    PyErr_SetString(PyExc_SystemError, "Failed to initialize GPU. GPU backend not supported");
-    return nullptr;
-  }
-
-  /* Cannot use GPU_init() as it requires a GPU context to have been created.
-   * See WM_init_gpu_offscreen implementation. */
-  WM_init_gpu_offscreen();
-
-  if (!GPU_is_init()) {
-    PyErr_SetString(PyExc_SystemError, "Failed to initialize GPU. Unexpected Error");
+  /* Cannot use GPU_init() as it requires a GPU context to have been created: the capability
+   * check creates it (see WM_init_gpu_offscreen). The message stays English: scripts, an
+   * agent's among them, read it. */
+  if (!WM_gpu_is_available() || !GPU_is_init()) {
+    PyErr_Format(PyExc_SystemError, "Failed to initialize GPU. %s", WM_gpu_unavailable_message());
     return nullptr;
   }
 

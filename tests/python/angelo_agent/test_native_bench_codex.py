@@ -194,7 +194,7 @@ class LauncherTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as out:
             self.assertEqual(bench.main(["--plan-only", "--runtime", "codex", "--trials", "1"]), 0)
         planned = json.loads(out.getvalue().split("PLANNED ", 1)[1])
-        self.assertEqual((planned["runtime"], planned["model"]), ("codex", "gpt-6-astra"))
+        self.assertEqual((planned["runtime"], planned["model"]), ("codex", "gpt-6.2-astra"))
         self.assertIn("ChatGPT account", planned["billing"])
 
     def test_codex_refusals_start_nothing(self):

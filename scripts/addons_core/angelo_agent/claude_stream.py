@@ -53,7 +53,7 @@ import json
 import re
 import time
 
-from . import plan_steps
+from . import plan_steps, request_tiers
 from .codex_retry import RETRYING
 from .live_throttle import Latest
 from .plan_progress import PlanProgress, edits, status as plan_status
@@ -309,6 +309,7 @@ class RoundStream:
         usage["requests"] = len(entries)  # API messages this round started.
         if complete:
             usage["output_tokens"] = sum(entry[3] for entry in entries)
+            usage["above_step"] = request_tiers.from_messages(entries)   # Each message's own price tier.
         if self._models:
             usage["models"] = sorted(self._models)[:MAX_MODELS]
         return usage, complete

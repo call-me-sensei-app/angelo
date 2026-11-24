@@ -50,11 +50,17 @@ _PATTERNS = (
 _COMPILED = tuple((name, re.compile(pattern, re.IGNORECASE)) for name, pattern in _PATTERNS)
 
 
-def kind(message):
-    """The notice kind of an error row (a dict with ``text`` and perhaps an ``i18n`` recipe)."""
+def kind(message, by_text=True):
+    """The notice kind of an error row (a dict with ``text`` and perhaps an ``i18n`` recipe).
+
+    Only a provider's error text is read for its kind: a row of another role (an Angelo card on a system row), or
+    one the caller says is Angelo's own card (``by_text`` False), is classified by its template alone, so words a
+    person or a script chose in it (a share or folder named "Billing") never make it a credits or sign-in card."""
     recipe = message.get("i18n") if isinstance(message, dict) else None
     if isinstance(recipe, (list, tuple)) and recipe and recipe[0] in _BY_TEMPLATE:
         return _BY_TEMPLATE[recipe[0]]
+    if not by_text or (message or {}).get("role") not in (None, "error"):
+        return "unknown"
     text = str((message or {}).get("text") or "")
     if any(code in text for code in CODEX_LIMIT_ERRORS - {"rateLimitExceeded"}):
         return "usage"

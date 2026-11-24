@@ -54,6 +54,7 @@ import qa_frames  # noqa: E402
 import qa_input  # noqa: E402
 import qa_plus_menu  # noqa: E402
 import qa_waits  # noqa: E402
+import qa_hit
 
 product_env.clear('DISABLE_DEFAULT_CHAT')  # The dialog belongs to the default chat.
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-trusted-consent-qa"))
@@ -575,7 +576,7 @@ def hosted_tick(phase):
         region = next(r for a in window.screen.areas if a.as_pointer() == placed[0] for r in a.regions
                       if r.type == 'WINDOW')
         HOSTED["actions"].append({"phase": phase, "click": "tile", "session": chat.session})
-        qa_input.press(window, region.x + tile.rect[0] + tile.rect[2] / 2, region.y + tile.rect[1] + tile.rect[3] / 2)
+        qa_input.press(window, *qa_hit.point(qa_hit.RAW, region, tile.rect))   # The rail reads region pixels.
         REPORT["phase"] = "hosted_shown"
     elif phase == "hosted_shown":
         seen = REPORT["details"]["hosted_shown"] = {

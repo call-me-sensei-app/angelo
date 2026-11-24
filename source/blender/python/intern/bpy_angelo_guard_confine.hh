@@ -20,6 +20,7 @@ struct bContext;
 struct ID;
 struct PointerRNA;
 struct PropertyRNA;
+struct StructRNA;
 struct wmOperatorType;
 
 /** Register the confinement's audit hook (a C callback). Call before Python starts (`BPY_python_start`). */
@@ -103,6 +104,13 @@ bool BPY_angelo_guard_folder_allowed(const char *dir, const ID *owner, const voi
 /** The window manager opened or saved the document (main thread, after load-post / a successful save): its folder
  * is the create-beside anchor when the person did it, and none when a script's turn did (beside.cc). */
 void BPY_angelo_guard_document_settled();
+/** Before the first document loads (WM_init, before the startup file; no Python needed): the share connections
+ * Windows has now are the person's, the only deviceless ones that count later (remote.hh; head-10/11 re-read). */
+void BPY_angelo_guard_connections_at_start();
+/** Before a document is read (a startup file of the person's, or any file): the start snapshot is complete, so what
+ * the document's own paths connect while it loads never counts (Head 20 read R-8). Waits only while it is still being
+ * taken; the factory startup reads no file and never waits. */
+void BPY_angelo_guard_connections_ready();
 /** The refusal for a confined thread making code run when a file opens (a text's `use_module` set True), or null. */
 const char *BPY_angelo_guard_load_time_refusal(PointerRNA *ptr, PropertyRNA *prop);
 /** Whether `idname` (`ANGELO_OT_x` or `angelo.x`) is a grant operator (the registry the grant guard passed to
@@ -110,9 +118,19 @@ const char *BPY_angelo_guard_load_time_refusal(PointerRNA *ptr, PropertyRNA *pro
 bool BPY_angelo_guard_is_grant_operator(const char *idname);
 /** Set `ScriptConfined(reason, what)` as the current Python exception. */
 void BPY_angelo_guard_raise(const char *reason, const char *what);
+/** A Python-facing loader of Blender's (`bpy.utils.previews.load`) reads `path` for a confined thread: judged as a
+ * read when it is asked, as `open` is (head-12 re-read SHOULD). True with the refusal raised; false otherwise. */
+bool BPY_angelo_guard_read_refused_raise(const char *path);
 
 /** Whether a confined thread (depth, no GIL) is refused `path`; `write` for any change. For the file gate. */
 bool BPY_angelo_guard_path_refused(const char *path, bool write);
+
+/** Blender is reading preferences (true around the add-on reset of a read that loads them, false after): a cause
+ * Strict script protection may turn off for (bpy_angelo_guard_strict.cc). Main thread. */
+void BPY_angelo_guard_preferences_read(bool reading);
+/** Why a confined thread may not change the RNA definition of `srna` (register, unregister, redefine or remove a
+ * property of Preferences, add-on preferences or the keymap), or null (the review of a121c9a, M2). */
+const char *BPY_angelo_guard_definition_refusal(const StructRNA *srna);
 
 
 }  // namespace blender

@@ -12,6 +12,7 @@
 #include <Python.h>
 
 #include <cstring>
+#include <map>
 #include <string>
 
 #include "BKE_blender_project.hh"
@@ -20,6 +21,7 @@
 #include "BKE_main.hh"
 #include "BKE_path_templates.hh"
 
+#include "BLI_listbase.hh"
 #include "BLI_path_utils.hh"
 #include "BLI_string.hh"
 #include "BLI_utildefines.hh"
@@ -71,6 +73,8 @@ static const char *judge_written(const char *value, const Change change = Change
       return STARTUP;
     case Refusal::ToolOutput:
       return TOOL_OUTPUT;
+    case Refusal::Network:
+      return NETWORK;
     case Refusal::None:
       break;
   }
@@ -93,12 +97,85 @@ bool BPY_angelo_guard_is_grant_operator(const char *idname)
   return BPY_angelo_guard_operator_refusal_id(idname, py_idname) == GRANT;
 }
 
+/**
+ * RNA strings that name a place Angelo's own process reads, scans or fetches later, but whose type is no path
+ * subtype, so `path_subtype` can't see them (doc/angelo/script_confinement.rst, "Strings that name a place"):
+ *
+ * - an address (`url`): any value a confined script gives is the network, refused; an asset library or extension
+ *   repository is fetched from it later, unconfined;
+ * - the file browser's folder, a byte string the browser lists later: judged as a path.
+ *
+ * The inventory in tests/python/angelo_agent/test_native_rna_path_parameters.py classifies every path-, file-,
+ * folder- or address-named RNA string, and names each entry here; an unclassified one fails it.
+ */
+struct PlaceString {
+  const char *type;
+  const char *function; /* nullptr: a property of `type`; else a parameter of that function. */
+  const char *name;
+  bool url;
+};
+static constexpr PlaceString PLACE_STRINGS[] = {
+    {"UserAssetLibrary", nullptr, "remote_url", true},
+    {"UserExtensionRepo", nullptr, "remote_url", true},
+    {"ProjectAssetLibraryCollection", "new", "remote_url", true},
+    {"AssetLibraryCollection", "new", "remote_url", true},
+    {"UserExtensionRepoCollection", "new", "remote_url", true},
+    {"FileSelectParams", nullptr, "directory", false},
+};
+
+/** The kind of place a property names: 0 none, 1 an address, 2 a folder. Built once: RNA is fixed after start. */
+static int place_kind(PropertyRNA *prop)
+{
+  static const std::map<const PropertyRNA *, int> kinds = [] {
+    std::map<const PropertyRNA *, int> found;
+    for (const PlaceString &entry : PLACE_STRINGS) {
+      StructRNA *type = RNA_struct_find(entry.type);
+      if (type == nullptr) {
+        continue; /* Not in this build (a disabled feature): nothing to judge. */
+      }
+      if (entry.function == nullptr) {
+        if (PropertyRNA *property = RNA_struct_type_find_property(type, entry.name)) {
+          found[property] = entry.url ? 1 : 2;
+        }
+        continue;
+      }
+      FunctionRNA *function = RNA_struct_find_function(type, entry.function);
+      if (function == nullptr) {
+        continue;
+      }
+      for (const PropertyRNA &parameter : *RNA_function_defined_parameters(function)) {
+        if (STREQ(RNA_property_identifier(&parameter), entry.name)) {
+          found[&parameter] = entry.url ? 1 : 2;
+        }
+      }
+    }
+    return found;
+  }();
+  const auto kind = kinds.find(prop);
+  return kind == kinds.end() ? 0 : kind->second;
+}
+
 const char *BPY_angelo_guard_path_property_refusal(PropertyRNA *prop, const char *value)
 {
-  if (!path_subtype(prop) || !confined_now()) {
+  /* The property first, the thread after: every string an RNA call is given (each `text=` of a panel's layout) asks
+   * here, and `confined_now()` walks the stack once agent code exists (the 26th read's I1, Ruling 17). */
+  if (!BLI_fileops_confine_possible() || (!path_subtype(prop) && place_kind(prop) == 0)) {
+    return nullptr; /* No thread confined: not even the place table's lookup (the Head 21 read's IC-2). */
+  }
+  if (!confined_now()) {
     return nullptr;
   }
-  return judge_written(value);
+  if (path_subtype(prop)) {
+    return judge_written(value);
+  }
+  switch (place_kind(prop)) {
+    case 1:
+      return value != nullptr && value[0] != '\0' ? NETWORK : nullptr;
+    case 2:
+      return judge_written(value);
+    default:
+      return nullptr;
+  }
 }
 
 /** Preferences and the keymap: `U` itself and every struct in it, add-on preferences, the key configurations. */
@@ -156,13 +233,23 @@ static bool file_browser_pointer(const PointerRNA *ptr)
 
 const char *BPY_angelo_guard_write_refusal(const PointerRNA *ptr)
 {
-  if (ptr == nullptr || ptr->type == nullptr || !confined_now()) {
+  if (!BLI_fileops_confine_possible() || ptr == nullptr || ptr->type == nullptr) {
+    return nullptr; /* No thread confined: no type walk either (keyframes and drivers ask here too: IC-4). */
+  }
+  /* What would be refused first, the thread only then (as `BPY_angelo_guard_path_property_refusal`). */
+  const char *refusal = preferences_pointer(ptr) ? PREFERENCES : file_browser_pointer(ptr) ? POINTER : nullptr;
+  return refusal != nullptr && confined_now() ? refusal : nullptr;
+}
+
+const char *BPY_angelo_guard_definition_refusal(const StructRNA *srna)
+{
+  /* Redefining, removing, registering or unregistering a property of Preferences, add-on preferences or the keymap
+   * changes what every later write of it does (an update callback dropped, a type swapped): never a script's, as no
+   * write of theirs is (the review of a121c9a, M2). */
+  if (srna == nullptr || !confined_now()) {
     return nullptr;
   }
-  if (preferences_pointer(ptr)) {
-    return PREFERENCES;
-  }
-  return file_browser_pointer(ptr) ? POINTER : nullptr;
+  return preference_type(const_cast<StructRNA *>(srna)) ? PREFERENCES : nullptr;
 }
 
 const char *BPY_angelo_guard_input_refusal(const PointerRNA *ptr, const char *function)
@@ -173,15 +260,28 @@ const char *BPY_angelo_guard_input_refusal(const PointerRNA *ptr, const char *fu
   /* Any function of an open file browser (its selection, its active file): what a person's confirm answers for, a
    * multi-file confirm's `files` included, is the person's pick, never the agent's (the re-read of 0a0d4e95743,
    * SHOULD-3; its properties: `file_browser_pointer`, its operators: SHOULD-6). */
+  /* Every RNA function a Python caller calls asks here (each `layout.prop`, `label`, `operator` of a panel's draw).
+   * Nothing confined and no agent modal: an atomic load or two. Otherwise only a file browser's, a window's or the
+   * window manager's functions can be refused, so a layout's never asks `confined_now()`, which walks the stack once
+   * agent code exists (the 26th read's I1, Ruling 17). */
+  if (!BLI_fileops_confine_possible() && !WM_angelo_in_agent_modal()) {
+    return nullptr;
+  }
   const bool file_browser = RNA_struct_is_a(ptr->type, RNA_SpaceFileBrowser) ||
                             RNA_struct_is_a(ptr->type, RNA_FileSelectParams);
-  if (!confined_now()) {
+  if (!file_browser && !RNA_struct_is_a(ptr->type, RNA_Window) && !RNA_struct_is_a(ptr->type, RNA_WindowManager)) {
+    return nullptr;
+  }
+  const bool confined = confined_now();
+  if (!confined && !WM_angelo_in_agent_modal()) {
+    return nullptr;
+  }
+  if (!confined) {
     /* The modal of an operator an agent script started runs unconfined, yet it is the agent's: a file browser it
      * opens is refused as the script's own (the tag on its handler uses the same predicate; the re-read of
      * 9dcfb883ebb, SHOULD-2). */
-    return WM_angelo_in_agent_modal() &&
-                   (file_browser ||
-                    (RNA_struct_is_a(ptr->type, RNA_WindowManager) && STREQ(function, "fileselect_add"))) ?
+    return file_browser ||
+                   (RNA_struct_is_a(ptr->type, RNA_WindowManager) && STREQ(function, "fileselect_add")) ?
                POINTER :
                nullptr;
   }
@@ -213,7 +313,14 @@ const char *BPY_angelo_guard_value_refusal(const PointerRNA *ptr,
                                            int int_value,
                                            bool pointer_set)
 {
-  if (ptr == nullptr || ptr->type == nullptr || ptr->data == nullptr || !confined_now()) {
+  if (!BLI_fileops_confine_possible() || ptr == nullptr || ptr->type == nullptr || ptr->data == nullptr) {
+    return nullptr;
+  }
+  /* The types first, the thread only for theirs (as `BPY_angelo_guard_path_property_refusal`). */
+  if (!RNA_struct_is_a(ptr->type, RNA_Driver) && !RNA_struct_is_a(ptr->type, RNA_FreestyleModuleSettings)) {
+    return nullptr;
+  }
+  if (!confined_now()) {
     return nullptr;
   }
   const char *name = RNA_property_identifier(prop);
@@ -236,8 +343,9 @@ const char *BPY_angelo_guard_value_refusal(const PointerRNA *ptr,
 
 const char *BPY_angelo_guard_load_time_refusal(PointerRNA *ptr, PropertyRNA *prop)
 {
-  if (!confined_now() || ptr == nullptr || !RNA_struct_is_a(ptr->type, RNA_Text) ||
-      !STREQ(RNA_property_identifier(prop), "use_module"))
+  /* The property first, the thread only for it: every boolean an RNA call is given asks here. */
+  if (!BLI_fileops_confine_possible() || ptr == nullptr || !RNA_struct_is_a(ptr->type, RNA_Text) ||
+      !STREQ(RNA_property_identifier(prop), "use_module") || !confined_now())
   {
     return nullptr;
   }

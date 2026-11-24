@@ -50,6 +50,7 @@ prefs.use_preferences_save = False
 prefs.view.smooth_view = 0   # View All lands at once: the framing is complete when the capture is taken.
 import qa_waits  # noqa: E402
 from angelo_agent import card_kit, flow_host, flow_nodes, flow_templates, flow_tree  # noqa: E402
+import qa_hit
 
 REPORT = OUT / "flow-node-theme.json"
 NEAR = 6          # Per-channel distance that counts as "this colour" (anti-aliased edges excluded).
@@ -186,9 +187,8 @@ def shares(px, area, colours):
     region, rects = qa_flow_view.graph_bounds(area, prefs.system.ui_scale)
     result = {}
     for node, (left, bottom, right, top) in zip(area.spaces.active.node_tree.nodes, rects):
-        x0, y0 = max(0, int(region.x + max(left, 0))), max(0, int(region.y + max(bottom, 0)))
-        x1 = int(region.x + min(right, region.width))
-        y1 = int(region.y + min(top, region.height))
+        x0, y0 = (max(0, int(v)) for v in qa_hit.xy(qa_hit.RAW, region, max(left, 0), max(bottom, 0)))
+        x1, y1 = (int(v) for v in qa_hit.xy(qa_hit.RAW, region, min(right, region.width), min(top, region.height)))
         block = px[y0:max(y0, y1), x0:max(x0, x1)].reshape(-1, 3)
         if not len(block):
             continue
@@ -231,8 +231,8 @@ def current(px, flow, shader, background):
     for name, area in (("flow", flow), ("shader", shader)):
         region, rects = qa_flow_view.graph_bounds(area, prefs.system.ui_scale)
         for node, (left, bottom, right, top) in zip(area.spaces.active.edit_tree.nodes, rects):
-            x0, y0 = max(0, int(region.x + max(left, 0))), max(0, int(region.y + max(bottom, 0)))
-            x1, y1 = int(region.x + min(right, region.width)), int(region.y + min(top, region.height))
+            x0, y0 = (max(0, int(v)) for v in qa_hit.xy(qa_hit.RAW, region, max(left, 0), max(bottom, 0)))
+            x1, y1 = (int(v) for v in qa_hit.xy(qa_hit.RAW, region, min(right, region.width), min(top, region.height)))
             block = px[y0:max(y0, y1), x0:max(x0, x1)].reshape(-1, 3)
             off = float((numpy.abs(block - numpy.array(background)).max(axis=1) > NEAR).mean()) if len(block) else 0.0
             covered["%s/%s" % (name, node.name)] = round(off, 4)
